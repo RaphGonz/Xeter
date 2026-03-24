@@ -1,4 +1,4 @@
-# ICOSA
+# Xeter
 Local Agent Tool Call Debugger
 
 # Stop debugging local agent tool calls in the dark.

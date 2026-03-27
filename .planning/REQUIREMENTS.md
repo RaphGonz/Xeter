@@ -10,7 +10,7 @@ Requirements for initial release. Each maps to roadmap phases.
 ### SDK & Ingestion
 
 - [ ] **SDK-01**: Python SDK wraps OTel instrumentation and emits spans via OTLP HTTP to the Analyser
-- [ ] **SDK-02**: SDK captures all span fields: agent_name, agent_model, recipient, recipient_model, tool_name, tool_description, tool_output, prompt, response, raw_response
+- [ ] **SDK-02**: SDK captures all span fields: agent_name, agent_model, recipient, recipient_model, tool_name, tool_description, tool_arguments, tool_output, prompt, response, raw_response, available_tools_ref
 - [ ] **SDK-03**: SDK supports trace grouping via trace_id and parent_span_id
 - [ ] **SDK-04**: SDK includes schema versioning field (xeter.schema.version) for forward compatibility
 - [ ] **SDK-05**: SDK authenticates via API key sent with each span batch
@@ -26,14 +26,16 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **FLAG-05**: Tool-call analyzer: vector similarity between prompt and tool_description to detect semantic mismatch
 - [ ] **FLAG-06**: Tool-call analyzer: vector similarity between prompt and response to detect response anomalies
 - [ ] **FLAG-07**: Tool-call analyzer: embedding of model_name + prompt to detect parsing error patterns
-- [ ] **FLAG-08**: Tool-call analyzer classifies anomalies into flag types: wrong_tool, no_tool, excessive_tool, parsing_error
+- [ ] **FLAG-08**: Tool-call analyzer classifies anomalies into flag types: wrong_tool, wrong_tool_args, no_tool, excessive_tool, parsing_error
 - [ ] **FLAG-09**: Similarity thresholds are configurable per analyzer, not hardcoded
 - [ ] **FLAG-10**: All similarity scores are logged for every span (flagged or not) to enable future threshold calibration
+- [ ] **FLAG-11**: Tool-call analyzer: embed prompt against each tool in `available_tools` (fetched from S3 via `available_tools_ref`); flag as `wrong_tool` if the called tool is not the top-ranked match (A1)
+- [ ] **FLAG-12**: Tool-call analyzer: embed prompt against `tool_arguments` values; flag as `wrong_tool_args` if argument semantics are inconsistent with prompt intent (A7) — treated as low-confidence flag
 
 ### Storage
 
 - [ ] **STOR-01**: Spans are stored as immutable rows in ClickHouse with ORDER BY (tenant_id, trace_id, time_begin)
-- [ ] **STOR-02**: Large text payloads (prompt, response, raw_response) are stored in S3 with reference keys in ClickHouse
+- [ ] **STOR-02**: Large text payloads (prompt, response, raw_response, available_tools) are stored in S3 with reference keys in ClickHouse; tool_arguments stored inline as JSON in ClickHouse (small payload)
 - [ ] **STOR-03**: Flags are stored as append-only rows in PostgreSQL with span_id, flag_type, score, and detail
 - [ ] **STOR-04**: ClickHouse writes are batched via Redis queue — no single-row inserts
 - [ ] **STOR-05**: Redis queue decouples span ingestion from embedding worker processing
@@ -56,7 +58,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Infrastructure
 
-- [ ] **INFR-01**: Docker Compose provides local dev environment with ClickHouse, PostgreSQL, Redis, MinIO (S3), backend, and frontend services
+- [x] **INFR-01**: Docker Compose provides local dev environment with ClickHouse, PostgreSQL, Redis, MinIO (S3), backend, and frontend services
 - [ ] **INFR-02**: Diagnosticer service is scaffolded — wired to Presenter, accepts requests, returns placeholder response — ready for LLM integration in milestone 2
 
 ## v2 Requirements
@@ -130,6 +132,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FLAG-08 | Phase 3 | Pending |
 | FLAG-09 | Phase 3 | Pending |
 | FLAG-10 | Phase 3 | Pending |
+| FLAG-11 | Phase 3 | Pending |
+| FLAG-12 | Phase 3 | Pending |
 | STOR-01 | Phase 1 | Pending |
 | STOR-02 | Phase 2 | Pending |
 | STOR-03 | Phase 3 | Pending |
@@ -145,12 +149,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AUTH-03 | Phase 1 | Pending |
 | AUTH-04 | Phase 1 | Pending |
 | AUTH-05 | Phase 1 | Pending |
-| INFR-01 | Phase 1 | Pending |
+| INFR-01 | Phase 1 | Complete |
 | INFR-02 | Phase 4 | Pending |
 
 **Coverage:**
-- v1 requirements: 32 total
-- Mapped to phases: 32
+- v1 requirements: 34 total
+- Mapped to phases: 34
 - Unmapped: 0
 
 ---

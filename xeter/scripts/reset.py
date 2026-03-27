@@ -24,6 +24,9 @@ import subprocess
 import sys
 import time
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from xeter.shared.db.clickhouse import get_clickhouse_client, create_spans_table
 from xeter.scripts.seed import main as seed_main
 

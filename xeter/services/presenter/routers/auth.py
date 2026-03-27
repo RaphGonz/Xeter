@@ -16,7 +16,7 @@ import logging
 import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr, field_validator
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Annotated
 
@@ -116,33 +116,29 @@ async def register(
       4. Generate API key and store hash (inside same tenant_session)
       5. Return tenant_id + plaintext key
     """
-    # --- Step 1: Check email uniqueness across all tenants ---
     try:
-        existing = await session.execute(
-            select(User).where(User.email == body.email)
-        )
-        if existing.scalar_one_or_none() is not None:
-            raise HTTPException(status_code=409, detail="Email already registered")
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.error("register.email_check_failed", error=str(exc))
-        raise HTTPException(status_code=500, detail="Registration failed") from exc
-
-    try:
-        # --- Step 2: Create tenant (bootstrap — no tenant_id yet, no RLS) ---
         async with session.begin():
+            # --- Step 1: Check email uniqueness across all tenants ---
+            existing = await session.execute(
+                select(User).where(User.email == body.email)
+            )
+            if existing.scalar_one_or_none() is not None:
+                raise HTTPException(status_code=409, detail="Email already registered")
+
+            # --- Step 2: Create tenant (bootstrap — no tenant_id yet, no RLS) ---
             tenant_repo = TenantRepository(session)
             tenant = await tenant_repo.create(name=body.tenant_name)
+            await session.flush()
 
-        tenant_id_str = str(tenant.tenant_id)
+            tenant_id_str = str(tenant.tenant_id)
 
-        # --- Steps 3-6: Create user and API key inside tenant-scoped transaction ---
-        # tenant_session sets SET LOCAL app.current_tenant_id for RLS enforcement.
-        from xeter.shared.db.postgres import tenant_session
+            # --- Step 3: Set RLS variable for remaining inserts ---
+            await session.execute(
+                text("SELECT set_config('app.current_tenant_id', :tid, true)"),
+                {"tid": tenant_id_str},
+            )
 
-        async with tenant_session(session, tenant_id_str):
-            # Step 3: Hash password and create user
+            # --- Step 4: Hash password and create user ---
             password_hash = bcrypt.hashpw(
                 body.password.encode("utf-8"), bcrypt.gensalt()
             ).decode("utf-8")
@@ -154,13 +150,13 @@ async def register(
                 password_hash=password_hash,
             )
 
-            # Steps 5-6: Generate API key and store hash
+            # --- Step 5: Generate API key and store hash ---
             plaintext, key_hash = generate_api_key()
 
             key_repo = ApiKeyRepository(session)
             await key_repo.create(tenant_id=tenant_id_str, key_hash=key_hash)
 
-        # --- Step 7: Return response ---
+        # --- Step 6: Return response ---
         return RegisterResponse(
             tenant_id=tenant_id_str,
             api_key=plaintext,

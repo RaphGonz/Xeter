@@ -20,6 +20,9 @@ import asyncio
 import os
 import sys
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import bcrypt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,17 +45,17 @@ async def _seed_postgres(session: AsyncSession) -> None:
 
     Idempotent: exits cleanly if dev-tenant already exists.
     """
-    # Check if dev-tenant already exists
-    result = await session.execute(
-        select(Tenant).where(Tenant.name == _DEV_TENANT_NAME)
-    )
-    existing_tenant = result.scalar_one_or_none()
-
-    if existing_tenant is not None:
-        print("Seed already applied. Run `make reset` to start fresh.")
-        return
-
     async with session.begin():
+        # Check if dev-tenant already exists
+        result = await session.execute(
+            select(Tenant).where(Tenant.name == _DEV_TENANT_NAME)
+        )
+        existing_tenant = result.scalar_one_or_none()
+
+        if existing_tenant is not None:
+            print("Seed already applied. Run `make reset` to start fresh.")
+            return
+
         # Create tenant
         tenant = Tenant(name=_DEV_TENANT_NAME)
         session.add(tenant)

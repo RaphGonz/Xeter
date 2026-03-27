@@ -26,6 +26,9 @@ services:
       - "9000:9000"
     volumes:
       - ch_data:/var/lib/clickhouse
+    environment:
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: xeter_dev_password
     healthcheck:
       test: ["CMD-SHELL", "wget --spider -q http://localhost:8123/ping"]
       interval: 10s
@@ -71,7 +74,6 @@ services:
       - "4318:4318"
     volumes:
       - ../services/analyser:/app/services/analyser
-      - ../shared:/app/shared
     command: uvicorn services.analyser.main:app --host 0.0.0.0 --port 4318 --reload
     depends_on:
       postgres:
@@ -95,9 +97,8 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ../services/presenter:/app/services/presenter
-      - ../shared:/app/shared
-    command: uvicorn services.presenter.main:app --host 0.0.0.0 --port 8000 --reload
+      - ../xeter:/app/xeter
+    command: uvicorn xeter.services.presenter.main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
       postgres:
         condition: service_healthy

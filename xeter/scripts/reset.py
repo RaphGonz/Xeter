@@ -65,8 +65,9 @@ def _reset_postgres() -> None:
         conn.close()
 
     print("Running alembic upgrade head...")
+    alembic_ini = os.path.join(os.path.dirname(__file__), "..", "migrations", "alembic.ini")
     result = subprocess.run(
-        ["alembic", "upgrade", "head"],
+        [sys.executable, "-m", "alembic", "-c", alembic_ini, "upgrade", "head"],
         check=True,
         capture_output=False,
     )

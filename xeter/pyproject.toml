@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=70", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "xeter"
+version = "0.1.0"
+description = "Xeter — AI observability and diagnostics platform"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi==0.135.2",
+    "uvicorn[standard]>=0.32",
+    "pydantic==2.12.5",
+    "sqlalchemy==2.0.48",
+    "asyncpg==0.31.0",
+    "alembic==1.18.4",
+    "clickhouse-connect==0.15.0",
+    "passlib[bcrypt]>=1.7",
+    "python-dotenv",
+    "structlog",
+    "httpx",
+    "pytest",
+    "pytest-asyncio==0.24.0",
+    "anyio",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+where = ["."]

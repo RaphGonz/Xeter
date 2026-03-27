@@ -31,7 +31,13 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. PostgreSQL migrations run cleanly: tenants, users, api_keys, and flags tables created with correct columns and RLS policies active
   4. DAL rejects any query that omits tenant_id — a test calling DAL without tenant_id returns an error
   5. Developer can register an account (tenant created, API key generated and stored as hash in PostgreSQL)
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Docker Compose stack, .env.example, Makefile, and Python package scaffold
+- [ ] 01-02-PLAN.md — PostgreSQL schema (SQLAlchemy models + Alembic migration + RLS) and ClickHouse spans table DDL
+- [ ] 01-03-PLAN.md — Shared DAL: tenant guard, repository classes, API key hashing, RLS session context (TDD)
+- [ ] 01-04-PLAN.md — POST /register endpoint, seed script, reset script, and registration integration tests
 
 ### Phase 2: Ingestion Path
 **Goal**: An instrumented Python agent can emit spans via the SDK, spans arrive at the Analyser, large payloads land in S3, spans are written to ClickHouse in batches, and span IDs are enqueued in Redis for async analysis
@@ -39,7 +45,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Requirements**: SDK-01, SDK-02, SDK-03, SDK-04, SDK-05, STOR-02, STOR-04, STOR-05
 **Success Criteria** (what must be TRUE):
   1. `pip install xeter-sdk` installs and a 3-line instrumentation snippet emits a span to a local Analyser
-  2. Every emitted span includes all required fields (agent_name, agent_model, tool_name, tool_description, tool_output, prompt, response, raw_response, trace_id, parent_span_id, xeter.schema.version) and prompt/response/raw_response are in S3 with reference keys in ClickHouse
+  2. Every emitted span includes all required fields (agent_name, agent_model, tool_name, tool_description, tool_arguments, tool_output, prompt, response, raw_response, available_tools_ref, trace_id, parent_span_id, xeter.schema.version); prompt/response/raw_response/available_tools are in S3 with reference keys in ClickHouse; tool_arguments stored inline as JSON in ClickHouse
   3. Analyser rejects spans with a missing or invalid API key with 401
   4. ClickHouse receives spans only via batched INSERT (confirmed by a test that emits 50 spans and observes one or more batch writes, never 50 individual inserts)
   5. A span_id appears in the Redis queue within 200ms of the Analyser returning 200
@@ -48,13 +54,14 @@ Decimal phases appear between their surrounding integers in numeric order.
 ### Phase 3: Analysis Path
 **Goal**: The Embedding Worker processes queued span IDs, computes cosine similarities, classifies tool-call anomalies into flag types, and writes flags to PostgreSQL with similarity scores logged for every span regardless of whether it was flagged
 **Depends on**: Phase 2
-**Requirements**: FLAG-01, FLAG-02, FLAG-03, FLAG-04, FLAG-05, FLAG-06, FLAG-07, FLAG-08, FLAG-09, FLAG-10, STOR-03
+**Requirements**: FLAG-01, FLAG-02, FLAG-03, FLAG-04, FLAG-05, FLAG-06, FLAG-07, FLAG-08, FLAG-09, FLAG-10, FLAG-11, FLAG-12, STOR-03
 **Success Criteria** (what must be TRUE):
-  1. A span with a clearly mismatched tool call (e.g., prompt asks to send email, tool is a database query) produces a wrong_tool flag in PostgreSQL with a score and detail JSON
+  1. A span with a clearly mismatched tool call (e.g., prompt asks to send email, tool is a database query) produces a wrong_tool flag in PostgreSQL with a score and detail JSON including ranked candidate tools from available_tools
   2. A clean span produces no flag row but still has similarity scores logged (score logging confirmed in the spans or a dedicated scores table)
   3. Similarity thresholds are read from config, not hardcoded — changing the config value changes which spans get flagged without a code change
   4. Adding a second analyzer (even a stub) to the registry causes the pipeline to dispatch each span to both analyzers without modifying the first analyzer
   5. flag_type column in PostgreSQL is a VARCHAR/text column and accepts an arbitrary string value (not an enum constraint)
+  6. A span with mismatched tool_arguments (e.g., prompt asks to email Alice, tool_arguments contains Bob's address) produces a wrong_tool_args flag with a low-confidence score in the detail JSON
 **Plans**: TBD
 
 ### Phase 4: Read Path
@@ -100,7 +107,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/TBD | Not started | - |
+| 1. Foundation | 0/4 | Not started | - |
 | 2. Ingestion Path | 0/TBD | Not started | - |
 | 3. Analysis Path | 0/TBD | Not started | - |
 | 4. Read Path | 0/TBD | Not started | - |

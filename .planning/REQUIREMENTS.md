@@ -34,7 +34,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Storage
 
-- [ ] **STOR-01**: Spans are stored as immutable rows in ClickHouse with ORDER BY (tenant_id, trace_id, time_begin)
+- [x] **STOR-01**: Spans are stored as immutable rows in ClickHouse with ORDER BY (tenant_id, trace_id, time_begin)
 - [ ] **STOR-02**: Large text payloads (prompt, response, raw_response, available_tools) are stored in S3 with reference keys in ClickHouse; tool_arguments stored inline as JSON in ClickHouse (small payload)
 - [ ] **STOR-03**: Flags are stored as append-only rows in PostgreSQL with span_id, flag_type, score, and detail
 - [ ] **STOR-04**: ClickHouse writes are batched via Redis queue — no single-row inserts
@@ -50,10 +50,10 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Auth & Multi-tenancy
 
-- [ ] **AUTH-01**: Each tenant has an API key for SDK ingestion; key hash stored in PostgreSQL
+- [x] **AUTH-01**: Each tenant has an API key for SDK ingestion; key hash stored in PostgreSQL
 - [ ] **AUTH-02**: Developer can log into the dashboard with email and password
 - [ ] **AUTH-03**: All database queries are scoped by tenant_id in application code
-- [ ] **AUTH-04**: PostgreSQL has Row-Level Security policies as defense-in-depth against cross-tenant data leaks
+- [x] **AUTH-04**: PostgreSQL has Row-Level Security policies as defense-in-depth against cross-tenant data leaks
 - [ ] **AUTH-05**: Developer can create an account (tenant registration)
 
 ### Infrastructure
@@ -134,7 +134,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FLAG-10 | Phase 3 | Pending |
 | FLAG-11 | Phase 3 | Pending |
 | FLAG-12 | Phase 3 | Pending |
-| STOR-01 | Phase 1 | Pending |
+| STOR-01 | Phase 1 | Complete |
 | STOR-02 | Phase 2 | Pending |
 | STOR-03 | Phase 3 | Pending |
 | STOR-04 | Phase 2 | Pending |
@@ -144,10 +144,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DASH-03 | Phase 4 | Pending |
 | DASH-04 | Phase 4 | Pending |
 | DASH-05 | Phase 4 | Pending |
-| AUTH-01 | Phase 1 | Pending |
+| AUTH-01 | Phase 1 | Complete |
 | AUTH-02 | Phase 5 | Pending |
 | AUTH-03 | Phase 1 | Pending |
-| AUTH-04 | Phase 1 | Pending |
+| AUTH-04 | Phase 1 | Complete |
 | AUTH-05 | Phase 1 | Pending |
 | INFR-01 | Phase 1 | Complete |
 | INFR-02 | Phase 4 | Pending |

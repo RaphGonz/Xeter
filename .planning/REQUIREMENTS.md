@@ -115,44 +115,44 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SDK-01 | — | Pending |
-| SDK-02 | — | Pending |
-| SDK-03 | — | Pending |
-| SDK-04 | — | Pending |
-| SDK-05 | — | Pending |
-| FLAG-01 | — | Pending |
-| FLAG-02 | — | Pending |
-| FLAG-03 | — | Pending |
-| FLAG-04 | — | Pending |
-| FLAG-05 | — | Pending |
-| FLAG-06 | — | Pending |
-| FLAG-07 | — | Pending |
-| FLAG-08 | — | Pending |
-| FLAG-09 | — | Pending |
-| FLAG-10 | — | Pending |
-| STOR-01 | — | Pending |
-| STOR-02 | — | Pending |
-| STOR-03 | — | Pending |
-| STOR-04 | — | Pending |
-| STOR-05 | — | Pending |
-| DASH-01 | — | Pending |
-| DASH-02 | — | Pending |
-| DASH-03 | — | Pending |
-| DASH-04 | — | Pending |
-| DASH-05 | — | Pending |
-| AUTH-01 | — | Pending |
-| AUTH-02 | — | Pending |
-| AUTH-03 | — | Pending |
-| AUTH-04 | — | Pending |
-| AUTH-05 | — | Pending |
-| INFR-01 | — | Pending |
-| INFR-02 | — | Pending |
+| SDK-01 | Phase 2 | Pending |
+| SDK-02 | Phase 2 | Pending |
+| SDK-03 | Phase 2 | Pending |
+| SDK-04 | Phase 2 | Pending |
+| SDK-05 | Phase 2 | Pending |
+| FLAG-01 | Phase 3 | Pending |
+| FLAG-02 | Phase 3 | Pending |
+| FLAG-03 | Phase 3 | Pending |
+| FLAG-04 | Phase 3 | Pending |
+| FLAG-05 | Phase 3 | Pending |
+| FLAG-06 | Phase 3 | Pending |
+| FLAG-07 | Phase 3 | Pending |
+| FLAG-08 | Phase 3 | Pending |
+| FLAG-09 | Phase 3 | Pending |
+| FLAG-10 | Phase 3 | Pending |
+| STOR-01 | Phase 1 | Pending |
+| STOR-02 | Phase 2 | Pending |
+| STOR-03 | Phase 3 | Pending |
+| STOR-04 | Phase 2 | Pending |
+| STOR-05 | Phase 2 | Pending |
+| DASH-01 | Phase 5 | Pending |
+| DASH-02 | Phase 5 | Pending |
+| DASH-03 | Phase 4 | Pending |
+| DASH-04 | Phase 4 | Pending |
+| DASH-05 | Phase 4 | Pending |
+| AUTH-01 | Phase 1 | Pending |
+| AUTH-02 | Phase 5 | Pending |
+| AUTH-03 | Phase 1 | Pending |
+| AUTH-04 | Phase 1 | Pending |
+| AUTH-05 | Phase 1 | Pending |
+| INFR-01 | Phase 1 | Pending |
+| INFR-02 | Phase 4 | Pending |
 
 **Coverage:**
 - v1 requirements: 32 total
-- Mapped to phases: 0
-- Unmapped: 32
+- Mapped to phases: 32
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-27*
-*Last updated: 2026-03-27 after initial definition*
+*Last updated: 2026-03-27 — traceability populated after roadmap creation*

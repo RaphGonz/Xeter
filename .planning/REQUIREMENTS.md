@@ -54,7 +54,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **AUTH-02**: Developer can log into the dashboard with email and password
 - [x] **AUTH-03**: All database queries are scoped by tenant_id in application code
 - [x] **AUTH-04**: PostgreSQL has Row-Level Security policies as defense-in-depth against cross-tenant data leaks
-- [ ] **AUTH-05**: Developer can create an account (tenant registration)
+- [x] **AUTH-05**: Developer can create an account (tenant registration)
 
 ### Infrastructure
 
@@ -148,7 +148,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AUTH-02 | Phase 5 | Pending |
 | AUTH-03 | Phase 1 | Complete |
 | AUTH-04 | Phase 1 | Complete |
-| AUTH-05 | Phase 1 | Pending |
+| AUTH-05 | Phase 1 | Complete |
 | INFR-01 | Phase 1 | Complete |
 | INFR-02 | Phase 4 | Pending |
 

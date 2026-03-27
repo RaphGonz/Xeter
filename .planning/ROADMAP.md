@@ -12,7 +12,7 @@ Xeter is built bottom-up in strict dependency order: the ClickHouse schema and i
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation** - Infrastructure running, schemas locked, multi-tenancy enforced, nothing broken later
+- [x] **Phase 1: Foundation** - Infrastructure running, schemas locked, multi-tenancy enforced, nothing broken later
 - [ ] **Phase 2: Ingestion Path** - Spans flow from SDK through Analyser into ClickHouse and S3 with batched writes
 - [ ] **Phase 3: Analysis Path** - Embedding Worker flags tool-call anomalies with configurable, logged similarity scores
 - [ ] **Phase 4: Read Path** - Presenter merges ClickHouse and PostgreSQL and serves the full API with Diagnosticer scaffolded
@@ -34,10 +34,10 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 4 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Docker Compose stack, .env.example, Makefile, and Python package scaffold
-- [ ] 01-02-PLAN.md — PostgreSQL schema (SQLAlchemy models + Alembic migration + RLS) and ClickHouse spans table DDL
-- [ ] 01-03-PLAN.md — Shared DAL: tenant guard, repository classes, API key hashing, RLS session context (TDD)
-- [ ] 01-04-PLAN.md — POST /register endpoint, seed script, reset script, and registration integration tests
+- [x] 01-01-PLAN.md — Docker Compose stack, .env.example, Makefile, and Python package scaffold
+- [x] 01-02-PLAN.md — PostgreSQL schema (SQLAlchemy models + Alembic migration + RLS) and ClickHouse spans table DDL
+- [x] 01-03-PLAN.md — Shared DAL: tenant guard, repository classes, API key hashing, RLS session context (TDD)
+- [x] 01-04-PLAN.md — POST /register endpoint, seed script, reset script, and registration integration tests
 
 ### Phase 2: Ingestion Path
 **Goal**: An instrumented Python agent can emit spans via the SDK, spans arrive at the Analyser, large payloads land in S3, spans are written to ClickHouse in batches, and span IDs are enqueued in Redis for async analysis
@@ -107,7 +107,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 3/4 | In Progress|  |
+| 1. Foundation | 4/4 | Complete | 2026-03-27 |
 | 2. Ingestion Path | 0/TBD | Not started | - |
 | 3. Analysis Path | 0/TBD | Not started | - |
 | 4. Read Path | 0/TBD | Not started | - |

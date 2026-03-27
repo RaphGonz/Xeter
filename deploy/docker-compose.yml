@@ -1,0 +1,128 @@
+services:
+
+  # --- Infrastructure services ---
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: xeter
+      POSTGRES_USER: xeter
+      POSTGRES_PASSWORD: xeter_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U xeter -d xeter"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.3
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - ch_data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9100:9000"
+      - "9101:9001"
+    volumes:
+      - minio_data:/data
+    environment:
+      MINIO_ROOT_USER: xeter
+      MINIO_ROOT_PASSWORD: xeter_dev_password
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # --- Application stub services ---
+
+  analyser:
+    build:
+      context: ..
+      dockerfile: services/analyser/Dockerfile
+    ports:
+      - "4318:4318"
+    volumes:
+      - ../services/analyser:/app/services/analyser
+      - ../shared:/app/shared
+    command: uvicorn services.analyser.main:app --host 0.0.0.0 --port 4318 --reload
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://xeter:xeter_dev_password@postgres:5432/xeter
+      CLICKHOUSE_HOST: clickhouse
+      REDIS_URL: redis://redis:6379
+      MINIO_ENDPOINT: http://minio:9000
+
+  presenter:
+    build:
+      context: ..
+      dockerfile: services/presenter/Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../services/presenter:/app/services/presenter
+      - ../shared:/app/shared
+    command: uvicorn services.presenter.main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://xeter:xeter_dev_password@postgres:5432/xeter
+      CLICKHOUSE_HOST: clickhouse
+      REDIS_URL: redis://redis:6379
+      MINIO_ENDPOINT: http://minio:9000
+
+  view:
+    build:
+      context: ..
+      dockerfile: services/view/Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../services/view:/app
+
+volumes:
+  pg_data:
+  ch_data:
+  minio_data:

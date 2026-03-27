@@ -1,0 +1,11 @@
+{
+  "name": "xeter-view",
+  "version": "0.1.0",
+  "description": "Xeter frontend — Phase 1 stub (Next.js scaffolded in later phase)",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  }
+}

@@ -22,6 +22,7 @@ Environment variables:
   WORKER_THRESHOLD_NO_TOOL          — cosine threshold, default 0.6
   WORKER_THRESHOLD_EXCESSIVE_TOOL   — cosine threshold, default 0.3
   WORKER_THRESHOLD_PARSING_ERROR    — cosine threshold, default 0.5
+  WORKER_THRESHOLD_RESPONSE_ANOMALY — cosine threshold, default 0.4
 """
 
 from __future__ import annotations
@@ -49,6 +50,7 @@ THRESHOLDS: dict[str, float] = {
     "no_tool": float(os.environ.get("WORKER_THRESHOLD_NO_TOOL", "0.6")),
     "excessive_tool": float(os.environ.get("WORKER_THRESHOLD_EXCESSIVE_TOOL", "0.3")),
     "parsing_error": float(os.environ.get("WORKER_THRESHOLD_PARSING_ERROR", "0.5")),
+    "response_anomaly": float(os.environ.get("WORKER_THRESHOLD_RESPONSE_ANOMALY", "0.4")),
 }
 
 # ---- signal handling --------------------------------------------------------

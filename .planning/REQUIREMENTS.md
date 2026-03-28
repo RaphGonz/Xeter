@@ -22,15 +22,15 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **FLAG-01**: Flagging pipeline implements analyzer registry pattern — analyzers register independently, pipeline dispatches spans to all registered analyzers
 - [x] **FLAG-02**: Each analyzer defines its own flag types, scoring logic, and thresholds via a common interface
 - [x] **FLAG-03**: flag_type field in PostgreSQL is an open string (not enum) to support future analyzer categories without schema changes
-- [ ] **FLAG-04**: Tool-call analyzer: vector similarity between prompt and tool_name to detect wrong tool usage
-- [ ] **FLAG-05**: Tool-call analyzer: vector similarity between prompt and tool_description to detect semantic mismatch
-- [ ] **FLAG-06**: Tool-call analyzer: vector similarity between prompt and response to detect response anomalies
-- [ ] **FLAG-07**: Tool-call analyzer: embedding of model_name + prompt to detect parsing error patterns
-- [ ] **FLAG-08**: Tool-call analyzer classifies anomalies into flag types: wrong_tool, wrong_tool_args, no_tool, excessive_tool, parsing_error
+- [x] **FLAG-04**: Tool-call analyzer: vector similarity between prompt and tool_name to detect wrong tool usage
+- [x] **FLAG-05**: Tool-call analyzer: vector similarity between prompt and tool_description to detect semantic mismatch
+- [x] **FLAG-06**: Tool-call analyzer: vector similarity between prompt and response to detect response anomalies
+- [x] **FLAG-07**: Tool-call analyzer: embedding of model_name + prompt to detect parsing error patterns
+- [x] **FLAG-08**: Tool-call analyzer classifies anomalies into flag types: wrong_tool, wrong_tool_args, no_tool, excessive_tool, parsing_error
 - [x] **FLAG-09**: Similarity thresholds are configurable per analyzer, not hardcoded
 - [x] **FLAG-10**: All similarity scores are logged for every span (flagged or not) to enable future threshold calibration
-- [ ] **FLAG-11**: Tool-call analyzer: embed prompt against each tool in `available_tools` (fetched from S3 via `available_tools_ref`); flag as `wrong_tool` if the called tool is not the top-ranked match (A1)
-- [ ] **FLAG-12**: Tool-call analyzer: embed prompt against `tool_arguments` values; flag as `wrong_tool_args` if argument semantics are inconsistent with prompt intent (A7) — treated as low-confidence flag
+- [x] **FLAG-11**: Tool-call analyzer: embed prompt against each tool in `available_tools` (fetched from S3 via `available_tools_ref`); flag as `wrong_tool` if the called tool is not the top-ranked match (A1)
+- [x] **FLAG-12**: Tool-call analyzer: embed prompt against `tool_arguments` values; flag as `wrong_tool_args` if argument semantics are inconsistent with prompt intent (A7) — treated as low-confidence flag
 
 ### Storage
 
@@ -125,15 +125,15 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FLAG-01 | Phase 3 | Complete |
 | FLAG-02 | Phase 3 | Complete |
 | FLAG-03 | Phase 3 | Complete |
-| FLAG-04 | Phase 3 | Pending |
-| FLAG-05 | Phase 3 | Pending |
-| FLAG-06 | Phase 3 | Pending |
-| FLAG-07 | Phase 3 | Pending |
-| FLAG-08 | Phase 3 | Pending |
+| FLAG-04 | Phase 3 | Complete |
+| FLAG-05 | Phase 3 | Complete |
+| FLAG-06 | Phase 3 | Complete |
+| FLAG-07 | Phase 3 | Complete |
+| FLAG-08 | Phase 3 | Complete |
 | FLAG-09 | Phase 3 | Complete |
 | FLAG-10 | Phase 3 | Complete |
-| FLAG-11 | Phase 3 | Pending |
-| FLAG-12 | Phase 3 | Pending |
+| FLAG-11 | Phase 3 | Complete |
+| FLAG-12 | Phase 3 | Complete |
 | STOR-01 | Phase 1 | Complete |
 | STOR-02 | Phase 2 | Complete |
 | STOR-03 | Phase 3 | Complete |

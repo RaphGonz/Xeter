@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-27T16:13:00.028Z"
+last_updated: "2026-03-28T10:52:48Z"
 progress:
-  total_phases: 1
+  total_phases: 6
   completed_phases: 1
   total_plans: 4
-  completed_plans: 4
+  completed_plans: 5
 ---
 
 # Project State
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-03-27)
 
 ## Current Position
 
-Phase: 1 of 6 (Foundation) — COMPLETE
-Plan: 4 of 4 in current phase (all plans done)
-Status: Phase 1 complete
-Last activity: 2026-03-27 — Completed Plan 04 (POST /register + seed + reset + integration tests)
+Phase: 2 of 6 (Ingestion Path) — IN PROGRESS
+Plan: 1 of 4 in current phase (Plan 01 complete)
+Status: Phase 2 Plan 01 complete
+Last activity: 2026-03-28 — Completed Plan 01 (xeter-sdk @xeter.trace decorator)
 
-Progress: [████░░░░░░] 16%
+Progress: [█████░░░░░] 20%
 
 ## Performance Metrics
 
@@ -41,6 +41,7 @@ Progress: [████░░░░░░] 16%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-foundation | 4 completed | 60 min | ~15 min |
+| 02-ingestion-path | 1 completed | 12 min | ~12 min |
 
 **Recent Trend:**
 - Last 5 plans: 01-01 (15 min), 01-02 (14 min), 01-03 (14 min), 01-04 (17 min)
@@ -72,6 +73,9 @@ Recent decisions affecting current work:
 - 01-04: POST /register uses two-transaction pattern — tenant bootstrap in session.begin(), user+key in tenant_session() for RLS
 - 01-04: reset.py uses psycopg2 with autocommit=True for DROP SCHEMA CASCADE — asyncpg does not expose autocommit DDL cleanly
 - 01-04: Integration tests use app.dependency_overrides[get_session] to inject test engine — no app-level DATABASE_URL required for tests
+- 02-01: asyncio.run() used instead of deprecated asyncio.get_event_loop() — Python 3.14 incompatibility
+- 02-01: response and raw_response set to null in SDK — agent-provided fields not available at decoration time
+- 02-01: tool_arguments serialised to JSON string at SDK layer — Analyser receives flat JSON body
 
 ### Pending Todos
 
@@ -84,6 +88,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27
-Stopped at: Completed 01-04-PLAN.md — POST /register endpoint + seed + reset + integration tests (Phase 1 complete)
+Last session: 2026-03-28
+Stopped at: Completed 02-01-PLAN.md — xeter-sdk @xeter.trace decorator with fire-and-forget span sending
 Resume file: None

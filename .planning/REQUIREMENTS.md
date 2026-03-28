@@ -9,11 +9,11 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### SDK & Ingestion
 
-- [ ] **SDK-01**: Python SDK wraps OTel instrumentation and emits spans via OTLP HTTP to the Analyser
-- [ ] **SDK-02**: SDK captures all span fields: agent_name, agent_model, recipient, recipient_model, tool_name, tool_description, tool_arguments, tool_output, prompt, response, raw_response, available_tools_ref
-- [ ] **SDK-03**: SDK supports trace grouping via trace_id and parent_span_id
-- [ ] **SDK-04**: SDK includes schema versioning field (xeter.schema.version) for forward compatibility
-- [ ] **SDK-05**: SDK authenticates via API key sent with each span batch
+- [x] **SDK-01**: Python SDK wraps OTel instrumentation and emits spans via OTLP HTTP to the Analyser
+- [x] **SDK-02**: SDK captures all span fields: agent_name, agent_model, recipient, recipient_model, tool_name, tool_description, tool_arguments, tool_output, prompt, response, raw_response, available_tools_ref
+- [x] **SDK-03**: SDK supports trace grouping via trace_id and parent_span_id
+- [x] **SDK-04**: SDK includes schema versioning field (xeter.schema.version) for forward compatibility
+- [x] **SDK-05**: SDK authenticates via API key sent with each span batch
 
 ### Anomaly Detection (Flagging)
 
@@ -117,11 +117,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SDK-01 | Phase 2 | Pending |
-| SDK-02 | Phase 2 | Pending |
-| SDK-03 | Phase 2 | Pending |
-| SDK-04 | Phase 2 | Pending |
-| SDK-05 | Phase 2 | Pending |
+| SDK-01 | Phase 2 | Complete |
+| SDK-02 | Phase 2 | Complete |
+| SDK-03 | Phase 2 | Complete |
+| SDK-04 | Phase 2 | Complete |
+| SDK-05 | Phase 2 | Complete |
 | FLAG-01 | Phase 3 | Pending |
 | FLAG-02 | Phase 3 | Pending |
 | FLAG-03 | Phase 3 | Pending |

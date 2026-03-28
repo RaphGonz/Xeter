@@ -114,6 +114,33 @@ services:
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: http://minio:9000
 
+  worker:
+    build:
+      context: ..
+      dockerfile: services/worker/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://xeter:xeter_dev_password@postgres:5432/xeter
+      CLICKHOUSE_HOST: clickhouse
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: xeter
+      S3_SECRET_KEY: xeter_dev_password
+      S3_BUCKET: xeter-payloads
+      WORKER_THRESHOLD_WRONG_TOOL: "0.5"
+      WORKER_THRESHOLD_WRONG_ARGS: "0.4"
+      WORKER_THRESHOLD_NO_TOOL: "0.6"
+      WORKER_THRESHOLD_EXCESSIVE_TOOL: "0.3"
+      WORKER_THRESHOLD_PARSING_ERROR: "0.5"
+
   view:
     build:
       context: ..

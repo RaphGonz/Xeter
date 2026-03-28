@@ -23,28 +23,28 @@ See: .planning/PROJECT.md (updated 2026-03-27)
 ## Current Position
 
 Phase: 2 of 6 (Ingestion Path) — IN PROGRESS
-Plan: 2 of 4 in current phase (Plans 01-02 complete)
-Status: Phase 2 Plan 02 complete
-Last activity: 2026-03-28 — Completed Plan 02 (four analyser infrastructure modules: auth, s3, batch, queue)
+Plan: 3 of 4 in current phase (Plans 01-03 complete)
+Status: Phase 2 Plan 03 complete
+Last activity: 2026-03-28 — Completed Plan 03 (POST /v1/spans wiring: schemas, ingest handler, main.py lifespan, 9 integration tests)
 
-Progress: [█████░░░░░] 20%
+Progress: [██████░░░░] 25%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: ~15 min
-- Total execution time: ~1 hour
+- Total plans completed: 7
+- Average duration: ~14 min
+- Total execution time: ~98 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-foundation | 4 completed | 60 min | ~15 min |
-| 02-ingestion-path | 2 completed | 21 min | ~10.5 min |
+| 02-ingestion-path | 3 completed | 38 min | ~12.7 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-02 (14 min), 01-03 (14 min), 01-04 (17 min), 02-01 (12 min), 02-02 (9 min)
+- Last 5 plans: 01-04 (17 min), 02-01 (12 min), 02-02 (9 min), 02-03 (17 min)
 - Trend: Consistent
 
 *Updated after each plan completion*
@@ -79,6 +79,9 @@ Recent decisions affecting current work:
 - [Phase 02-02]: shared/db/session.py created as canonical get_session dependency — was local in presenter, extracted for auth.py and future services
 - [Phase 02-02]: S3 uploads are sequential per field to avoid MinIO connection issues in single-threaded local dev
 - [Phase 02-02]: SpanBatcher._flush logs errors but does not re-raise — observability data loss on crash is acceptable
+- [Phase 02-03]: Lifespan test isolation requires patching factory functions in main.py — FastAPI dependency overrides don't cover lifespan startup code
+- [Phase 02-03]: batcher.start/stop must be AsyncMock in custom test mocks — MagicMock is not awaitable by lifespan
+- [Phase 02-03]: Row length assertion in ingest.py (assert len(row) == len(SPAN_COLUMNS)) catches column drift at runtime before silent ClickHouse corruption
 
 ### Pending Todos
 
@@ -92,5 +95,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-28
-Stopped at: Completed 02-02-PLAN.md — four analyser infrastructure modules (auth.py, s3.py, batch.py, queue.py)
+Stopped at: Completed 02-03-PLAN.md — POST /v1/spans wiring (schemas.py, ingest.py, main.py lifespan, 9 integration tests)
 Resume file: None

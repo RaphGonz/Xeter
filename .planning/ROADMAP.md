@@ -49,7 +49,12 @@ Plans:
   3. Analyser rejects spans with a missing or invalid API key with 401
   4. ClickHouse receives spans only via batched INSERT (confirmed by a test that emits 50 spans and observes one or more batch writes, never 50 individual inserts)
   5. A span_id appears in the Redis queue within 200ms of the Analyser returning 200
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — xeter-sdk standalone package: @xeter.trace decorator, all span fields, fire-and-forget send, unit tests
+- [ ] 02-02-PLAN.md — Analyser infrastructure modules: auth.py, s3.py, batch.py, queue.py
+- [ ] 02-03-PLAN.md — Analyser endpoint wiring: SpanPayload schema, POST /v1/spans handler, main.py lifespan, integration tests
 
 ### Phase 3: Analysis Path
 **Goal**: The Embedding Worker processes queued span IDs, computes cosine similarities, classifies tool-call anomalies into flag types, and writes flags to PostgreSQL with similarity scores logged for every span regardless of whether it was flagged
@@ -108,7 +113,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 4/4 | Complete | 2026-03-27 |
-| 2. Ingestion Path | 0/TBD | Not started | - |
+| 2. Ingestion Path | 0/3 | Not started | - |
 | 3. Analysis Path | 0/TBD | Not started | - |
 | 4. Read Path | 0/TBD | Not started | - |
 | 5. Dashboard | 0/TBD | Not started | - |

@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-28T10:52:48Z"
+last_updated: "2026-03-28T11:00:51.841Z"
 progress:
-  total_phases: 6
+  total_phases: 2
   completed_phases: 1
-  total_plans: 4
-  completed_plans: 5
+  total_plans: 7
+  completed_plans: 6
 ---
 
 # Project State
@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-03-27)
 ## Current Position
 
 Phase: 2 of 6 (Ingestion Path) — IN PROGRESS
-Plan: 1 of 4 in current phase (Plan 01 complete)
-Status: Phase 2 Plan 01 complete
-Last activity: 2026-03-28 — Completed Plan 01 (xeter-sdk @xeter.trace decorator)
+Plan: 2 of 4 in current phase (Plans 01-02 complete)
+Status: Phase 2 Plan 02 complete
+Last activity: 2026-03-28 — Completed Plan 02 (four analyser infrastructure modules: auth, s3, batch, queue)
 
 Progress: [█████░░░░░] 20%
 
@@ -41,10 +41,10 @@ Progress: [█████░░░░░] 20%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-foundation | 4 completed | 60 min | ~15 min |
-| 02-ingestion-path | 1 completed | 12 min | ~12 min |
+| 02-ingestion-path | 2 completed | 21 min | ~10.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (15 min), 01-02 (14 min), 01-03 (14 min), 01-04 (17 min)
+- Last 5 plans: 01-02 (14 min), 01-03 (14 min), 01-04 (17 min), 02-01 (12 min), 02-02 (9 min)
 - Trend: Consistent
 
 *Updated after each plan completion*
@@ -76,6 +76,9 @@ Recent decisions affecting current work:
 - 02-01: asyncio.run() used instead of deprecated asyncio.get_event_loop() — Python 3.14 incompatibility
 - 02-01: response and raw_response set to null in SDK — agent-provided fields not available at decoration time
 - 02-01: tool_arguments serialised to JSON string at SDK layer — Analyser receives flat JSON body
+- [Phase 02-02]: shared/db/session.py created as canonical get_session dependency — was local in presenter, extracted for auth.py and future services
+- [Phase 02-02]: S3 uploads are sequential per field to avoid MinIO connection issues in single-threaded local dev
+- [Phase 02-02]: SpanBatcher._flush logs errors but does not re-raise — observability data loss on crash is acceptable
 
 ### Pending Todos
 
@@ -89,5 +92,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-28
-Stopped at: Completed 02-01-PLAN.md — xeter-sdk @xeter.trace decorator with fire-and-forget span sending
+Stopped at: Completed 02-02-PLAN.md — four analyser infrastructure modules (auth.py, s3.py, batch.py, queue.py)
 Resume file: None

@@ -35,10 +35,10 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Storage
 
 - [x] **STOR-01**: Spans are stored as immutable rows in ClickHouse with ORDER BY (tenant_id, trace_id, time_begin)
-- [ ] **STOR-02**: Large text payloads (prompt, response, raw_response, available_tools) are stored in S3 with reference keys in ClickHouse; tool_arguments stored inline as JSON in ClickHouse (small payload)
+- [x] **STOR-02**: Large text payloads (prompt, response, raw_response, available_tools) are stored in S3 with reference keys in ClickHouse; tool_arguments stored inline as JSON in ClickHouse (small payload)
 - [ ] **STOR-03**: Flags are stored as append-only rows in PostgreSQL with span_id, flag_type, score, and detail
-- [ ] **STOR-04**: ClickHouse writes are batched via Redis queue — no single-row inserts
-- [ ] **STOR-05**: Redis queue decouples span ingestion from embedding worker processing
+- [x] **STOR-04**: ClickHouse writes are batched via Redis queue — no single-row inserts
+- [x] **STOR-05**: Redis queue decouples span ingestion from embedding worker processing
 
 ### Dashboard
 
@@ -135,10 +135,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FLAG-11 | Phase 3 | Pending |
 | FLAG-12 | Phase 3 | Pending |
 | STOR-01 | Phase 1 | Complete |
-| STOR-02 | Phase 2 | Pending |
+| STOR-02 | Phase 2 | Complete |
 | STOR-03 | Phase 3 | Pending |
-| STOR-04 | Phase 2 | Pending |
-| STOR-05 | Phase 2 | Pending |
+| STOR-04 | Phase 2 | Complete |
+| STOR-05 | Phase 2 | Complete |
 | DASH-01 | Phase 5 | Pending |
 | DASH-02 | Phase 5 | Pending |
 | DASH-03 | Phase 4 | Pending |

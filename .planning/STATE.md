@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-28T11:46:27.533Z"
+last_updated: "2026-03-28T21:26:04.401Z"
 progress:
-  total_phases: 2
+  total_phases: 3
   completed_phases: 2
-  total_plans: 7
-  completed_plans: 7
+  total_plans: 11
+  completed_plans: 8
 ---
 
 # Project State
@@ -22,19 +22,19 @@ See: .planning/PROJECT.md (updated 2026-03-27)
 
 ## Current Position
 
-Phase: 2 of 6 (Ingestion Path) — IN PROGRESS
-Plan: 3 of 4 in current phase (Plans 01-03 complete)
-Status: Phase 2 Plan 03 complete
-Last activity: 2026-03-28 — Completed Plan 03 (POST /v1/spans wiring: schemas, ingest handler, main.py lifespan, 9 integration tests)
+Phase: 3 of 6 (Analysis Path) — IN PROGRESS
+Plan: 1 of 4 in current phase (Plan 01 complete)
+Status: Phase 3 Plan 01 complete
+Last activity: 2026-03-28 — Completed Plan 01 (span_scores migration, BaseAnalyzer ABC, Flag/SpanData dataclasses)
 
-Progress: [██████░░░░] 25%
+Progress: [███████░░░] 29%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
-- Average duration: ~14 min
-- Total execution time: ~98 min
+- Total plans completed: 8
+- Average duration: ~13.5 min
+- Total execution time: ~105 min
 
 **By Phase:**
 
@@ -42,9 +42,10 @@ Progress: [██████░░░░] 25%
 |-------|-------|-------|----------|
 | 01-foundation | 4 completed | 60 min | ~15 min |
 | 02-ingestion-path | 3 completed | 38 min | ~12.7 min |
+| 03-analysis-path | 1 completed | 7 min | ~7 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-04 (17 min), 02-01 (12 min), 02-02 (9 min), 02-03 (17 min)
+- Last 5 plans: 02-01 (12 min), 02-02 (9 min), 02-03 (17 min), 03-01 (7 min)
 - Trend: Consistent
 
 *Updated after each plan completion*
@@ -82,6 +83,8 @@ Recent decisions affecting current work:
 - [Phase 02-03]: Lifespan test isolation requires patching factory functions in main.py — FastAPI dependency overrides don't cover lifespan startup code
 - [Phase 02-03]: batcher.start/stop must be AsyncMock in custom test mocks — MagicMock is not awaitable by lifespan
 - [Phase 02-03]: Row length assertion in ingest.py (assert len(row) == len(SPAN_COLUMNS)) catches column drift at runtime before silent ClickHouse corruption
+- [Phase 03-analysis-path]: RLS omitted from span_scores — worker connects as BYPASSRLS; Phase 4 adds read-path filtering
+- [Phase 03-analysis-path]: sentence_transformers not imported in base.py — model injected via constructor to decouple ABC from load-time weight download
 
 ### Pending Todos
 
@@ -95,5 +98,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-28
-Stopped at: Completed 02-03-PLAN.md — POST /v1/spans wiring (schemas.py, ingest.py, main.py lifespan, 9 integration tests)
+Stopped at: Completed 03-01-PLAN.md — span_scores migration, BaseAnalyzer ABC, Flag/SpanData dataclasses
 Resume file: None

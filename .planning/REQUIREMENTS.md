@@ -19,16 +19,16 @@ Requirements for initial release. Each maps to roadmap phases.
 
 **Architecture:** The flagging pipeline is a registry of independent analyzers. Each analyzer receives a span, runs its detection logic, and returns zero or more flags. Tool-call anomalies are the first analyzer category; the system is designed to support arbitrary future categories (loop detection, hallucination, instruction violation, context overflow, etc.) without modifying the pipeline or existing analyzers.
 
-- [ ] **FLAG-01**: Flagging pipeline implements analyzer registry pattern — analyzers register independently, pipeline dispatches spans to all registered analyzers
-- [ ] **FLAG-02**: Each analyzer defines its own flag types, scoring logic, and thresholds via a common interface
-- [ ] **FLAG-03**: flag_type field in PostgreSQL is an open string (not enum) to support future analyzer categories without schema changes
+- [x] **FLAG-01**: Flagging pipeline implements analyzer registry pattern — analyzers register independently, pipeline dispatches spans to all registered analyzers
+- [x] **FLAG-02**: Each analyzer defines its own flag types, scoring logic, and thresholds via a common interface
+- [x] **FLAG-03**: flag_type field in PostgreSQL is an open string (not enum) to support future analyzer categories without schema changes
 - [ ] **FLAG-04**: Tool-call analyzer: vector similarity between prompt and tool_name to detect wrong tool usage
 - [ ] **FLAG-05**: Tool-call analyzer: vector similarity between prompt and tool_description to detect semantic mismatch
 - [ ] **FLAG-06**: Tool-call analyzer: vector similarity between prompt and response to detect response anomalies
 - [ ] **FLAG-07**: Tool-call analyzer: embedding of model_name + prompt to detect parsing error patterns
 - [ ] **FLAG-08**: Tool-call analyzer classifies anomalies into flag types: wrong_tool, wrong_tool_args, no_tool, excessive_tool, parsing_error
-- [ ] **FLAG-09**: Similarity thresholds are configurable per analyzer, not hardcoded
-- [ ] **FLAG-10**: All similarity scores are logged for every span (flagged or not) to enable future threshold calibration
+- [x] **FLAG-09**: Similarity thresholds are configurable per analyzer, not hardcoded
+- [x] **FLAG-10**: All similarity scores are logged for every span (flagged or not) to enable future threshold calibration
 - [ ] **FLAG-11**: Tool-call analyzer: embed prompt against each tool in `available_tools` (fetched from S3 via `available_tools_ref`); flag as `wrong_tool` if the called tool is not the top-ranked match (A1)
 - [ ] **FLAG-12**: Tool-call analyzer: embed prompt against `tool_arguments` values; flag as `wrong_tool_args` if argument semantics are inconsistent with prompt intent (A7) — treated as low-confidence flag
 
@@ -36,7 +36,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [x] **STOR-01**: Spans are stored as immutable rows in ClickHouse with ORDER BY (tenant_id, trace_id, time_begin)
 - [x] **STOR-02**: Large text payloads (prompt, response, raw_response, available_tools) are stored in S3 with reference keys in ClickHouse; tool_arguments stored inline as JSON in ClickHouse (small payload)
-- [ ] **STOR-03**: Flags are stored as append-only rows in PostgreSQL with span_id, flag_type, score, and detail
+- [x] **STOR-03**: Flags are stored as append-only rows in PostgreSQL with span_id, flag_type, score, and detail
 - [x] **STOR-04**: ClickHouse writes are batched via Redis queue — no single-row inserts
 - [x] **STOR-05**: Redis queue decouples span ingestion from embedding worker processing
 
@@ -122,21 +122,21 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SDK-03 | Phase 2 | Complete |
 | SDK-04 | Phase 2 | Complete |
 | SDK-05 | Phase 2 | Complete |
-| FLAG-01 | Phase 3 | Pending |
-| FLAG-02 | Phase 3 | Pending |
-| FLAG-03 | Phase 3 | Pending |
+| FLAG-01 | Phase 3 | Complete |
+| FLAG-02 | Phase 3 | Complete |
+| FLAG-03 | Phase 3 | Complete |
 | FLAG-04 | Phase 3 | Pending |
 | FLAG-05 | Phase 3 | Pending |
 | FLAG-06 | Phase 3 | Pending |
 | FLAG-07 | Phase 3 | Pending |
 | FLAG-08 | Phase 3 | Pending |
-| FLAG-09 | Phase 3 | Pending |
-| FLAG-10 | Phase 3 | Pending |
+| FLAG-09 | Phase 3 | Complete |
+| FLAG-10 | Phase 3 | Complete |
 | FLAG-11 | Phase 3 | Pending |
 | FLAG-12 | Phase 3 | Pending |
 | STOR-01 | Phase 1 | Complete |
 | STOR-02 | Phase 2 | Complete |
-| STOR-03 | Phase 3 | Pending |
+| STOR-03 | Phase 3 | Complete |
 | STOR-04 | Phase 2 | Complete |
 | STOR-05 | Phase 2 | Complete |
 | DASH-01 | Phase 5 | Pending |

@@ -154,33 +154,37 @@ def test_scores_logged_regardless_of_flag():
 # ---------------------------------------------------------------------------
 
 def test_wrong_tool_uses_available_tools_ranking():
-    """If the called tool is not the top-ranked match for the prompt → wrong_tool flag."""
+    """If the called tool is not the top-ranked match for the prompt → wrong_tool flag.
+
+    Strategy: encode always returns the same unit vector (default mock).
+    similarity.side_effect returns high score for search_web (rank 1) and low for
+    calculator (rank 2). Since span.tool_name = "calculator" (not top-ranked) and
+    top score (0.95) is above threshold, we need top score BELOW threshold to trigger.
+    We set all remaining calls to 0.2 (below wrong_tool threshold of 0.5).
+    """
     model = make_mock_model()
 
-    # Provide two tools; make encode return different vectors for each so we can
-    # control rankings. We do this via side_effect on model.encode so the first
-    # encode returns a vector aligned with "search_web", and the second (calculator)
-    # returns an orthogonal vector.
-    prompt_vec = np.array([1.0] + [0.0] * 383)
-    search_vec = np.array([1.0] + [0.0] * 383)   # same direction as prompt → high sim
-    calc_vec   = np.array([0.0, 1.0] + [0.0] * 382)  # orthogonal → low sim
-
-    # encode() side_effect: first call = prompt, second = search_web, third = calculator
-    model.encode.side_effect = [prompt_vec, search_vec, calc_vec]
-
-    # similarity returns: high for search_web (rank 1), low for calculator (rank 2)
-    # Since span.tool_name = "calculator" but top-ranked = "search_web" → wrong_tool
+    # All encode calls return the same unit vector — ranking is driven by similarity scores.
+    # similarity side_effect (in call order from _check_wrong_tool with 2 tools):
+    #   call 1: compare(prompt_vec, search_vec)  → 0.05 (search_web ranks lower)
+    #   call 2: compare(prompt_vec, calc_vec)    → 0.95 (calculator ranks top)
+    #   BUT we want: called tool "calculator" = top-ranked, so no flag fires UNLESS
+    #   called tool != top-ranked. So: search_web=0.95 (top), calculator=0.05 (low).
+    #   Then top_tool_name = "search_web", span.tool_name = "calculator" → mismatch.
+    #   top_score = 0.95 > threshold=0.5 → no flag (condition requires score < threshold).
+    #
+    #   To get a flag: top_score must also be < threshold. Use both 0.2:
+    #   search_web=0.2, calculator=0.1 → top is search_web (0.2 > 0.1), top_score=0.2 < 0.5.
+    #   span.tool_name="calculator" != "search_web" AND 0.2 < 0.5 → wrong_tool flag.
     model.similarity.side_effect = [
-        [[0.95]],  # prompt vs search_web (tool ranking)
-        [[0.05]],  # prompt vs calculator (tool ranking)
-        [[0.2]],   # prompt_vs_tool_rank (below threshold)
-        [[0.2]],   # prompt_vs_tool_name direct check
-        [[0.2]],   # prompt_vs_tool_description direct check
-        [[0.2]],   # additional calls
-        [[0.2]],
-        [[0.2]],
-        [[0.2]],
-        [[0.2]],
+        [[0.2]],   # compare(prompt, search_web_vec) — search_web = top ranked (0.2)
+        [[0.1]],   # compare(prompt, calc_vec)        — calculator ranks lower (0.1)
+        [[0.2]],   # prompt_vs_tool_name (calculator)
+        [[0.2]],   # prompt_vs_tool_description
+        [[0.2]],   # _check_wrong_args: prompt_vs_tool_args
+        [[0.9]],   # _check_excessive_tool: prompt_vs_tool_relevance (high = no flag)
+        [[0.9]],   # _check_parsing_error: model_prompt_vs_response (high = no flag)
+        [[0.9]],   # _check_response_anomaly: prompt_vs_response (high = no flag)
     ]
 
     analyzer = make_analyzer(model, thresholds={**DEFAULT_THRESHOLDS, "wrong_tool": 0.5})

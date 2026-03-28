@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-03-27)
 
 ## Current Position
 
-Phase: 3 of 6 (Analysis Path) — IN PROGRESS
-Plan: 3 of 4 in current phase (Plan 03 complete)
-Status: Phase 3 Plan 03 complete
-Last activity: 2026-03-28 — Completed Plan 03 (span_fetcher, score_writer, flag_writer — 3 I/O modules for worker)
+Phase: 3 of 6 (Analysis Path) — COMPLETE
+Plan: 4 of 4 in current phase (All plans complete)
+Status: Phase 3 complete — ready for Phase 4 (Read Path)
+Last activity: 2026-03-28 — Completed Plan 04 (worker main loop, ANALYZERS registry, Docker, 6 integration tests)
 
-Progress: [███████░░░] 29%
+Progress: [████████░░] 36%
 
 ## Performance Metrics
 
@@ -42,7 +42,7 @@ Progress: [███████░░░] 29%
 |-------|-------|-------|----------|
 | 01-foundation | 4 completed | 60 min | ~15 min |
 | 02-ingestion-path | 3 completed | 38 min | ~12.7 min |
-| 03-analysis-path | 1 completed | 7 min | ~7 min |
+| 03-analysis-path | 4 completed | ~43 min | ~10.75 min |
 
 **Recent Trend:**
 - Last 5 plans: 02-01 (12 min), 02-02 (9 min), 02-03 (17 min), 03-01 (7 min)
@@ -51,6 +51,7 @@ Progress: [███████░░░] 29%
 *Updated after each plan completion*
 | Phase 03-analysis-path P02 | 780 | 2 tasks | 3 files |
 | Phase 03-analysis-path P03 | 453 | 2 tasks | 3 files |
+| Phase 03-analysis-path P04 | 1086 | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -90,6 +91,9 @@ Recent decisions affecting current work:
 - [Phase 03-analysis-path]: test_wrong_tool_uses_available_tools_ranking side_effect list fixed inline — simplified to encode.return_value with similarity.side_effect providing enough values for all compare calls
 - [Phase 03-analysis-path]: DATABASE_URL +asyncpg prefix stripped in both writer modules for psycopg2 compatibility
 - [Phase 03-analysis-path]: SET LOCAL app.current_tenant_id in flag_writer even with BYPASSRLS connection — defensive pattern
+- [Phase 03-04]: process_span takes analyzers as parameter (not module global) — enables test injection without monkeypatching
+- [Phase 03-04]: Model loaded lazily inside main() — importing module during tests does not trigger 80MB model download
+- [Phase 03-04]: Worker Dockerfile pre-bakes all-MiniLM-L6-v2 into image layer via RUN python -c — avoids runtime download on first span
 
 ### Pending Todos
 
@@ -103,5 +107,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-28
-Stopped at: Completed 03-03-PLAN.md — span_fetcher, score_writer, flag_writer implemented
+Stopped at: Completed 03-04-PLAN.md — worker main loop, ANALYZERS registry, Docker, 20 tests all pass
 Resume file: None

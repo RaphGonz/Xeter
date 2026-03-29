@@ -274,34 +274,21 @@ class ToolCallAnalyzer(BaseAnalyzer):
     # ------------------------------------------------------------------
 
     def _check_parsing_error(self, span: SpanData) -> list[Flag]:
-        """Detect structural parsing errors by comparing model+prompt to response.
+        """Detect tool-call format parsing errors.
 
-        Concatenates agent_model and prompt to create a context-rich embedding,
-        then compares to the response. Low similarity can indicate the model
-        produced a malformed or unrelated output (FLAG-07).
+        TBD — different models use different tool-call formats and a cosine
+        similarity approach is not the right signal here. The real failure mode
+        is structural: the model emits a tool call in a format the executor
+        doesn't recognise (<xml>, {{}}, "function_name()", etc.), which gets
+        silently dropped or coerced downstream.
+
+        The correct approach is likely a format-aware parser cascade: try format
+        A, if it fails try format B, flag if all known formats fail. How the
+        tool call is serialised matters as much as the prompt itself — different
+        models have strong preferences baked in from training.
+
+        Reference: https://old.reddit.com/r/LocalLLaMA/comments/1r4ie8z/i_tested_21_small_llms_on_toolcalling_judgment/
         """
-        if span.prompt is None:
-            return []
-        if span.response is None:
-            return []
-
-        combined_vec = self.embed(f"{span.agent_model} {span.prompt}")
-        response_vec = self.embed(span.response)
-        score = self.compare(combined_vec, response_vec)
-
-        self.log_score("model_prompt_vs_response", score)
-
-        if score < self._thresholds["parsing_error"]:
-            return [
-                Flag(
-                    flag_type="parsing_error",
-                    score=score,
-                    detail={
-                        "metric": "model_prompt_vs_response",
-                        "score": score,
-                    },
-                )
-            ]
         return []
 
     # ------------------------------------------------------------------

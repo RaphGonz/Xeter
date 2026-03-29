@@ -156,8 +156,7 @@ def fetch_span(span_id: str) -> SpanData:
 
     prompt = _fetch_s3_text(s3, bucket, row.get("prompt_ref"))
     response = _fetch_s3_text(s3, bucket, row.get("response_ref"))
-    # raw_response fetched for completeness; not yet used by analyzers (Phase 3)
-    _fetch_s3_text(s3, bucket, row.get("raw_response_ref"))
+    raw_response = _fetch_s3_text(s3, bucket, row.get("raw_response_ref"))
 
     tools_raw = _fetch_s3_text(s3, bucket, row.get("available_tools_ref"))
     available_tools = _decode_available_tools(tools_raw)
@@ -174,5 +173,6 @@ def fetch_span(span_id: str) -> SpanData:
         tool_output=row.get("tool_output") or None,
         prompt=prompt,
         response=response,
+        raw_response=raw_response,
         available_tools=available_tools,
     )

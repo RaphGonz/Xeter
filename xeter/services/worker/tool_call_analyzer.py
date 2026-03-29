@@ -26,6 +26,11 @@ from typing import Optional
 import numpy as np
 
 from xeter.services.worker.base import BaseAnalyzer, Flag, SpanData
+from xeter.services.worker.tool_call_registry import (
+    TOOL_CALL_REGISTRY,
+    FORMAT_GROUPS,
+    extract_nested,
+)
 
 
 class ToolCallAnalyzer(BaseAnalyzer):
@@ -274,22 +279,112 @@ class ToolCallAnalyzer(BaseAnalyzer):
     # ------------------------------------------------------------------
 
     def _check_parsing_error(self, span: SpanData) -> list[Flag]:
-        """Detect tool-call format parsing errors.
+        """Detect tool-call format parsing errors using the format registry.
 
-        TBD — different models use different tool-call formats and a cosine
-        similarity approach is not the right signal here. The real failure mode
-        is structural: the model emits a tool call in a format the executor
-        doesn't recognise (<xml>, {{}}, "function_name()", etc.), which gets
-        silently dropped or coerced downstream.
-
-        The correct approach is likely a format-aware parser cascade: try format
-        A, if it fails try format B, flag if all known formats fail. How the
-        tool call is serialised matters as much as the prompt itself — different
-        models have strong preferences baked in from training.
+        Different models emit tool calls in different formats (<xml>, {{}},
+        bare function calls, etc.). A wrong parser silently drops tool calls
+        (A4 failure). This check validates raw_response against the model's
+        known format from the registry.
 
         Reference: https://old.reddit.com/r/LocalLLaMA/comments/1r4ie8z/i_tested_21_small_llms_on_toolcalling_judgment/
         """
-        return []
+        if span.raw_response is None:
+            return []
+
+        entry = TOOL_CALL_REGISTRY.get(span.agent_model)
+        if entry is None:
+            # Unknown model — log score 0 and flag so the user knows
+            self.log_score("format_match", 0.0)
+            return [
+                Flag(
+                    flag_type="parsing_error",
+                    score=0.0,
+                    detail={
+                        "metric": "format_match",
+                        "error": f"Unknown model: {span.agent_model}. No registry entry.",
+                    },
+                )
+            ]
+
+        if entry["transport"] == "api_structured":
+            # API-structured: raw_response should be valid JSON
+            try:
+                parsed = json.loads(span.raw_response)
+            except (json.JSONDecodeError, TypeError) as exc:
+                self.log_score("format_match", 0.0)
+                return [
+                    Flag(
+                        flag_type="parsing_error",
+                        score=0.0,
+                        detail={
+                            "metric": "format_match",
+                            "error": f"api_structured model but raw_response is not valid JSON: {exc}",
+                        },
+                    )
+                ]
+
+            # Check if any detect pattern matches the raw string
+            detected = any(p.search(span.raw_response) for p in entry["detect"])
+            if not detected:
+                # No tool call detected — not an error, just no tool call in this response
+                self.log_score("format_match", 1.0)
+                return []
+
+            # Validate argument field type if format expects a JSON string
+            errors: list[str] = []
+            fmt_group = FORMAT_GROUPS.get(entry["format"])
+            if fmt_group and fmt_group["argument_type"] == "json_string" and entry.get("argument_field"):
+                args_raw = extract_nested(parsed, entry["argument_field"])
+                if args_raw is not None and not isinstance(args_raw, str):
+                    errors.append(
+                        f"Expected {entry['argument_field']} to be a JSON string, "
+                        f"got {type(args_raw).__name__}. Do not double-parse."
+                    )
+
+            if errors:
+                self.log_score("format_match", 0.0)
+                return [
+                    Flag(
+                        flag_type="parsing_error",
+                        score=0.0,
+                        detail={"metric": "format_match", "errors": errors},
+                    )
+                ]
+
+            self.log_score("format_match", 1.0)
+            return []
+
+        if entry["transport"] == "raw_text":
+            if not entry["detect"]:
+                # Non-printable delimiters (e.g. deepseek_v3) — can't regex check
+                self.log_score("format_match", 0.5)
+                return []
+
+            detected = any(p.search(span.raw_response) for p in entry["detect"])
+            self.log_score("format_match", 1.0 if detected else 0.0)
+
+            if not detected:
+                return [
+                    Flag(
+                        flag_type="parsing_error",
+                        score=0.0,
+                        detail={
+                            "metric": "format_match",
+                            "error": f"No {entry['format']} pattern found in raw_response for model {span.agent_model}.",
+                        },
+                    )
+                ]
+            return []
+
+        # Unknown transport
+        self.log_score("format_match", 0.0)
+        return [
+            Flag(
+                flag_type="parsing_error",
+                score=0.0,
+                detail={"metric": "format_match", "error": f"Unknown transport: {entry['transport']}"},
+            )
+        ]
 
     # ------------------------------------------------------------------
     # Check methods — FLAG-06

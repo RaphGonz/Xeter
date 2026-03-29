@@ -36,6 +36,7 @@ def make_test_span() -> SpanData:
         tool_output="done",
         prompt="send an email to alice@example.com",
         response="I called wrong_tool",
+        raw_response=None,
         available_tools=[
             {"name": "email_sender", "description": "sends email"},
             {"name": "wrong_tool", "description": "database query"},

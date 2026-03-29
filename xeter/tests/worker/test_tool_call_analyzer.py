@@ -56,6 +56,7 @@ def make_clean_span(**kwargs) -> SpanData:
         tool_output="Python supports type hints...",
         prompt="Search for Python typing documentation",
         response="Here is what I found about Python typing.",
+        raw_response=None,
         available_tools=[
             {"name": "search_web", "description": "Searches the web for information"},
             {"name": "calculator", "description": "Performs math calculations"},
@@ -262,18 +263,46 @@ def test_excessive_tool_flagged():
 # Test 10: parsing_error flag when model+prompt vs response similarity low
 # ---------------------------------------------------------------------------
 
-def test_parsing_error_flagged():
+def test_parsing_error_flagged_unknown_model():
+    """Unknown model in registry produces parsing_error flag."""
     model = make_mock_model()
-    model.similarity.return_value = [[0.1]]  # low similarity
-    analyzer = make_analyzer(model, thresholds={**DEFAULT_THRESHOLDS, "parsing_error": 0.5})
+    model.similarity.return_value = [[0.9]]
+    analyzer = make_analyzer(model)
     span = make_clean_span(
-        agent_model="gpt-4",
-        prompt="What is 2+2?",
-        response="<tool_call>search_web</tool_call>",  # nonsensical response
+        agent_model="unknown-model-xyz",
+        raw_response='{"some": "json"}',
     )
     flags = analyzer.analyze(span)
     flag_types = [f.flag_type for f in flags]
     assert "parsing_error" in flag_types
+
+
+def test_parsing_error_flagged_raw_text_no_match():
+    """raw_text model with no matching format pattern produces parsing_error flag."""
+    model = make_mock_model()
+    model.similarity.return_value = [[0.9]]
+    analyzer = make_analyzer(model)
+    span = make_clean_span(
+        agent_model="hermes-2-pro",
+        raw_response="Just a plain text response with no tool call tags.",
+    )
+    flags = analyzer.analyze(span)
+    flag_types = [f.flag_type for f in flags]
+    assert "parsing_error" in flag_types
+
+
+def test_parsing_error_not_flagged_when_format_matches():
+    """raw_text model with matching format pattern produces no parsing_error flag."""
+    model = make_mock_model()
+    model.similarity.return_value = [[0.9]]
+    analyzer = make_analyzer(model)
+    span = make_clean_span(
+        agent_model="hermes-2-pro",
+        raw_response='<tool_call>{"name": "search", "arguments": {}}</tool_call>',
+    )
+    flags = analyzer.analyze(span)
+    flag_types = [f.flag_type for f in flags]
+    assert "parsing_error" not in flag_types
 
 
 # ---------------------------------------------------------------------------

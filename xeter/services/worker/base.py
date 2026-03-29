@@ -42,6 +42,7 @@ class SpanData:
     tool_output: Optional[str]
     prompt: Optional[str]               # fetched from S3 via prompt_ref
     response: Optional[str]             # fetched from S3 via response_ref
+    raw_response: Optional[str]         # fetched from S3 via raw_response_ref (full API JSON)
     available_tools: Optional[list[dict]]  # fetched from S3 via available_tools_ref, parsed JSON list
 
 

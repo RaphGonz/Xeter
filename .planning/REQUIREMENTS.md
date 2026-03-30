@@ -43,7 +43,7 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Dashboard
 
 - [ ] **DASH-01**: Developer can view a list of spans with flag indicators showing anomaly status
-- [ ] **DASH-02**: Developer can filter spans by flag type, agent name, and time range
+- [x] **DASH-02**: Developer can filter spans by flag type, agent name, and time range
 - [x] **DASH-03**: Developer can view span detail showing flag details and similarity scores
 - [x] **DASH-04**: Developer can view prompt, response, and raw_response content lazy-loaded from S3
 - [x] **DASH-05**: Span list rows show similarity scores directly (flag score overlay)
@@ -140,7 +140,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | STOR-04 | Phase 2 | Complete |
 | STOR-05 | Phase 2 | Complete |
 | DASH-01 | Phase 5 | Pending |
-| DASH-02 | Phase 5 | Pending |
+| DASH-02 | Phase 5 | Complete |
 | DASH-03 | Phase 4 | Complete |
 | DASH-04 | Phase 4 | Complete |
 | DASH-05 | Phase 4 | Complete |

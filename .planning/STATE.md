@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-30T11:35:04.770Z"
+last_updated: "2026-03-30T20:37:19.938Z"
 progress:
-  total_phases: 4
+  total_phases: 5
   completed_phases: 4
-  total_plans: 14
-  completed_plans: 14
+  total_plans: 18
+  completed_plans: 15
 ---
 
 ---
@@ -48,12 +48,12 @@ See: .planning/PROJECT.md (updated 2026-03-27)
 
 ## Current Position
 
-Phase: 4 of 6 (Read Path) — IN PROGRESS
-Plan: 3 of ? in current phase (Plan 03 complete)
-Status: Phase 4 Plan 3 complete — Diagnosticer scaffold, POST /diagnose proxy, httpx client in lifespan, 4 new tests
-Last activity: 2026-03-30 — Completed Plan 03 (Diagnosticer FastAPI scaffold returning 501, POST /diagnose proxy on Presenter, docker-compose wired)
+Phase: 5 of 6 (Dashboard) — IN PROGRESS
+Plan: 1 of 4 in current phase (Plan 01 complete)
+Status: Phase 5 Plan 1 complete — GET /spans filter params (flag_type, agent_name, from_time, to_time), 27 presenter tests pass
+Last activity: 2026-03-30 — Completed Plan 01 (GET /spans filter params, TDD, 7 new filter tests green)
 
-Progress: [█████████░] 45%
+Progress: [██████████] 50%
 
 ## Performance Metrics
 
@@ -79,6 +79,7 @@ Progress: [█████████░] 45%
 | Phase 03-analysis-path P03 | 453 | 2 tasks | 3 files |
 | Phase 03-analysis-path P04 | 1086 | 2 tasks | 7 files |
 | Phase 04-read-path P03 | 509 | 2 tasks | 8 files |
+| Phase 05-dashboard P01 | 507 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -131,6 +132,8 @@ Recent decisions affecting current work:
 - [Phase 04-read-path]: Diagnosticer scaffold returns 501 — wired now so Milestone 2 activates without rearchitecting
 - [Phase 04-read-path]: httpx.AsyncClient stored on app.state.http_client in Presenter lifespan — consistent with ch_client pattern
 - [Phase 04-read-path]: POST /diagnose catches httpx.HTTPError (base class) for 502 — covers ConnectError, TimeoutException, and all transport errors
+- [Phase 05-dashboard]: ISO timestamp URL encoding: tests use urllib.parse.quote for + in TZ offset
+- [Phase 05-dashboard]: flag_type filter is post-ClickHouse via PostgreSQL flags query; count may be less than limit in Phase 5
 
 ### Pending Todos
 
@@ -144,5 +147,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-30
-Stopped at: Completed 04-03-PLAN.md — Diagnosticer scaffold, POST /diagnose proxy, 20 presenter tests pass
+Stopped at: Completed 05-01-PLAN.md — GET /spans filter params, 27 presenter tests pass
 Resume file: None

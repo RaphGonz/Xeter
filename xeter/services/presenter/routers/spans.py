@@ -146,15 +146,29 @@ async def list_spans(
     session: Annotated[AsyncSession, Depends(get_session)],
     limit: int = Query(default=50, ge=1, le=100),
     cursor: str | None = Query(default=None),
+    flag_type: str | None = Query(default=None),
+    agent_name: str | None = Query(default=None),
+    from_time: str | None = Query(default=None),
+    to_time: str | None = Query(default=None),
 ) -> SpanListResponse:
     """Return a paginated list of spans for the authenticated tenant.
 
     Steps:
-      1. Query ClickHouse for spans matching tenant_id, applying cursor if present.
-      2. Query PostgreSQL flags for those span_ids.
+      1. Query ClickHouse for spans matching tenant_id, applying cursor and
+         agent_name / from_time / to_time filters in the WHERE clause when provided.
+      2. Query PostgreSQL flags for those span_ids, optionally filtering by flag_type.
       3. Query PostgreSQL span_scores for those span_ids (no RLS — explicit tenant_id filter).
-      4. Merge results: attach flag summaries, derive status, compute duration_ms.
-      5. Compute next_cursor from last span's time_begin if result count == limit.
+      4. If flag_type is set, keep only spans that have at least one matching flag.
+      5. Merge results: attach flag summaries, derive status, compute duration_ms.
+      6. Compute next_cursor from last span's time_begin if result count == limit.
+
+    Filter notes:
+      - agent_name, from_time, to_time are applied as ClickHouse WHERE clauses.
+      - flag_type is applied post-ClickHouse by filtering on PostgreSQL flags result
+        (flags live in PostgreSQL, not ClickHouse). Spans with no matching flag are
+        excluded from the response. Count may be less than limit — acceptable in Phase 5.
+      - All active filters are AND-combined.
+      - No filter = backward-compatible, returns all spans.
     """
     ch_client = request.app.state.ch_client
 
@@ -169,6 +183,18 @@ async def list_spans(
             raise HTTPException(status_code=400, detail="Invalid cursor")
         where_clauses.append("time_begin < %(cursor_ts)s")
         params["cursor_ts"] = cursor_ts
+
+    if agent_name is not None:
+        where_clauses.append("agent_name = %(agent_name)s")
+        params["agent_name"] = agent_name
+
+    if from_time is not None:
+        where_clauses.append("time_begin >= %(from_time)s")
+        params["from_time"] = from_time
+
+    if to_time is not None:
+        where_clauses.append("time_begin <= %(to_time)s")
+        params["to_time"] = to_time
 
     where_sql = " AND ".join(where_clauses)
     ch_query = (
@@ -189,12 +215,17 @@ async def list_spans(
     span_ids = [row[0] for row in rows]
 
     # --- Step 2: PostgreSQL flags query (with RLS via tenant_session) ---
-    # Use plain select with explicit tenant_id filter in addition to RLS
+    # When flag_type is provided, also filter by flag_type so only matching flags
+    # are returned; spans with no matching flag are excluded in Step 4.
+    flags_conditions = [
+        Flag.tenant_id == tenant_id,
+        Flag.span_id.in_(span_ids),
+    ]
+    if flag_type is not None:
+        flags_conditions.append(Flag.flag_type == flag_type)
+
     flags_result = await session.execute(
-        select(Flag).where(
-            Flag.tenant_id == tenant_id,
-            Flag.span_id.in_(span_ids),
-        )
+        select(Flag).where(*flags_conditions)
     )
     flags: list[Flag] = list(flags_result.scalars().all())
 
@@ -204,6 +235,15 @@ async def list_spans(
         flags_by_span.setdefault(flag.span_id, []).append(
             FlagSummary(flag_type=flag.flag_type, score=flag.score)
         )
+
+    # --- Step 4 (flag_type post-filter): exclude spans with no matching flag ---
+    # When flag_type is active the PostgreSQL flags query already filtered by
+    # flag_type, so spans absent from flags_by_span had no matching flag — drop them.
+    if flag_type is not None:
+        rows = [row for row in rows if row[0] in flags_by_span]
+        if not rows:
+            return SpanListResponse(spans=[], next_cursor=None)
+        span_ids = [row[0] for row in rows]
 
     # --- Step 3: span_scores query (NO RLS — must include tenant_id filter) ---
     # Use raw text query since span_scores is not an ORM model

@@ -16,6 +16,7 @@ Mocking strategy:
   - verify_session_token dependency is overridden to return the test tenant_id
 """
 
+import urllib.parse
 import uuid
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
@@ -201,6 +202,7 @@ def test_filter_from_time():
     The from_time param must be forwarded to the ClickHouse WHERE clause.
     """
     from_time_iso = _T2.isoformat()
+    from_time_encoded = urllib.parse.quote(from_time_iso)
 
     # CH client returns only spans after from_time (filter applied in ClickHouse)
     span2 = _ch_row(span_id="span-2", time_begin=_T2)
@@ -209,7 +211,7 @@ def test_filter_from_time():
     client, ch_client, _ = _client_with_mocks([span2, span3])
     try:
         response = client.get(
-            f"/spans?from_time={from_time_iso}",
+            f"/spans?from_time={from_time_encoded}",
             headers={"Authorization": f"Bearer {create_session_token(TENANT_A)}"},
         )
         assert response.status_code == 200, response.text
@@ -218,7 +220,7 @@ def test_filter_from_time():
         assert "span-2" in span_ids
         assert "span-3" in span_ids
 
-        # Verify ClickHouse received the from_time param
+        # Verify ClickHouse received the from_time param (decoded ISO string)
         call_args = ch_client.query.call_args
         query_params = call_args[0][1]
         assert query_params.get("from_time") == from_time_iso
@@ -232,6 +234,7 @@ def test_filter_to_time():
     The to_time param must be forwarded to the ClickHouse WHERE clause.
     """
     to_time_iso = _T2.isoformat()
+    to_time_encoded = urllib.parse.quote(to_time_iso)
 
     # CH client returns only spans before to_time (filter applied in ClickHouse)
     span1 = _ch_row(span_id="span-1", time_begin=_T1)
@@ -240,7 +243,7 @@ def test_filter_to_time():
     client, ch_client, _ = _client_with_mocks([span1, span2])
     try:
         response = client.get(
-            f"/spans?to_time={to_time_iso}",
+            f"/spans?to_time={to_time_encoded}",
             headers={"Authorization": f"Bearer {create_session_token(TENANT_A)}"},
         )
         assert response.status_code == 200, response.text
@@ -249,7 +252,7 @@ def test_filter_to_time():
         assert "span-1" in span_ids
         assert "span-2" in span_ids
 
-        # Verify ClickHouse received the to_time param
+        # Verify ClickHouse received the to_time param (decoded ISO string)
         call_args = ch_client.query.call_args
         query_params = call_args[0][1]
         assert query_params.get("to_time") == to_time_iso
@@ -264,6 +267,8 @@ def test_filter_time_range():
     """
     from_time_iso = _T1.isoformat()
     to_time_iso = _T2.isoformat()
+    from_time_encoded = urllib.parse.quote(from_time_iso)
+    to_time_encoded = urllib.parse.quote(to_time_iso)
 
     span1 = _ch_row(span_id="span-1", time_begin=_T1)
     span2 = _ch_row(span_id="span-2", time_begin=_T2)
@@ -271,7 +276,7 @@ def test_filter_time_range():
     client, ch_client, _ = _client_with_mocks([span1, span2])
     try:
         response = client.get(
-            f"/spans?from_time={from_time_iso}&to_time={to_time_iso}",
+            f"/spans?from_time={from_time_encoded}&to_time={to_time_encoded}",
             headers={"Authorization": f"Bearer {create_session_token(TENANT_A)}"},
         )
         assert response.status_code == 200, response.text

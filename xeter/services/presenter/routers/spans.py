@@ -1,5 +1,5 @@
 """
-Presenter spans router — span list endpoint.
+Presenter spans router — span list and span detail endpoints.
 
 GET /spans
   Returns a paginated list of spans with inline flag summaries and similarity scores.
@@ -8,6 +8,12 @@ GET /spans
 
   CRITICAL: span_scores has NO PostgreSQL RLS. The WHERE tenant_id clause is the
   SOLE isolation mechanism for that table — never omit it.
+
+GET /spans/{span_id}
+  Returns full span detail merging ClickHouse span row, PostgreSQL flags+scores,
+  and S3 prompt/response/raw_response payloads (fetched lazily with 5s timeout).
+  Returns 404 for missing or cross-tenant spans (no information leakage).
+  Returns 504 on S3 timeout, 502 on other S3 errors — never partial data.
 
 Pagination:
   Cursor-based, descending by time_begin.
@@ -21,8 +27,11 @@ Status derivation:
 
 import asyncio
 import base64
+import json
+import os
 from typing import Annotated
 
+import aioboto3
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
@@ -47,6 +56,46 @@ class FlagSummary(BaseModel):
 
     flag_type: str
     score: float
+
+
+class FlagDetail(BaseModel):
+    """Full flag detail for the span detail response."""
+
+    flag_type: str
+    score: float
+    detail: dict | None
+    created_at: str
+
+
+class ScoreDetail(BaseModel):
+    """Similarity score record for the span detail response."""
+
+    analyzer_name: str
+    metric_name: str
+    score: float
+
+
+class SpanDetailResponse(BaseModel):
+    """Full span detail response merging ClickHouse, PostgreSQL, and S3 data."""
+
+    span_id: str
+    trace_id: str
+    parent_span_id: str | None
+    agent_name: str
+    agent_model: str
+    tool_name: str | None
+    tool_description: str | None
+    tool_arguments: str | None
+    tool_output: str | None
+    time_begin: str
+    time_end: str
+    duration_ms: float | None
+    status: str  # "flagged" | "clean" | "pending"
+    flags: list[FlagDetail]
+    scores: list[ScoreDetail]
+    prompt: str | None
+    response: str | None
+    raw_response: str | None
 
 
 class SpanListItem(BaseModel):
@@ -221,3 +270,232 @@ async def list_spans(
         next_cursor = _encode_cursor(last_time_begin)
 
     return SpanListResponse(spans=items, next_cursor=next_cursor)
+
+
+# ---------------------------------------------------------------------------
+# S3 payload fetch helpers
+# ---------------------------------------------------------------------------
+
+
+async def _fetch_s3_payload(s3_client, bucket: str, key: str | None) -> str | None:
+    """Fetch a single S3 object and extract the 'value' field from its JSON body.
+
+    Returns None if key is None (field was not uploaded).
+    Caller is responsible for wrapping in asyncio.wait_for.
+    """
+    if key is None:
+        return None
+    response = await s3_client.get_object(Bucket=bucket, Key=key)
+    body = await response["Body"].read()
+    data = json.loads(body)
+    return data.get("value")
+
+
+async def _fetch_all_s3_payloads(
+    prompt_ref: str | None,
+    response_ref: str | None,
+    raw_response_ref: str | None,
+) -> tuple[str | None, str | None, str | None]:
+    """Fetch all three S3 payloads in parallel using aioboto3.
+
+    Wraps the entire fetch in a 5-second timeout.
+
+    Raises:
+        asyncio.TimeoutError: If the combined fetch exceeds 5 seconds.
+        Exception: For any other S3 error.
+    """
+    bucket = os.environ.get("S3_BUCKET", "xeter-payloads")
+    endpoint_url = os.environ.get("S3_ENDPOINT_URL", "http://minio:9000")
+    access_key = os.environ.get("S3_ACCESS_KEY", "")
+    secret_key = os.environ.get("S3_SECRET_KEY", "")
+
+    session = aioboto3.Session(
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+    )
+
+    async def _fetch_all():
+        async with session.client(
+            "s3",
+            endpoint_url=endpoint_url,
+        ) as s3:
+            return await asyncio.gather(
+                _fetch_s3_payload(s3, bucket, prompt_ref),
+                _fetch_s3_payload(s3, bucket, response_ref),
+                _fetch_s3_payload(s3, bucket, raw_response_ref),
+            )
+
+    return await asyncio.wait_for(_fetch_all(), timeout=5.0)
+
+
+# ---------------------------------------------------------------------------
+# GET /spans/{span_id} handler
+# ---------------------------------------------------------------------------
+
+
+@router.get("/spans/{span_id}", response_model=SpanDetailResponse)
+async def get_span_detail(
+    span_id: str,
+    request: Request,
+    tenant_id: Annotated[str, Depends(verify_session_token)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SpanDetailResponse:
+    """Return full detail for a single span.
+
+    Steps:
+      1. Parallel: fetch span from ClickHouse (with tenant_id filter) + flags from
+         PostgreSQL + scores from PostgreSQL.
+      2. Return 404 if span not found or belongs to another tenant.
+      3. Sequential: fetch S3 payloads using _ref columns from ClickHouse row.
+         Wrapped in asyncio.wait_for(timeout=5.0).
+      4. Return 504 on S3 timeout, 502 on other S3 errors — no partial data.
+      5. Merge and return SpanDetailResponse.
+    """
+    ch_client = request.app.state.ch_client
+
+    # --- Step 1: Parallel fetch ---
+
+    async def _fetch_ch_span():
+        ch_query = (
+            "SELECT span_id, trace_id, parent_span_id, agent_name, agent_model, "
+            "tool_name, tool_description, tool_arguments, tool_output, "
+            "time_begin, time_end, prompt_ref, response_ref, raw_response_ref "
+            "FROM spans "
+            "WHERE tenant_id = %(tenant_id)s AND span_id = %(span_id)s "
+            "LIMIT 1"
+        )
+        result = await asyncio.to_thread(
+            ch_client.query, ch_query, {"tenant_id": tenant_id, "span_id": span_id}
+        )
+        rows = result.result_rows
+        return rows[0] if rows else None
+
+    async def _fetch_pg_flags():
+        flags_result = await session.execute(
+            select(Flag).where(
+                Flag.tenant_id == tenant_id,
+                Flag.span_id == span_id,
+            )
+        )
+        return list(flags_result.scalars().all())
+
+    async def _fetch_pg_scores():
+        # CRITICAL: span_scores has NO RLS — tenant_id filter is mandatory
+        scores_result = await session.execute(
+            text(
+                "SELECT analyzer_name, metric_name, score "
+                "FROM span_scores "
+                "WHERE tenant_id = :tid AND span_id = :sid"
+            ),
+            {"tid": tenant_id, "sid": span_id},
+        )
+        return scores_result.fetchall()
+
+    ch_span, pg_flags, pg_scores = await asyncio.gather(
+        _fetch_ch_span(),
+        _fetch_pg_flags(),
+        _fetch_pg_scores(),
+    )
+
+    # --- Step 2: 404 on missing or cross-tenant span ---
+    if ch_span is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": "Span not found", "status": 404},
+        )
+
+    (
+        ch_span_id, trace_id, parent_span_id, agent_name, agent_model,
+        tool_name, tool_description, tool_arguments, tool_output,
+        time_begin, time_end, prompt_ref, response_ref, raw_response_ref,
+    ) = ch_span
+
+    # --- Step 3: Fetch S3 payloads ---
+    try:
+        prompt, response, raw_response = await _fetch_all_s3_payloads(
+            prompt_ref, response_ref, raw_response_ref
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=504,
+            detail={"error": "s3_timeout", "message": "S3 payload fetch timed out", "status": 504},
+        )
+    except Exception as exc:
+        logger.error("s3_fetch_failed", span_id=span_id, error=str(exc))
+        raise HTTPException(
+            status_code=502,
+            detail={"error": "s3_error", "message": "Failed to fetch span payloads", "status": 502},
+        )
+
+    # --- Step 5: Merge and return ---
+
+    # Compute duration_ms
+    duration_ms: float | None = None
+    try:
+        if time_begin is not None and time_end is not None:
+            if hasattr(time_begin, "timestamp") and hasattr(time_end, "timestamp"):
+                duration_ms = (time_end.timestamp() - time_begin.timestamp()) * 1000.0
+            else:
+                duration_ms = float(time_end) - float(time_begin)
+    except Exception:
+        duration_ms = None
+
+    # ISO strings for response
+    time_begin_str = (
+        time_begin.isoformat() if hasattr(time_begin, "isoformat") else str(time_begin)
+    )
+    time_end_str = (
+        time_end.isoformat() if hasattr(time_end, "isoformat") else str(time_end)
+    )
+
+    # Build FlagDetail list
+    flag_details: list[FlagDetail] = []
+    for flag in pg_flags:
+        created_at_str = (
+            flag.created_at.isoformat()
+            if hasattr(flag.created_at, "isoformat")
+            else str(flag.created_at)
+        )
+        flag_details.append(
+            FlagDetail(
+                flag_type=flag.flag_type,
+                score=flag.score,
+                detail=flag.detail,
+                created_at=created_at_str,
+            )
+        )
+
+    # Build ScoreDetail list
+    score_details: list[ScoreDetail] = [
+        ScoreDetail(analyzer_name=row[0], metric_name=row[1], score=row[2])
+        for row in pg_scores
+    ]
+
+    # Derive status
+    if flag_details:
+        status = "flagged"
+    elif score_details:
+        status = "clean"
+    else:
+        status = "pending"
+
+    return SpanDetailResponse(
+        span_id=ch_span_id,
+        trace_id=trace_id,
+        parent_span_id=parent_span_id,
+        agent_name=agent_name,
+        agent_model=agent_model,
+        tool_name=tool_name,
+        tool_description=tool_description,
+        tool_arguments=tool_arguments,
+        tool_output=tool_output,
+        time_begin=time_begin_str,
+        time_end=time_end_str,
+        duration_ms=duration_ms,
+        status=status,
+        flags=flag_details,
+        scores=score_details,
+        prompt=prompt,
+        response=response,
+        raw_response=raw_response,
+    )

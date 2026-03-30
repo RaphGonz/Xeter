@@ -96,7 +96,13 @@ Plans:
   3. Developer can filter the span list by flag type, agent name, and time range and the list updates without a page reload
   4. Clicking a span opens the detail view showing which fields triggered the flag, the similarity score, and the configured threshold; prompt/response/raw_response load on demand, not on page load
   5. Detail view shows a "Request Diagnostic" button that calls POST /diagnose and displays the 501 placeholder response
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 05-01-PLAN.md — Presenter GET /spans filter params (flag_type, agent_name, from_time, to_time) + TDD tests
+- [ ] 05-02-PLAN.md — Next.js 15 scaffold, login page, auth store, API proxy, NavBar, Dockerfile
+- [ ] 05-03-PLAN.md — Span list table, FilterBar with nuqs URL state, StatusDot, cursor pagination
+- [ ] 05-04-PLAN.md — Span detail side panel, PayloadTabs, diagnostic button, full span metadata
 
 ### Phase 6: Validation
 **Goal**: Embedding thresholds are calibrated against labelled spans, critical infrastructure invariants are confirmed under load, and the system is ready to trust before being presented to users

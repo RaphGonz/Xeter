@@ -59,7 +59,7 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Infrastructure
 
 - [x] **INFR-01**: Docker Compose provides local dev environment with ClickHouse, PostgreSQL, Redis, MinIO (S3), backend, and frontend services
-- [ ] **INFR-02**: Diagnosticer service is scaffolded — wired to Presenter, accepts requests, returns placeholder response — ready for LLM integration in milestone 2
+- [x] **INFR-02**: Diagnosticer service is scaffolded — wired to Presenter, accepts requests, returns placeholder response — ready for LLM integration in milestone 2
 
 ## v2 Requirements
 
@@ -150,7 +150,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AUTH-04 | Phase 1 | Complete |
 | AUTH-05 | Phase 1 | Complete |
 | INFR-01 | Phase 1 | Complete |
-| INFR-02 | Phase 4 | Pending |
+| INFR-02 | Phase 4 | Complete |
 
 **Coverage:**
 - v1 requirements: 34 total

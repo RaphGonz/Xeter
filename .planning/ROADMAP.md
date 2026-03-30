@@ -79,7 +79,12 @@ Plans:
   3. POST /diagnose forwards the request to the Diagnosticer scaffold and returns a 501 with a placeholder body
   4. All Presenter endpoints return 401 for requests missing a valid session token
   5. Authenticated Tenant A cannot retrieve Tenant B spans — GET /spans returns zero Tenant B rows when called with Tenant A credentials
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 04-01-PLAN.md — Session auth (POST /login + JWT) and GET /spans list with cursor pagination, flag summaries, and score overlays
+- [ ] 04-02-PLAN.md — GET /spans/{id} detail with parallel ClickHouse/PostgreSQL queries and lazy S3 payload loading
+- [ ] 04-03-PLAN.md — Diagnosticer scaffold service and POST /diagnose proxy on Presenter
 
 ### Phase 5: Dashboard
 **Goal**: A developer can log in, view the span list filtered by flag type and time, drill into a span to see flag details and S3 payloads, and see the Diagnosticer entry point — with no business logic in the frontend

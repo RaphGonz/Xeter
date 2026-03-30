@@ -1,27 +1,35 @@
 """
-Presenter auth router — tenant registration.
+Presenter auth router — tenant registration and session login.
 
 POST /register
   Creates a new tenant, user, and API key in a single transaction.
   Returns the plaintext API key exactly once — it cannot be retrieved again.
 
+POST /login
+  Verifies email + password against the users table.
+  Returns a JWT session token on success.
+  Returns 401 on any credential failure — no distinction between "user not found"
+  and "wrong password" to prevent user enumeration.
+
 Error responses:
-  409 Conflict     — email already registered
+  401 Unauthorized — invalid credentials (login only)
+  409 Conflict     — email already registered (register only)
   422 Unprocessable Entity — validation failure (FastAPI default)
   500 Internal Server Error — unexpected DB error (details logged, never exposed)
 """
 
+import asyncio
 import logging
 
+import bcrypt
 import structlog
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, field_validator
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Annotated
 
-import bcrypt
-
+from xeter.services.presenter.deps import create_session_token
 from xeter.shared.dal.api_keys import ApiKeyRepository, generate_api_key
 from xeter.shared.dal.tenants import TenantRepository
 from xeter.shared.dal.users import UserRepository
@@ -168,3 +176,67 @@ async def register(
     except Exception as exc:
         logger.error("register.failed", error=str(exc))
         raise HTTPException(status_code=500, detail="Registration failed") from exc
+
+
+# ---------------------------------------------------------------------------
+# Login request / response models
+# ---------------------------------------------------------------------------
+
+
+class LoginRequest(BaseModel):
+    """Login payload for obtaining a session token."""
+
+    email: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    """Response returned after successful login."""
+
+    session_token: str
+
+
+# ---------------------------------------------------------------------------
+# Login route
+# ---------------------------------------------------------------------------
+
+_LOGIN_UNAUTHORIZED = HTTPException(
+    status_code=401,
+    detail={"error": "unauthorized", "message": "Invalid or missing session token"},
+)
+
+
+@router.post("/login", response_model=LoginResponse, status_code=200)
+async def login(
+    body: LoginRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> LoginResponse:
+    """Authenticate with email and password, return a JWT session token.
+
+    Returns 401 for any credential failure — deliberately no distinction
+    between "user not found" and "wrong password" (prevents user enumeration).
+    """
+    try:
+        result = await session.execute(select(User).where(User.email == body.email))
+        user: User | None = result.scalar_one_or_none()
+
+        if user is None:
+            raise _LOGIN_UNAUTHORIZED
+
+        password_matches = await asyncio.to_thread(
+            bcrypt.checkpw,
+            body.password.encode("utf-8"),
+            user.password_hash.encode("utf-8"),
+        )
+
+        if not password_matches:
+            raise _LOGIN_UNAUTHORIZED
+
+        token = create_session_token(str(user.tenant_id))
+        return LoginResponse(session_token=token)
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("login.failed", error=str(exc))
+        raise HTTPException(status_code=500, detail="Login failed") from exc

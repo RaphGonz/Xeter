@@ -46,7 +46,7 @@ def create_session_token(tenant_id: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def verify_session_token(authorization: str = Header(...)) -> str:
+def verify_session_token(authorization: str | None = Header(default=None)) -> str:
     """FastAPI dependency that validates the Authorization: Bearer <token> header.
 
     Decodes and verifies the JWT. Returns the tenant_id string on success.

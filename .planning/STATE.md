@@ -3,6 +3,19 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
+last_updated: "2026-03-30T11:20:45.479Z"
+progress:
+  total_phases: 4
+  completed_phases: 4
+  total_plans: 14
+  completed_plans: 14
+---
+
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: unknown
 last_updated: "2026-03-28T23:01:08.369Z"
 progress:
   total_phases: 3
@@ -23,9 +36,9 @@ See: .planning/PROJECT.md (updated 2026-03-27)
 ## Current Position
 
 Phase: 4 of 6 (Read Path) — IN PROGRESS
-Plan: 1 of ? in current phase (Plan 01 complete)
-Status: Phase 4 Plan 1 complete — POST /login, verify_session_token, GET /spans delivered
-Last activity: 2026-03-30 — Completed Plan 01 (JWT auth, GET /spans with cursor pagination + flag overlays, 9 tests)
+Plan: 2 of ? in current phase (Plan 02 complete)
+Status: Phase 4 Plan 2 complete — GET /spans/{id} detail endpoint with S3 lazy fetch, 7 new tests
+Last activity: 2026-03-30 — Completed Plan 02 (span detail endpoint, parallel CH/PG queries, S3 payloads, 504/502 error handling)
 
 Progress: [█████████░] 45%
 
@@ -52,6 +65,7 @@ Progress: [█████████░] 45%
 | Phase 03-analysis-path P02 | 780 | 2 tasks | 3 files |
 | Phase 03-analysis-path P03 | 453 | 2 tasks | 3 files |
 | Phase 03-analysis-path P04 | 1086 | 2 tasks | 7 files |
+| Phase 04-read-path P03 | 509 | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -98,6 +112,12 @@ Recent decisions affecting current work:
 - [Phase 04-01]: GET /spans status: flagged > clean > pending — flag presence overrides score-only spans
 - [Phase 04-01]: span_scores has no RLS — explicit WHERE tenant_id clause is sole isolation; documented with CRITICAL comment
 - [Phase 04-01]: ClickHouse client on app.state via lifespan — tests patch app.state.ch_client directly
+- [Phase 04-02]: GET /spans/{id} returns 404 for cross-tenant spans — WHERE tenant_id in ClickHouse means cross-tenant = not-found, no info leakage
+- [Phase 04-02]: _fetch_all_s3_payloads helper extracted so error-path tests patch at coarse level rather than mocking deep aioboto3 internals
+- [Phase 04-02]: S3 timeout: asyncio.wait_for wraps full aioboto3 context manager coroutine; asyncio.TimeoutError -> 504, all others -> 502
+- [Phase 04-read-path]: Diagnosticer scaffold returns 501 — wired now so Milestone 2 activates without rearchitecting
+- [Phase 04-read-path]: httpx.AsyncClient stored on app.state.http_client in Presenter lifespan — consistent with ch_client pattern
+- [Phase 04-read-path]: POST /diagnose catches httpx.HTTPError (base class) for 502 — covers ConnectError, TimeoutException, and all transport errors
 
 ### Pending Todos
 
@@ -111,5 +131,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-30
-Stopped at: Completed 04-01-PLAN.md — JWT auth, GET /spans with cursor pagination + flags, 9 presenter tests pass
+Stopped at: Completed 04-02-PLAN.md — GET /spans/{id} detail endpoint, S3 lazy fetch with 5s timeout, 16 presenter tests pass
 Resume file: None

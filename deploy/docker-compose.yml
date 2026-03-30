@@ -181,7 +181,13 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ../services/view:/app
+      - ../services/view/src:/app/src
+      - ../services/view/public:/app/public
+    environment:
+      PRESENTER_URL: http://presenter:8000
+    depends_on:
+      presenter:
+        condition: service_started
 
 volumes:
   pg_data:

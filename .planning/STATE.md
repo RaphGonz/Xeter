@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-03-27)
 
 ## Current Position
 
-Phase: 3 of 6 (Analysis Path) — COMPLETE
-Plan: 4 of 4 in current phase (All plans complete)
-Status: Phase 3 complete — ready for Phase 4 (Read Path)
-Last activity: 2026-03-28 — Completed Plan 04 (worker main loop, ANALYZERS registry, Docker, 6 integration tests)
+Phase: 4 of 6 (Read Path) — IN PROGRESS
+Plan: 1 of ? in current phase (Plan 01 complete)
+Status: Phase 4 Plan 1 complete — POST /login, verify_session_token, GET /spans delivered
+Last activity: 2026-03-30 — Completed Plan 01 (JWT auth, GET /spans with cursor pagination + flag overlays, 9 tests)
 
-Progress: [████████░░] 36%
+Progress: [█████████░] 45%
 
 ## Performance Metrics
 
@@ -94,6 +94,10 @@ Recent decisions affecting current work:
 - [Phase 03-04]: process_span takes analyzers as parameter (not module global) — enables test injection without monkeypatching
 - [Phase 03-04]: Model loaded lazily inside main() — importing module during tests does not trigger 80MB model download
 - [Phase 03-04]: Worker Dockerfile pre-bakes all-MiniLM-L6-v2 into image layer via RUN python -c — avoids runtime download on first span
+- [Phase 04-01]: verify_session_token uses Header(default=None) not Header(...) — required header returns 422 (Pydantic) not 401; optional lets function body raise correct 401
+- [Phase 04-01]: GET /spans status: flagged > clean > pending — flag presence overrides score-only spans
+- [Phase 04-01]: span_scores has no RLS — explicit WHERE tenant_id clause is sole isolation; documented with CRITICAL comment
+- [Phase 04-01]: ClickHouse client on app.state via lifespan — tests patch app.state.ch_client directly
 
 ### Pending Todos
 
@@ -106,6 +110,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28
-Stopped at: Completed 03-04-PLAN.md — worker main loop, ANALYZERS registry, Docker, 20 tests all pass
+Last session: 2026-03-30
+Stopped at: Completed 04-01-PLAN.md — JWT auth, GET /spans with cursor pagination + flags, 9 presenter tests pass
 Resume file: None

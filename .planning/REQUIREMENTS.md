@@ -46,7 +46,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **DASH-02**: Developer can filter spans by flag type, agent name, and time range
 - [ ] **DASH-03**: Developer can view span detail showing flag details and similarity scores
 - [ ] **DASH-04**: Developer can view prompt, response, and raw_response content lazy-loaded from S3
-- [ ] **DASH-05**: Span list rows show similarity scores directly (flag score overlay)
+- [x] **DASH-05**: Span list rows show similarity scores directly (flag score overlay)
 
 ### Auth & Multi-tenancy
 
@@ -143,7 +143,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DASH-02 | Phase 5 | Pending |
 | DASH-03 | Phase 4 | Pending |
 | DASH-04 | Phase 4 | Pending |
-| DASH-05 | Phase 4 | Pending |
+| DASH-05 | Phase 4 | Complete |
 | AUTH-01 | Phase 1 | Complete |
 | AUTH-02 | Phase 5 | Pending |
 | AUTH-03 | Phase 1 | Complete |

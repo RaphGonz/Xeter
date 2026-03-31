@@ -8,6 +8,7 @@ import { useAuthStore, useHydrateAuth } from '@/lib/auth'
 import { useSpanFilters } from '@/hooks/useSpanFilters'
 import { FilterBar } from '@/components/FilterBar'
 import { SpanTable } from '@/components/SpanTable'
+import { SpanDetailPanel } from '@/components/SpanDetailPanel'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 
@@ -26,6 +27,7 @@ export default function SpansPage() {
   const [loading, setLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [selectedSpanId, setSelectedSpanId] = useState<string | null>(null)
 
   const fetchSpans = useCallback(async () => {
     if (!token) return
@@ -93,7 +95,7 @@ export default function SpansPage() {
   }
 
   function handleSpanClick(spanId: string) {
-    console.log('span clicked:', spanId)
+    setSelectedSpanId(spanId)
   }
 
   const agentNames = Array.from(new Set(spans.map((s) => s.agent_name))).sort()
@@ -145,6 +147,12 @@ export default function SpansPage() {
           </Button>
         </div>
       )}
+
+      <SpanDetailPanel
+        spanId={selectedSpanId}
+        open={selectedSpanId !== null}
+        onClose={() => setSelectedSpanId(null)}
+      />
     </div>
   )
 }

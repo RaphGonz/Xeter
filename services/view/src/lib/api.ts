@@ -38,8 +38,8 @@ export function timeRangeToISO(preset: string): { from_time: string; to_time: st
   const ms = TIME_RANGE_MS[preset] ?? TIME_RANGE_MS['24h']
   const now = Date.now()
   return {
-    from_time: new Date(now - ms).toISOString(),
-    to_time: new Date(now).toISOString(),
+    from_time: new Date(now - ms).toISOString().replace('Z', ''),
+    to_time: new Date(now).toISOString().replace('Z', ''),
   }
 }
 
@@ -90,8 +90,47 @@ export async function listSpans(
   })
 }
 
-export async function getSpanDetail(token: string, spanId: string) {
-  return request<unknown>(`/api/spans/${spanId}`, {
+export interface SpanDetailFlag {
+  flag_type: string
+  score: number
+  detail: Record<string, unknown> | null
+  created_at: string
+}
+
+export interface SpanScore {
+  analyzer_name: string
+  metric_name: string
+  score: number
+}
+
+export interface SpanDetail {
+  span_id: string
+  trace_id: string
+  parent_span_id: string | null
+  agent_name: string
+  agent_model: string
+  tool_name: string | null
+  tool_description: string | null
+  tool_arguments: string | null
+  tool_output: string | null
+  time_begin: string
+  time_end: string
+  duration_ms: number | null
+  status: 'flagged' | 'clean' | 'pending'
+  flags: SpanDetailFlag[]
+  scores: SpanScore[]
+  prompt: string | null
+  response: string | null
+  raw_response: string | null
+}
+
+export interface DiagnoseResponse {
+  status: string
+  message: string
+}
+
+export async function getSpanDetail(token: string, spanId: string): Promise<SpanDetail> {
+  return request<SpanDetail>(`/api/spans/${spanId}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
 }
@@ -99,9 +138,9 @@ export async function getSpanDetail(token: string, spanId: string) {
 export async function diagnose(
   token: string,
   spanId: string,
-  flags: string[],
-) {
-  return request<unknown>('/api/diagnose', {
+  flags: SpanDetailFlag[],
+): Promise<DiagnoseResponse> {
+  return request<DiagnoseResponse>('/api/diagnose', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

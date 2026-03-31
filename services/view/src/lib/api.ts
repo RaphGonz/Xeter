@@ -25,16 +25,59 @@ export async function login(
   })
 }
 
+const TIME_RANGE_MS: Record<string, number> = {
+  '15m': 15 * 60 * 1000,
+  '1h': 3600000,
+  '6h': 6 * 3600000,
+  '24h': 86400000,
+  '7d': 7 * 86400000,
+  '30d': 30 * 86400000,
+}
+
+export function timeRangeToISO(preset: string): { from_time: string; to_time: string } {
+  const ms = TIME_RANGE_MS[preset] ?? TIME_RANGE_MS['24h']
+  const now = Date.now()
+  return {
+    from_time: new Date(now - ms).toISOString(),
+    to_time: new Date(now).toISOString(),
+  }
+}
+
+export interface SpanFlag {
+  flag_type: string
+  score: number
+}
+
+export interface SpanListItem {
+  span_id: string
+  trace_id: string
+  agent_name: string
+  agent_model: string
+  tool_name: string | null
+  time_begin: string
+  duration_ms: number | null
+  status: 'flagged' | 'clean' | 'pending'
+  flags: SpanFlag[]
+}
+
+export interface SpanListResponse {
+  spans: SpanListItem[]
+  next_cursor: string | null
+}
+
 export interface SpanListParams {
   flag_type?: string
   agent_name?: string
   from_time?: string
   to_time?: string
+  cursor?: string
   limit?: number
-  offset?: number
 }
 
-export async function listSpans(token: string, params: SpanListParams = {}) {
+export async function listSpans(
+  token: string,
+  params: SpanListParams = {},
+): Promise<SpanListResponse> {
   const qs = new URLSearchParams()
   Object.entries(params).forEach(([k, v]) => {
     if (v !== undefined && v !== null && v !== '') {
@@ -42,7 +85,7 @@ export async function listSpans(token: string, params: SpanListParams = {}) {
     }
   })
   const query = qs.toString() ? `?${qs.toString()}` : ''
-  return request<unknown>(`/api/spans${query}`, {
+  return request<SpanListResponse>(`/api/spans${query}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
 }

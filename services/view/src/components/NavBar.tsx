@@ -6,8 +6,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useAuthStore } from '@/lib/auth'
@@ -44,8 +42,6 @@ export function NavBar() {
             Account
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuLabel>My Account</DropdownMenuLabel>
-            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout}>Logout</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

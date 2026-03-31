@@ -3,19 +3,21 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { NavBar } from '@/components/NavBar'
-import { useAuthStore } from '@/lib/auth'
+import { useAuthStore, useHydrateAuth } from '@/lib/auth'
 
 export default function SpansLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
+  useHydrateAuth()
   const token = useAuthStore((s) => s.token)
+  const hydrated = useAuthStore((s) => s.hydrated)
 
   useEffect(() => {
-    if (!token) {
+    if (hydrated && !token) {
       router.replace('/login')
     }
-  }, [token, router])
+  }, [token, hydrated, router])
 
-  if (!token) {
+  if (!hydrated || !token) {
     return null
   }
 

@@ -6,12 +6,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
-import { useAuthStore } from '@/lib/auth'
+import { useAuthStore, useHydrateAuth } from '@/lib/auth'
 import { login } from '@/lib/api'
 
 export default function LoginPage() {
   const router = useRouter()
-  const { token, setToken } = useAuthStore()
+  useHydrateAuth()
+  const token = useAuthStore((s) => s.token)
+  const hydrated = useAuthStore((s) => s.hydrated)
+  const setToken = useAuthStore((s) => s.setToken)
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -19,10 +22,10 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (token) {
+    if (hydrated && token) {
       router.replace('/spans')
     }
-  }, [token, router])
+  }, [token, hydrated, router])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()

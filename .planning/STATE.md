@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-31T08:10:54.566Z"
+last_updated: "2026-03-31T08:39:17.035Z"
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 18
-  completed_plans: 16
+  completed_plans: 17
 ---
 
 ---
@@ -93,6 +93,7 @@ Progress: [██████████] 50%
 | Phase 03-analysis-path P04 | 1086 | 2 tasks | 7 files |
 | Phase 04-read-path P03 | 509 | 2 tasks | 8 files |
 | Phase 05-dashboard P01 | 507 | 2 tasks | 2 files |
+| Phase 05-dashboard P03 | 8 | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -150,6 +151,9 @@ Recent decisions affecting current work:
 - [Phase 05-dashboard]: Auth store initializes token as null, hydrates via useHydrateAuth hook in useEffect — SSR-safe pattern for all auth-gated components
 - [Phase 05-dashboard]: CLICKHOUSE_PASSWORD required in all service environments — ClickHouse 25.3 enforces auth for default user
 - [Phase 05-dashboard]: sentence-transformers isolated to xeter[ml] optional dep — prevents CUDA/torch from bloating non-ML service images
+- [Phase 05-dashboard]: timeRangeToISO converts preset at call time — URL stores relative label not ISO, so bookmarked links stay accurate
+- [Phase 05-dashboard]: Agent name dropdown populated from unique agent_names in fetched spans — avoids needing a /agents API endpoint
+- [Phase 05-dashboard]: DropdownMenuGroup + DropdownMenuLabel required in FilterBar — Base UI needs group context for labels
 
 ### Pending Todos
 

@@ -3,6 +3,19 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
+last_updated: "2026-03-31T11:54:07.687Z"
+progress:
+  total_phases: 5
+  completed_phases: 5
+  total_plans: 18
+  completed_plans: 18
+---
+
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: unknown
 last_updated: "2026-03-31T08:39:17.035Z"
 progress:
   total_phases: 5
@@ -62,11 +75,11 @@ See: .planning/PROJECT.md (updated 2026-03-27)
 ## Current Position
 
 Phase: 5 of 6 (Dashboard) — IN PROGRESS
-Plan: 2 of 4 in current phase (Plan 02 complete)
-Status: Phase 5 Plan 2 complete — Next.js 15 login page, Zustand SSR-safe auth store, API proxy, NavBar, login flow verified end-to-end
-Last activity: 2026-03-30 — Completed Plan 02 (Next.js 15 scaffold + login page, human verified)
+Plan: 4 of 4 in current phase (Plan 04 complete — checkpoint:human-verify pending)
+Status: Phase 5 Plan 4 complete — SpanDetailPanel + PayloadTabs, detail panel wired to span row clicks
+Last activity: 2026-03-31 — Completed Plan 04 (span detail panel, Task 3 human-verify pending)
 
-Progress: [██████████] 50%
+Progress: [██████████████████░░] 90%
 
 ## Performance Metrics
 
@@ -94,6 +107,7 @@ Progress: [██████████] 50%
 | Phase 04-read-path P03 | 509 | 2 tasks | 8 files |
 | Phase 05-dashboard P01 | 507 | 2 tasks | 2 files |
 | Phase 05-dashboard P03 | 8 | 2 tasks | 6 files |
+| Phase 05-dashboard P04 | 900 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -154,6 +168,9 @@ Recent decisions affecting current work:
 - [Phase 05-dashboard]: timeRangeToISO converts preset at call time — URL stores relative label not ISO, so bookmarked links stay accurate
 - [Phase 05-dashboard]: Agent name dropdown populated from unique agent_names in fetched spans — avoids needing a /agents API endpoint
 - [Phase 05-dashboard]: DropdownMenuGroup + DropdownMenuLabel required in FilterBar — Base UI needs group context for labels
+- [Phase 05-04]: FlagSection isolated as sub-component — keeps diagnose loading state separate from panel-level loading state
+- [Phase 05-04]: SpanDetailPanel uses Sheet onOpenChange for close — single source of truth for open state, no duplicate handlers
+- [Phase 05-04]: api.ts getSpanDetail + diagnose given proper TypeScript return types (SpanDetail, DiagnoseResponse) — type-safe API layer
 
 ### Pending Todos
 
@@ -166,6 +183,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-30
-Stopped at: Completed 05-02-PLAN.md — Next.js 15 login page, auth store, API proxy, NavBar, login flow verified
+Last session: 2026-03-31
+Stopped at: Completed 05-04-PLAN.md — SpanDetailPanel + PayloadTabs, wired to spans page, checkpoint:human-verify Task 3 pending
 Resume file: None

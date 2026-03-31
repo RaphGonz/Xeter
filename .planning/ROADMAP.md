@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Ingestion Path** - Spans flow from SDK through Analyser into ClickHouse and S3 with batched writes (completed 2026-03-28)
 - [x] **Phase 3: Analysis Path** - Embedding Worker flags tool-call anomalies with configurable, logged similarity scores (completed 2026-03-28)
 - [x] **Phase 4: Read Path** - Presenter merges ClickHouse and PostgreSQL and serves the full API with Diagnosticer scaffolded (completed 2026-03-30)
-- [ ] **Phase 5: Dashboard** - Developer can log in, see flagged spans, drill into detail, and understand what failed
+- [x] **Phase 5: Dashboard** - Developer can log in, see flagged spans, drill into detail, and understand what failed (completed 2026-03-31)
 - [ ] **Phase 6: Validation** - Thresholds calibrated against labelled spans, load tests pass, cross-tenant isolation confirmed
 
 ## Phase Details
@@ -127,5 +127,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Ingestion Path | 3/3 | Complete   | 2026-03-28 |
 | 3. Analysis Path | 4/4 | Complete    | 2026-03-28 |
 | 4. Read Path | 3/3 | Complete   | 2026-03-30 |
-| 5. Dashboard | 3/4 | In Progress|  |
+| 5. Dashboard | 4/4 | Complete   | 2026-03-31 |
 | 6. Validation | 0/TBD | Not started | - |

@@ -51,7 +51,7 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Auth & Multi-tenancy
 
 - [x] **AUTH-01**: Each tenant has an API key for SDK ingestion; key hash stored in PostgreSQL
-- [ ] **AUTH-02**: Developer can log into the dashboard with email and password
+- [x] **AUTH-02**: Developer can log into the dashboard with email and password
 - [x] **AUTH-03**: All database queries are scoped by tenant_id in application code
 - [x] **AUTH-04**: PostgreSQL has Row-Level Security policies as defense-in-depth against cross-tenant data leaks
 - [x] **AUTH-05**: Developer can create an account (tenant registration)
@@ -145,7 +145,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DASH-04 | Phase 4 | Complete |
 | DASH-05 | Phase 4 | Complete |
 | AUTH-01 | Phase 1 | Complete |
-| AUTH-02 | Phase 5 | Pending |
+| AUTH-02 | Phase 5 | Complete |
 | AUTH-03 | Phase 1 | Complete |
 | AUTH-04 | Phase 1 | Complete |
 | AUTH-05 | Phase 1 | Complete |

@@ -3,6 +3,19 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
+last_updated: "2026-03-31T08:10:54.566Z"
+progress:
+  total_phases: 5
+  completed_phases: 4
+  total_plans: 18
+  completed_plans: 16
+---
+
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: unknown
 last_updated: "2026-03-30T20:37:19.938Z"
 progress:
   total_phases: 5
@@ -49,9 +62,9 @@ See: .planning/PROJECT.md (updated 2026-03-27)
 ## Current Position
 
 Phase: 5 of 6 (Dashboard) — IN PROGRESS
-Plan: 1 of 4 in current phase (Plan 01 complete)
-Status: Phase 5 Plan 1 complete — GET /spans filter params (flag_type, agent_name, from_time, to_time), 27 presenter tests pass
-Last activity: 2026-03-30 — Completed Plan 01 (GET /spans filter params, TDD, 7 new filter tests green)
+Plan: 2 of 4 in current phase (Plan 02 complete)
+Status: Phase 5 Plan 2 complete — Next.js 15 login page, Zustand SSR-safe auth store, API proxy, NavBar, login flow verified end-to-end
+Last activity: 2026-03-30 — Completed Plan 02 (Next.js 15 scaffold + login page, human verified)
 
 Progress: [██████████] 50%
 
@@ -134,6 +147,9 @@ Recent decisions affecting current work:
 - [Phase 04-read-path]: POST /diagnose catches httpx.HTTPError (base class) for 502 — covers ConnectError, TimeoutException, and all transport errors
 - [Phase 05-dashboard]: ISO timestamp URL encoding: tests use urllib.parse.quote for + in TZ offset
 - [Phase 05-dashboard]: flag_type filter is post-ClickHouse via PostgreSQL flags query; count may be less than limit in Phase 5
+- [Phase 05-dashboard]: Auth store initializes token as null, hydrates via useHydrateAuth hook in useEffect — SSR-safe pattern for all auth-gated components
+- [Phase 05-dashboard]: CLICKHOUSE_PASSWORD required in all service environments — ClickHouse 25.3 enforces auth for default user
+- [Phase 05-dashboard]: sentence-transformers isolated to xeter[ml] optional dep — prevents CUDA/torch from bloating non-ML service images
 
 ### Pending Todos
 
@@ -147,5 +163,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-30
-Stopped at: Completed 05-01-PLAN.md — GET /spans filter params, 27 presenter tests pass
+Stopped at: Completed 05-02-PLAN.md — Next.js 15 login page, auth store, API proxy, NavBar, login flow verified
 Resume file: None

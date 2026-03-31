@@ -1,12 +1,13 @@
 FROM python:3.12-slim
 WORKDIR /app
+ENV PYTHONPATH=/app
 
 # Install xeter package and its dependencies
 COPY xeter/ xeter/
-RUN pip install --no-cache-dir -e xeter/
+RUN pip install --no-cache-dir -e "xeter/[ml]"
 
-# Worker-specific deps: embeddings, PostgreSQL, S3
-RUN pip install --no-cache-dir sentence-transformers psycopg2-binary boto3
+# Worker-specific deps: PostgreSQL, S3, Redis
+RUN pip install --no-cache-dir psycopg2-binary boto3 redis
 
 # Pre-bake the sentence-transformers model into the image layer.
 # This avoids an 80 MB download at container startup on first span.

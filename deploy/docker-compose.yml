@@ -87,6 +87,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://xeter:xeter_dev_password@postgres:5432/xeter
       CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PASSWORD: xeter_dev_password
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: http://minio:9000
 
@@ -113,6 +114,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://xeter:xeter_dev_password@postgres:5432/xeter
       CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PASSWORD: xeter_dev_password
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: http://minio:9000
       SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
@@ -138,6 +140,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://xeter:xeter_dev_password@postgres:5432/xeter
       CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PASSWORD: xeter_dev_password
       REDIS_URL: redis://redis:6379
       S3_ENDPOINT_URL: http://minio:9000
       S3_ACCESS_KEY: xeter
@@ -169,6 +172,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://xeter:xeter_dev_password@postgres:5432/xeter
       CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PASSWORD: xeter_dev_password
       S3_ENDPOINT_URL: http://minio:9000
       S3_ACCESS_KEY: xeter
       S3_SECRET_KEY: xeter_dev_password

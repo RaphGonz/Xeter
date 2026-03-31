@@ -13,7 +13,7 @@ Tests cover:
 Mocking strategy:
   - app.dependency_overrides[verify_session_token] returns fixed tenant_id
   - app.dependency_overrides[get_session] injects AsyncMock session
-  - app.state.ch_client is patched directly on the app object
+  - app.dependency_overrides[get_ch_client] injects a MagicMock CH client per-request
   - aioboto3.Session is patched to control S3 fetch behaviour
 """
 
@@ -26,7 +26,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from xeter.services.presenter.deps import create_session_token, verify_session_token
+from xeter.services.presenter.deps import create_session_token, get_ch_client, verify_session_token
 from xeter.services.presenter.main import app
 from xeter.services.presenter.routers.auth import get_session
 from xeter.shared.models import Flag
@@ -167,8 +167,16 @@ def _make_s3_mock(prompt="prompt text", response="response text", raw_response="
     return mock_session
 
 
+def _ch_client_override(ch_client):
+    """Return a FastAPI dependency override that yields the given CH client."""
+    def override():
+        yield ch_client
+    return override
+
+
 def _cleanup():
     """Remove all dependency overrides after each test."""
+    app.dependency_overrides.pop(get_ch_client, None)
     app.dependency_overrides.pop(verify_session_token, None)
     app.dependency_overrides.pop(get_session, None)
 
@@ -178,7 +186,7 @@ def _client_with_mocks(ch_row=None, flags=None, score_rows=None, tenant_id=TENAN
     ch_client = _make_ch_client(ch_row)
     pg_session = _make_pg_session(flags=flags, score_rows=score_rows)
 
-    app.state.ch_client = ch_client
+    app.dependency_overrides[get_ch_client] = _ch_client_override(ch_client)
     app.dependency_overrides[verify_session_token] = _auth_override(tenant_id)
     app.dependency_overrides[get_session] = _session_override(pg_session)
 
@@ -277,8 +285,8 @@ def test_span_detail_s3_timeout_returns_504():
         _cleanup()
 
 
-def test_span_detail_s3_error_returns_502():
-    """S3 fetch raising generic Exception -> 502 with s3_error body."""
+def test_span_detail_s3_error_degrades_gracefully():
+    """S3 fetch raising generic Exception -> 200 with null payloads."""
     row = _ch_span_row()
     client, _, _ = _client_with_mocks(ch_row=row)
 
@@ -295,9 +303,11 @@ def test_span_detail_s3_error_returns_502():
                 headers={"Authorization": f"Bearer {create_session_token(TENANT_A)}"},
             )
 
-        assert resp.status_code == 502, resp.text
-        detail = resp.json()["detail"]
-        assert detail["error"] == "s3_error"
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["prompt"] is None
+        assert body["response"] is None
+        assert body["raw_response"] is None
     finally:
         _cleanup()
 
@@ -349,7 +359,7 @@ def test_span_detail_missing_token_returns_401():
     dummy_session = _make_pg_session()
     app.dependency_overrides[get_session] = _session_override(dummy_session)
     ch_client = _make_ch_client(_ch_span_row())
-    app.state.ch_client = ch_client
+    app.dependency_overrides[get_ch_client] = _ch_client_override(ch_client)
 
     client = TestClient(app)
     try:

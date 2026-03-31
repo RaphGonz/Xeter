@@ -32,13 +32,14 @@ import os
 from typing import Annotated
 
 import aioboto3
+import clickhouse_connect
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from xeter.services.presenter.deps import verify_session_token
+from xeter.services.presenter.deps import get_ch_client, verify_session_token
 from xeter.services.presenter.routers.auth import get_session
 from xeter.shared.models import Flag
 
@@ -141,9 +142,9 @@ def _decode_cursor(cursor: str) -> str:
 
 @router.get("/spans", response_model=SpanListResponse)
 async def list_spans(
-    request: Request,
     tenant_id: Annotated[str, Depends(verify_session_token)],
     session: Annotated[AsyncSession, Depends(get_session)],
+    ch_client: Annotated[clickhouse_connect.driver.Client, Depends(get_ch_client)],
     limit: int = Query(default=50, ge=1, le=100),
     cursor: str | None = Query(default=None),
     flag_type: str | None = Query(default=None),
@@ -170,8 +171,6 @@ async def list_spans(
       - All active filters are AND-combined.
       - No filter = backward-compatible, returns all spans.
     """
-    ch_client = request.app.state.ch_client
-
     # --- Step 1: ClickHouse query ---
     params = {"tenant_id": tenant_id, "limit": limit}
     where_clauses = ["tenant_id = %(tenant_id)s"]
@@ -251,9 +250,9 @@ async def list_spans(
         text(
             "SELECT span_id, analyzer_name, metric_name, score "
             "FROM span_scores "
-            "WHERE tenant_id = :tid AND span_id IN :span_ids"
+            "WHERE tenant_id = :tid AND span_id = ANY(:span_ids)"
         ),
-        {"tid": tenant_id, "span_ids": tuple(span_ids)},
+        {"tid": tenant_id, "span_ids": list(span_ids)},
     )
     scored_span_ids: set[str] = {row[0] for row in scores_result.fetchall()}
 
@@ -323,7 +322,7 @@ async def _fetch_s3_payload(s3_client, bucket: str, key: str | None) -> str | No
     Returns None if key is None (field was not uploaded).
     Caller is responsible for wrapping in asyncio.wait_for.
     """
-    if key is None:
+    if not key:
         return None
     response = await s3_client.get_object(Bucket=bucket, Key=key)
     body = await response["Body"].read()
@@ -376,9 +375,9 @@ async def _fetch_all_s3_payloads(
 @router.get("/spans/{span_id}", response_model=SpanDetailResponse)
 async def get_span_detail(
     span_id: str,
-    request: Request,
     tenant_id: Annotated[str, Depends(verify_session_token)],
     session: Annotated[AsyncSession, Depends(get_session)],
+    ch_client: Annotated[clickhouse_connect.driver.Client, Depends(get_ch_client)],
 ) -> SpanDetailResponse:
     """Return full detail for a single span.
 
@@ -391,9 +390,12 @@ async def get_span_detail(
       4. Return 504 on S3 timeout, 502 on other S3 errors — no partial data.
       5. Merge and return SpanDetailResponse.
     """
-    ch_client = request.app.state.ch_client
-
-    # --- Step 1: Parallel fetch ---
+    # --- Step 1: Fetch ClickHouse span concurrently with PostgreSQL queries ---
+    # NOTE: The two PostgreSQL queries (_fetch_pg_flags, _fetch_pg_scores) MUST run
+    # sequentially on the shared AsyncSession. SQLAlchemy's AsyncSession wraps a
+    # single connection whose state machine cannot handle concurrent execute() calls —
+    # doing so raises IllegalStateChangeError. The ClickHouse query uses a separate
+    # client and can still run concurrently with the PG work.
 
     async def _fetch_ch_span():
         ch_query = (
@@ -410,16 +412,18 @@ async def get_span_detail(
         rows = result.result_rows
         return rows[0] if rows else None
 
-    async def _fetch_pg_flags():
+    async def _fetch_pg_data():
+        # Run flags and scores queries sequentially on the same session.
+        # AsyncSession is NOT safe for concurrent use — two simultaneous execute()
+        # calls on the same session cause IllegalStateChangeError.
         flags_result = await session.execute(
             select(Flag).where(
                 Flag.tenant_id == tenant_id,
                 Flag.span_id == span_id,
             )
         )
-        return list(flags_result.scalars().all())
+        flags = list(flags_result.scalars().all())
 
-    async def _fetch_pg_scores():
         # CRITICAL: span_scores has NO RLS — tenant_id filter is mandatory
         scores_result = await session.execute(
             text(
@@ -429,12 +433,13 @@ async def get_span_detail(
             ),
             {"tid": tenant_id, "sid": span_id},
         )
-        return scores_result.fetchall()
+        scores = scores_result.fetchall()
 
-    ch_span, pg_flags, pg_scores = await asyncio.gather(
+        return flags, scores
+
+    ch_span, (pg_flags, pg_scores) = await asyncio.gather(
         _fetch_ch_span(),
-        _fetch_pg_flags(),
-        _fetch_pg_scores(),
+        _fetch_pg_data(),
     )
 
     # --- Step 2: 404 on missing or cross-tenant span ---
@@ -462,10 +467,7 @@ async def get_span_detail(
         )
     except Exception as exc:
         logger.error("s3_fetch_failed", span_id=span_id, error=str(exc))
-        raise HTTPException(
-            status_code=502,
-            detail={"error": "s3_error", "message": "Failed to fetch span payloads", "status": 502},
-        )
+        prompt, response, raw_response = None, None, None
 
     # --- Step 5: Merge and return ---
 

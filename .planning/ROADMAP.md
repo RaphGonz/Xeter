@@ -114,7 +114,12 @@ Plans:
   3. Cross-tenant isolation integration test authenticates as Tenant A and confirms zero Tenant B rows in every API response
   4. End-to-end latency from SDK emit to flag row in PostgreSQL is confirmed below 5 seconds at normal load (ingestion <200ms, worker processing <4.8s)
   5. Every span emitted by the SDK carries xeter.schema.version and all similarity scores are present in the score log for every processed span
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — Synthetic labelled fixture generator and calibration harness with P/R curve + threshold auto-update
+- [ ] 06-02-PLAN.md — Load test at 500 rps, cross-tenant isolation tests, e2e latency probe, analyser Dockerfile fix
+- [ ] 06-03-PLAN.md — Unified validation runner (validate.py) and VALIDATION-REPORT.md + human verification
 
 ## Progress
 
@@ -128,4 +133,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. Analysis Path | 4/4 | Complete    | 2026-03-28 |
 | 4. Read Path | 3/3 | Complete   | 2026-03-30 |
 | 5. Dashboard | 4/4 | Complete   | 2026-03-31 |
-| 6. Validation | 0/TBD | Not started | - |
+| 6. Validation | 0/3 | Not started | - |

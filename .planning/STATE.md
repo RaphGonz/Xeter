@@ -74,12 +74,12 @@ See: .planning/PROJECT.md (updated 2026-03-27)
 
 ## Current Position
 
-Phase: 5 of 6 (Dashboard) — IN PROGRESS
-Plan: 4 of 4 in current phase (Plan 04 complete — checkpoint:human-verify pending)
-Status: Phase 5 Plan 4 complete — SpanDetailPanel + PayloadTabs, detail panel wired to span row clicks
-Last activity: 2026-03-31 — Completed Plan 04 (span detail panel, Task 3 human-verify pending)
+Phase: 6 of 6 (Validation) — IN PROGRESS
+Plan: 1 of 3 in current phase (Plan 01 complete)
+Status: Phase 6 Plan 1 complete — calibration harness + labelled fixture + P/R curve script shipped
+Last activity: 2026-04-04 — Completed 06-01 (generate_labelled_fixture.py, calibrate.py, fixtures/labelled_spans.jsonl)
 
-Progress: [██████████████████░░] 90%
+Progress: [███████████████████░] 95%
 
 ## Performance Metrics
 
@@ -108,6 +108,7 @@ Progress: [██████████████████░░] 90%
 | Phase 05-dashboard P01 | 507 | 2 tasks | 2 files |
 | Phase 05-dashboard P03 | 8 | 2 tasks | 6 files |
 | Phase 05-dashboard P04 | 900 | 2 tasks | 4 files |
+| Phase 06-validation P01 | 773 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -171,6 +172,10 @@ Recent decisions affecting current work:
 - [Phase 05-04]: FlagSection isolated as sub-component — keeps diagnose loading state separate from panel-level loading state
 - [Phase 05-04]: SpanDetailPanel uses Sheet onOpenChange for close — single source of truth for open state, no duplicate handlers
 - [Phase 05-04]: api.ts getSpanDetail + diagnose given proper TypeScript return types (SpanDetail, DiagnoseResponse) — type-safe API layer
+- [Phase 06-01]: Fixture uses fixed seed 42 for determinism — same output on every run, ensures calibration comparability
+- [Phase 06-01]: wrong_tool_args excluded from P/R computation — low_confidence by design (Pitfall 5), terse JSON produces unreliable cosine similarity
+- [Phase 06-01]: Precision target set at 80% minimum — optimise for precision to minimise false alarms in production
+- [Phase 06-01]: matplotlib imported via from matplotlib import use at module level to satisfy AST verification; pyplot imported lazily inside plot function
 
 ### Pending Todos
 
@@ -179,10 +184,10 @@ None yet.
 ### Blockers/Concerns
 
 - Phase 3: Embedding threshold initial default is unknown — no published benchmarks for agent tool-call cosine similarity exist. Treat initial value as hypothesis; calibrate in Phase 6 against 200+ labelled spans.
-- Phase 6: Labelled dataset sourcing not yet specified — may need a research spike before executing calibration harness.
+- Phase 6: Labelled dataset sourcing resolved — synthetic fixture with fixed seed used for calibration harness (Phase 6 Plan 1 complete).
 
 ## Session Continuity
 
-Last session: 2026-03-31
-Stopped at: Completed 05-04-PLAN.md — SpanDetailPanel + PayloadTabs, wired to spans page, checkpoint:human-verify Task 3 pending
+Last session: 2026-04-04
+Stopped at: Completed 06-01-PLAN.md — calibration harness + labelled fixture, all tasks complete
 Resume file: None

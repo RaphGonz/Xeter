@@ -27,34 +27,36 @@ Xeter is a B2B SaaS observability platform that debugs AI agent tool-calling fai
 ## Architecture
 
 ```
-Customer Agent  ──SDK + OTel──▶  Analyser (ingestion + heuristics)
-                                      │
-                                      ▼
-                              ┌───────────────┐
-                              │  ClickHouse    │  spans (immutable, append-only)
-                              │  PostgreSQL    │  flags, diagnostics, auth, tenants
-                              │  MinIO (S3)    │  large payloads (prompt, response)
-                              │  Redis         │  ingestion queue
-                              └───────────────┘
-                                      │
-                                      ▼
-                              Presenter (API) ◀── View (dashboard)
-                                      │
-                                      ▼
-                              Diagnosticer (LLM, on-demand)
+Customer Agent  ──SDK──▶  Analyser (ingestion)
+                               │
+                               ├──▶ S3 (large payloads)
+                               ├──▶ ClickHouse (spans)
+                               └──▶ Redis (queue)
+                                        │
+                                        ▼
+                                   Worker (embedding + flagging)
+                                        │
+                                        ▼
+                                   PostgreSQL (flags, scores, auth, tenants)
+                                        │
+                               Presenter (API) ◀── View (dashboard)
+                                        │
+                                        ▼
+                               Diagnosticer (LLM, on-demand)
 ```
 
 **Services:**
-- **Analyser** — receives OTel spans, stores in ClickHouse, enqueues for async heuristic analysis
-- **Presenter** — REST API for the dashboard and tenant management
-- **View** — frontend dashboard (span list, flag indicators, detail views)
+- **Analyser** — receives spans via POST /v1/spans, stores large payloads in S3, batches rows into ClickHouse, enqueues span_id to Redis
+- **Worker** — BRPOP consumer; fetches span from ClickHouse, runs embedding similarity across 5 dimensions, writes flag rows and similarity scores to PostgreSQL
+- **Presenter** — REST API for the dashboard; merges ClickHouse spans + PostgreSQL flags at read time, lazy-loads S3 payloads on span detail
+- **View** — Next.js 15 dashboard (span list, filters, span detail panel with flag scores and S3 payload tabs)
 - **Diagnosticer** — LLM-powered root cause analysis (scaffolded, wired but inactive in v1)
 
 **Storage:**
 - **ClickHouse** — span storage with MergeTree `ORDER BY (tenant_id, trace_id, time_begin)`
-- **PostgreSQL** — flags, diagnostics, auth (API keys, users, tenants) with Row Level Security
-- **MinIO/S3** — large text payloads (prompt, response, available_tools) referenced by key
-- **Redis** — decouples ingestion from embedding workers
+- **PostgreSQL** — flags, similarity scores, auth (API keys, users, tenants) with Row Level Security
+- **MinIO/S3** — large text payloads (prompt, response, raw_response, available_tools) referenced by key
+- **Redis** — decouples ingestion from embedding workers via BRPOP queue
 
 ## Getting Started
 
@@ -72,7 +74,7 @@ git clone <repo-url> && cd Xeter
 # Copy environment defaults
 cp .env.example .env
 
-# Start all services (PostgreSQL, ClickHouse, Redis, MinIO, Analyser, Presenter, View)
+# Start all services (PostgreSQL, ClickHouse, Redis, MinIO, Analyser, Worker, Presenter, View)
 docker compose -f deploy/docker-compose.yml up --build
 
 # In a new terminal — run database migrations
@@ -94,6 +96,25 @@ curl -X POST http://localhost:8000/register \
   -d '{"tenant_name": "acme", "email": "test@acme.com", "password": "password123"}'
 ```
 
+### Instrument Your Agent
+
+```python
+import xeter_sdk as xeter
+
+@xeter.trace(
+    agent_name="my-agent",
+    agent_model="gpt-4o",
+    tool_name="search_web",
+    tool_description="Search the web for a query",
+    prompt_arg="prompt",
+    tools_arg="available_tools",
+)
+def call_search(prompt: str, available_tools: list) -> str:
+    ...
+```
+
+Set `XETER_ENDPOINT=http://localhost:4318` and `XETER_API_KEY=<your-key>` in your environment. Spans are sent fire-and-forget in a background thread — zero added latency to your agent.
+
 ### Dev Commands
 
 All commands run from the repo root:
@@ -107,6 +128,7 @@ All commands run from the repo root:
 | `python -m xeter.scripts.seed` | Seed dev tenant + API key |
 | `python -m xeter.scripts.reset` | Drop all schemas, re-migrate, re-seed |
 | `cd xeter && python -m pytest tests/ -v` | Run test suite |
+| `python xeter/scripts/validate.py` | Run E2E smoke test (register → ingest → analyze → retrieve) |
 
 ### Ports
 
@@ -114,6 +136,7 @@ All commands run from the repo root:
 |---------|------|
 | Presenter (API) | 8000 |
 | Analyser (ingestion) | 4318 |
+| Diagnosticer | 8001 |
 | View (dashboard) | 3000 |
 | PostgreSQL | 5432 |
 | ClickHouse (HTTP) | 8123 |
@@ -127,18 +150,17 @@ All tables enforce tenant isolation via PostgreSQL Row Level Security. Every que
 
 ## Auth
 
-- **SDK ingestion**: API key per tenant (bcrypt hash stored, plaintext returned once at registration)
-- **Dashboard login**: email/password (bcrypt hashed)
-- API keys use the `xtr_` prefix for identification
+- **SDK ingestion**: API key per tenant (bcrypt hash stored, plaintext returned once at registration). Keys use the `xtr_` prefix.
+- **Dashboard login**: email/password (bcrypt hashed), JWT session token returned and sent as `Authorization: Bearer <token>` on subsequent requests
 
 ## Project Status
 
-**Current:** Phase 1 (Foundation) complete — local dev environment, database schemas, DAL with tenant isolation, registration endpoint, dev bootstrap tooling.
+**v1.0 shipped** (2026-04-04) — full pipeline operational: SDK → Analyser → Redis → Worker → Presenter → Next.js dashboard. E2E smoke test passes (~37s register → ingest → analyze → retrieve).
 
-**Next:** Span ingestion pipeline, heuristic flagging, dashboard.
+**Next:** v1.1 — LLM-powered Diagnosticer (root cause analysis), TypeScript SDK, cloud deployment.
 
 ## Documentation
 
-- `documentation/xeterarc42_v0.5.md` — full arc42 architecture documentation
+- `documentation/xeterarc42_v0.5.md` — full arc42 architecture documentation (v1.0)
 - `documentation/silent_failures_ai_agents.md` — problem space research
 - `documentation/foundation_sprint/` — competitor analysis, positioning, hypothesis validation

@@ -69,12 +69,12 @@ services:
   analyser:
     build:
       context: ..
-      dockerfile: services/analyser/Dockerfile
+      dockerfile: services/presenter/Dockerfile
     ports:
       - "4318:4318"
     volumes:
-      - ../services/analyser:/app/services/analyser
-    command: uvicorn services.analyser.main:app --host 0.0.0.0 --port 4318 --reload
+      - ../xeter:/app/xeter
+    command: uvicorn xeter.services.analyser.main:app --host 0.0.0.0 --port 4318 --reload
     depends_on:
       postgres:
         condition: service_healthy
@@ -90,6 +90,10 @@ services:
       CLICKHOUSE_PASSWORD: xeter_dev_password
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: http://minio:9000
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: xeter
+      S3_SECRET_KEY: xeter_dev_password
+      S3_BUCKET: xeter-payloads
 
   presenter:
     build:
@@ -124,6 +128,19 @@ services:
       S3_BUCKET: xeter-payloads
       DIAGNOSTICER_URL: http://diagnosticer:8001
 
+  embedder:
+    build:
+      context: ..
+      dockerfile: services/embedder/Dockerfile
+    ports:
+      - "8002:8002"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8002/health')\""]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
   worker:
     build:
       context: ..
@@ -137,11 +154,14 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      embedder:
+        condition: service_healthy
     environment:
       DATABASE_URL: postgresql+asyncpg://xeter:xeter_dev_password@postgres:5432/xeter
       CLICKHOUSE_HOST: clickhouse
       CLICKHOUSE_PASSWORD: xeter_dev_password
       REDIS_URL: redis://redis:6379
+      EMBEDDER_URL: http://embedder:8002
       S3_ENDPOINT_URL: http://minio:9000
       S3_ACCESS_KEY: xeter
       S3_SECRET_KEY: xeter_dev_password

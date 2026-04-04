@@ -3,6 +3,19 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
+last_updated: "2026-04-04T07:19:52.207Z"
+progress:
+  total_phases: 6
+  completed_phases: 5
+  total_plans: 21
+  completed_plans: 20
+---
+
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: unknown
 last_updated: "2026-03-31T15:51:30.267Z"
 progress:
   total_phases: 5
@@ -109,6 +122,7 @@ Progress: [███████████████████░] 95%
 | Phase 05-dashboard P03 | 8 | 2 tasks | 6 files |
 | Phase 05-dashboard P04 | 900 | 2 tasks | 4 files |
 | Phase 06-validation P01 | 773 | 2 tasks | 4 files |
+| Phase 06-validation P02 | 1067 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -176,6 +190,9 @@ Recent decisions affecting current work:
 - [Phase 06-01]: wrong_tool_args excluded from P/R computation — low_confidence by design (Pitfall 5), terse JSON produces unreliable cosine similarity
 - [Phase 06-01]: Precision target set at 80% minimum — optimise for precision to minimise false alarms in production
 - [Phase 06-01]: matplotlib imported via from matplotlib import use at module level to satisfy AST verification; pyplot imported lazily inside plot function
+- [Phase 06-validation]: Analyser docker-compose uses presenter Dockerfile pattern — Phase 1 stub only served GET /healthz, real xeter.services.analyser requires xeter package installed
+- [Phase 06-validation]: E2E latency probe uses psycopg2 sync polling for span_scores — matches reset.py pattern, avoids asyncpg outside async context
+- [Phase 06-validation]: two_tenant_stack fixture is module-scoped — expensive registration+emission done once, all 5 isolation tests share the same tenant pair
 
 ### Pending Todos
 
@@ -189,5 +206,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-04-04
-Stopped at: Completed 06-01-PLAN.md — calibration harness + labelled fixture, all tasks complete
+Stopped at: Completed 06-02-PLAN.md — load test script, e2e probe, isolation tests, analyser compose fixed
 Resume file: None

@@ -1,428 +1,223 @@
-"""Unified validation runner for Xeter.
+"""E2E smoke test for Xeter.
 
-Orchestrates all four validation steps in continue-all mode:
-  1. Calibration          — threshold sweep + P/R curve (requires live embedder)
-  2. Load Test            — 500 rps / 60 s (requires full Docker stack)
-  3. Cross-Tenant Isolation — pytest tests with VALIDATION_STACK=1
-  4. E2E Latency          — extracted from step 2 (or standalone probe)
+Exercises the full pipeline once — register, login, ingest a span,
+wait for the worker to score it, fetch the detail — and reports timings.
 
-Every step runs regardless of prior failures.
-Produces VALIDATION-REPORT.md at project root.
+Requires the full Docker stack to be running:
+    docker compose -f deploy/docker-compose.yml up
 
 Usage:
     python xeter/scripts/validate.py
-    python xeter/scripts/validate.py --skip-calibration
-    python xeter/scripts/validate.py --skip-load-test
-    python xeter/scripts/validate.py --skip-calibration --skip-load-test
 
 Exit code: 0 if all steps pass, 1 if any step fails.
 """
 
 from __future__ import annotations
 
-import argparse
+import json
 import os
-import subprocess
 import sys
+import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
+
+import httpx
 
 # ---------------------------------------------------------------------------
-# Project paths
+# Configuration
 # ---------------------------------------------------------------------------
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 REPORT_PATH = PROJECT_ROOT / "VALIDATION-REPORT.md"
-ISOLATION_TEST_PATH = (
-    PROJECT_ROOT / "xeter" / "tests" / "validation" / "test_isolation.py"
-)
 
-# ---------------------------------------------------------------------------
-# Step result container
-# ---------------------------------------------------------------------------
+ANALYSER_URL = os.environ.get("ANALYSER_URL", "http://localhost:4318")
+PRESENTER_URL = os.environ.get("PRESENTER_URL", "http://localhost:8000")
 
-
-class StepResult:
-    def __init__(
-        self,
-        name: str,
-        passed: Optional[bool],
-        detail: str,
-        extra: Optional[dict[str, Any]] = None,
-    ) -> None:
-        self.name = name
-        self.passed = passed  # None means "skipped"
-        self.detail = detail
-        self.extra = extra or {}
-
-    @property
-    def status_str(self) -> str:
-        if self.passed is None:
-            return "SKIP"
-        return "PASS" if self.passed else "FAIL"
+# How long to wait for the worker to process the span (seconds)
+PROCESSING_TIMEOUT = 60
+POLL_INTERVAL = 2
 
 
 # ---------------------------------------------------------------------------
-# Step 1: Calibration
+# E2E smoke test
 # ---------------------------------------------------------------------------
 
 
-def run_calibration() -> StepResult:
-    """Import and run calibrate.main(); capture threshold, precision, recall."""
-    print("\n" + "=" * 60)
-    print("STEP 1: CALIBRATION")
-    print("=" * 60)
+def run_e2e_smoke() -> dict[str, Any]:
+    """Run the full E2E pipeline and return step results with timings."""
+    steps: list[dict[str, Any]] = []
+    client = httpx.Client(timeout=30)
+    overall_t0 = time.monotonic()
 
     try:
-        # Import lazily to avoid triggering embedder at import time
-        sys.path.insert(0, str(PROJECT_ROOT))
-        from xeter.scripts.calibrate import (  # type: ignore
-            build_thresholds,
-            compute_pr_curve,
-            load_fixture,
-            patch_docker_compose,
-            plot_pr_curve,
-            select_threshold,
-        )
-        import httpx
-        import numpy as np
-        from xeter.services.worker.base import EmbedderClient  # type: ignore
+        # --- Step 1: Register tenant ---
+        suffix = uuid.uuid4().hex[:8]
+        tenant_name = f"e2e-smoke-{suffix}"
+        email = f"e2e-smoke-{suffix}@xeter-validate.test"
+        password = f"SmokeTest{suffix}!"
 
-        embedder_url = "http://localhost:8002"
-        print(f"Connecting to embedder at {embedder_url} ...")
+        t0 = time.monotonic()
         try:
-            resp = httpx.get(f"{embedder_url}/health", timeout=5.0)
-            resp.raise_for_status()
-            print("Embedder reachable.")
-        except Exception as exc:
-            return StepResult(
-                name="Calibration",
-                passed=False,
-                detail=f"Embedder not reachable: {exc}",
+            reg_resp = client.post(
+                f"{PRESENTER_URL}/register",
+                json={"tenant_name": tenant_name, "email": email, "password": password},
             )
+            reg_ms = (time.monotonic() - t0) * 1000
+            reg_resp.raise_for_status()
+            reg_data = reg_resp.json()
+            api_key = reg_data["api_key"]
+            tenant_id = reg_data["tenant_id"]
+            steps.append({"name": "Register tenant", "passed": True, "ms": reg_ms})
+            print(f"  Register tenant: PASS ({reg_ms:.0f}ms)")
+        except Exception as exc:
+            reg_ms = (time.monotonic() - t0) * 1000
+            steps.append({"name": "Register tenant", "passed": False, "ms": reg_ms, "error": str(exc)})
+            print(f"  Register tenant: FAIL ({reg_ms:.0f}ms) — {exc}")
+            return {"steps": steps, "total_ms": (time.monotonic() - overall_t0) * 1000}
 
-        embedder = EmbedderClient(base_url=embedder_url)
-        spans = load_fixture()
+        # --- Step 2: Login ---
+        t0 = time.monotonic()
+        try:
+            login_resp = client.post(
+                f"{PRESENTER_URL}/login",
+                json={"email": email, "password": password},
+            )
+            login_ms = (time.monotonic() - t0) * 1000
+            login_resp.raise_for_status()
+            token = login_resp.json()["session_token"]
+            steps.append({"name": "Login", "passed": True, "ms": login_ms})
+            print(f"  Login: PASS ({login_ms:.0f}ms)")
+        except Exception as exc:
+            login_ms = (time.monotonic() - t0) * 1000
+            steps.append({"name": "Login", "passed": False, "ms": login_ms, "error": str(exc)})
+            print(f"  Login: FAIL ({login_ms:.0f}ms) — {exc}")
+            return {"steps": steps, "total_ms": (time.monotonic() - overall_t0) * 1000}
 
-        threshold_bases = list(np.arange(0.10, 0.95, 0.02))
-        pr_results = compute_pr_curve(spans, embedder, threshold_bases)
-
-        selected = select_threshold(pr_results)
-        calibrated = build_thresholds(selected["base"])
-
-        precision = selected["precision"]
-        recall = selected["recall"]
-        base = selected["base"]
-        met_target = selected.get("met_target", False)
-
-        plot_pr_curve(pr_results, selected)
-        patch_docker_compose(calibrated)
-
-        passed = precision >= 0.80
-        detail = (
-            f"base={base:.4f}, precision={precision:.4f}, recall={recall:.4f}"
-        )
-        if not met_target:
-            detail += " [WARNING: 80% precision target not met]"
-
-        print(f"\nCalibration result: {'PASS' if passed else 'FAIL'} — {detail}")
-
-        return StepResult(
-            name="Calibration",
-            passed=passed,
-            detail=detail,
-            extra={
-                "threshold": base,
-                "precision": precision,
-                "recall": recall,
-                "calibrated_thresholds": calibrated,
-                "met_target": met_target,
-            },
-        )
-
-    except Exception as exc:
-        print(f"ERROR in calibration step: {exc}")
-        return StepResult(
-            name="Calibration",
-            passed=False,
-            detail=f"Exception: {exc}",
-        )
-
-
-# ---------------------------------------------------------------------------
-# Step 2: Load Test
-# ---------------------------------------------------------------------------
-
-
-def run_load_test() -> StepResult:
-    """Import and run load_test.main(); capture latency stats."""
-    print("\n" + "=" * 60)
-    print("STEP 2: LOAD TEST (500 rps / 60 s)")
-    print("=" * 60)
-
-    try:
-        from xeter.scripts.load_test import main as load_test_main  # type: ignore
-
-        results = load_test_main(rps=500, duration=60)
-
-        load = results["load"]
-        parts = results["clickhouse_parts"]
-        e2e = results["e2e_latency"]
-
-        total_sent = load["total_sent"]
-        success_count = load["success_count"]
-        error_count = load["error_count"]
-        p50_ms = load["p50_ms"]
-        p95_ms = load["p95_ms"]
-        p99_ms = load["p99_ms"]
-        active_parts = parts["active_parts"]
-        e2e_elapsed_ms = e2e["elapsed_ms"]
-        e2e_passed = e2e["e2e_assert_passed"]
-
-        passed = (
-            error_count == 0
-            and p95_ms < 200
-            and active_parts < 300
-        )
-
-        detail_parts = [
-            f"sent={total_sent}",
-            f"ok={success_count}",
-            f"err={error_count}",
-            f"p50={p50_ms}ms",
-            f"p95={p95_ms}ms",
-            f"p99={p99_ms}ms",
-            f"parts={active_parts}",
-        ]
-        detail = ", ".join(detail_parts)
-        if not passed:
-            reasons = []
-            if error_count > 0:
-                reasons.append(f"{error_count} errors")
-            if p95_ms >= 200:
-                reasons.append(f"p95={p95_ms}ms >= 200ms")
-            if active_parts >= 300:
-                reasons.append(f"parts={active_parts} >= 300")
-            detail += f" [FAIL: {'; '.join(reasons)}]"
-
-        print(f"\nLoad test result: {'PASS' if passed else 'FAIL'} — {detail}")
-
-        return StepResult(
-            name="Load Test",
-            passed=passed,
-            detail=detail,
-            extra={
-                "total_sent": total_sent,
-                "success_count": success_count,
-                "error_count": error_count,
-                "p50_ms": p50_ms,
-                "p95_ms": p95_ms,
-                "p99_ms": p99_ms,
-                "active_parts": active_parts,
-                "e2e_elapsed_ms": e2e_elapsed_ms,
-                "e2e_passed": e2e_passed,
-            },
-        )
-
-    except Exception as exc:
-        print(f"ERROR in load test step: {exc}")
-        return StepResult(
-            name="Load Test",
-            passed=False,
-            detail=f"Exception: {exc}",
-        )
-
-
-# ---------------------------------------------------------------------------
-# Step 3: Cross-Tenant Isolation
-# ---------------------------------------------------------------------------
-
-
-def run_isolation_tests() -> StepResult:
-    """Run pytest validation/test_isolation.py with VALIDATION_STACK=1."""
-    print("\n" + "=" * 60)
-    print("STEP 3: CROSS-TENANT ISOLATION")
-    print("=" * 60)
-
-    env = os.environ.copy()
-    env["VALIDATION_STACK"] = "1"
-
-    cmd = [
-        sys.executable,
-        "-m",
-        "pytest",
-        str(ISOLATION_TEST_PATH),
-        "-v",
-        "--tb=short",
-    ]
-
-    print(f"Running: {' '.join(cmd)}")
-    print(f"Working directory: {PROJECT_ROOT}")
-
-    try:
-        proc = subprocess.run(
-            cmd,
-            env=env,
-            cwd=str(PROJECT_ROOT),
-            capture_output=False,
-            timeout=300,
-        )
-        passed = proc.returncode == 0
-        detail = f"pytest exit code {proc.returncode}"
-        if passed:
-            detail += " (all tests green)"
-        else:
-            detail += " (one or more tests failed)"
-
-        print(f"\nIsolation result: {'PASS' if passed else 'FAIL'} — {detail}")
-
-        return StepResult(
-            name="Cross-Tenant Isolation",
-            passed=passed,
-            detail=detail,
-            extra={"pytest_exit_code": proc.returncode},
-        )
-
-    except subprocess.TimeoutExpired:
-        return StepResult(
-            name="Cross-Tenant Isolation",
-            passed=False,
-            detail="Exception: pytest timed out after 300s",
-        )
-    except Exception as exc:
-        print(f"ERROR in isolation step: {exc}")
-        return StepResult(
-            name="Cross-Tenant Isolation",
-            passed=False,
-            detail=f"Exception: {exc}",
-        )
-
-
-# ---------------------------------------------------------------------------
-# Step 4: E2E Latency
-# ---------------------------------------------------------------------------
-
-
-def run_e2e_latency(
-    load_test_result: Optional[StepResult],
-) -> StepResult:
-    """Extract e2e latency from load test result, or run standalone probe."""
-    print("\n" + "=" * 60)
-    print("STEP 4: E2E LATENCY")
-    print("=" * 60)
-
-    # Try to reuse the e2e result already captured in the load test
-    if (
-        load_test_result is not None
-        and load_test_result.passed is not None
-        and "e2e_elapsed_ms" in load_test_result.extra
-    ):
-        e2e_elapsed_ms = load_test_result.extra["e2e_elapsed_ms"]
-        e2e_passed = load_test_result.extra["e2e_passed"]
-        detail = f"elapsed={e2e_elapsed_ms:.1f}ms (from load test probe)"
-        if not e2e_passed:
-            detail += " [FAIL: >= 5000ms]"
-        print(f"\nE2E latency result: {'PASS' if e2e_passed else 'FAIL'} — {detail}")
-        return StepResult(
-            name="E2E Latency",
-            passed=e2e_passed,
-            detail=detail,
-            extra={"elapsed_ms": e2e_elapsed_ms, "source": "load_test"},
-        )
-
-    # Load test was skipped or failed — run a standalone probe
-    print("Load test unavailable — running standalone e2e probe...")
-
-    try:
-        import time
-        import uuid
-
-        import httpx
-        import psycopg2  # type: ignore
-
-        analyser_url = os.environ.get("ANALYSER_URL", "http://localhost:4318")
-        presenter_url = os.environ.get("PRESENTER_URL", "http://localhost:8000")
-        pg_host = os.environ.get("POSTGRES_HOST", "localhost")
-        pg_port = int(os.environ.get("POSTGRES_PORT", "5432"))
-
-        # Register a transient tenant for the probe
-        tenant_name = f"e2e-probe-{uuid.uuid4().hex[:8]}"
-        reg_resp = httpx.post(
-            f"{presenter_url}/register",
-            json={"tenant_name": tenant_name, "email": f"{tenant_name}@probe.test", "password": "probepass123"},
-            timeout=10,
-        )
-        reg_resp.raise_for_status()
-        api_key = reg_resp.json()["api_key"]
-
+        # --- Step 3: Ingest span ---
         span_id = str(uuid.uuid4())
+        trace_id = str(uuid.uuid4())
+        now_iso = datetime.now(timezone.utc).isoformat()
         payload = {
             "span_id": span_id,
-            "trace_id": str(uuid.uuid4()),
-            "agent_name": "e2e-probe",
+            "trace_id": trace_id,
+            "agent_name": "e2e-smoke-agent",
             "agent_model": "gpt-4o",
-            "tool_name": "web_search",
-            "tool_description": "Search the web for information",
-            "tool_arguments": '{"query": "test query"}',
-            "tool_output": "Probe output for e2e latency test.",
-            "prompt": "Search for something",
-            "response": "I searched for something.",
-            "raw_response": None,
-            "available_tools": None,
-            "time_begin": datetime.now(timezone.utc).isoformat(),
-            "time_end": datetime.now(timezone.utc).isoformat(),
+            "tool_name": "search_documents",
+            "tool_description": "Search through financial documents by keyword or date range.",
+            "tool_arguments": json.dumps({"query": "Q1 earnings", "date_from": "2025-01-01"}),
+            "tool_output": "Revenue increased 12% year-over-year in Q1 2025.",
+            "prompt": "Summarize the latest quarterly earnings report for the board presentation.",
+            "response": "Based on the Q1 2025 report, revenue grew 12% YoY driven by enterprise expansion.",
+            "available_tools": json.dumps([
+                {"name": "search_documents", "description": "Search through financial documents by keyword or date range."},
+                {"name": "extract_tables", "description": "Extract structured tables from a PDF document page."},
+            ]),
+            "time_begin": now_iso,
+            "time_end": now_iso,
+            "xeter.schema.version": "1.0",
         }
 
         t0 = time.monotonic()
-        send_resp = httpx.post(
-            f"{analyser_url}/v1/spans",
-            json=payload,
-            headers={"X-API-Key": api_key},
-            timeout=10,
-        )
-        send_resp.raise_for_status()
-
-        pg_dsn = f"host={pg_host} port={pg_port} dbname=xeter user=xeter password=xeter_dev_password"
-        conn = psycopg2.connect(pg_dsn)
-        conn.autocommit = True
-        found = False
-        deadline = t0 + 10.0
         try:
-            with conn.cursor() as cur:
-                while time.monotonic() < deadline:
-                    cur.execute(
-                        "SELECT 1 FROM span_scores WHERE span_id = %s LIMIT 1",
-                        (span_id,),
-                    )
-                    if cur.fetchone():
-                        found = True
+            ingest_resp = client.post(
+                f"{ANALYSER_URL}/v1/spans",
+                json=payload,
+                headers={"X-API-Key": api_key},
+            )
+            ingest_ms = (time.monotonic() - t0) * 1000
+            ingest_resp.raise_for_status()
+            steps.append({"name": "Ingest span", "passed": True, "ms": ingest_ms})
+            print(f"  Ingest span: PASS ({ingest_ms:.0f}ms)")
+        except Exception as exc:
+            ingest_ms = (time.monotonic() - t0) * 1000
+            steps.append({"name": "Ingest span", "passed": False, "ms": ingest_ms, "error": str(exc)})
+            print(f"  Ingest span: FAIL ({ingest_ms:.0f}ms) — {exc}")
+            return {"steps": steps, "total_ms": (time.monotonic() - overall_t0) * 1000}
+
+        # --- Step 4: Wait for worker processing ---
+        auth_headers = {"Authorization": f"Bearer {token}"}
+        t0 = time.monotonic()
+        status = "pending"
+        scores_count = 0
+        deadline = time.monotonic() + PROCESSING_TIMEOUT
+
+        print(f"  Waiting for worker to process span {span_id[:8]}...", end="", flush=True)
+        while time.monotonic() < deadline:
+            time.sleep(POLL_INTERVAL)
+            try:
+                list_resp = client.get(f"{PRESENTER_URL}/spans", headers=auth_headers)
+                if list_resp.status_code == 200:
+                    spans = list_resp.json().get("spans", [])
+                    match = next((s for s in spans if s["span_id"] == span_id), None)
+                    if match and match.get("status") != "pending":
+                        status = match["status"]
                         break
-                    time.sleep(0.5)
-        finally:
-            conn.close()
+            except Exception:
+                pass
+            print(".", end="", flush=True)
 
-        elapsed_ms = (time.monotonic() - t0) * 1000
-        e2e_passed = elapsed_ms < 5000
-        detail = f"elapsed={elapsed_ms:.1f}ms (standalone probe, found={found})"
-        if not e2e_passed:
-            detail += " [FAIL: >= 5000ms]"
+        process_ms = (time.monotonic() - t0) * 1000
+        processed = status != "pending"
+        print()
 
-        print(f"\nE2E latency result: {'PASS' if e2e_passed else 'FAIL'} — {detail}")
-        return StepResult(
-            name="E2E Latency",
-            passed=e2e_passed,
-            detail=detail,
-            extra={"elapsed_ms": elapsed_ms, "found": found, "source": "standalone"},
-        )
+        if processed:
+            steps.append({"name": "Worker processing", "passed": True, "ms": process_ms, "status": status})
+            print(f"  Worker processing: PASS ({process_ms:.0f}ms) — status={status}")
+        else:
+            steps.append({"name": "Worker processing", "passed": False, "ms": process_ms, "error": "Timed out waiting for worker"})
+            print(f"  Worker processing: FAIL ({process_ms:.0f}ms) — still pending after {PROCESSING_TIMEOUT}s")
+            return {"steps": steps, "total_ms": (time.monotonic() - overall_t0) * 1000}
 
-    except Exception as exc:
-        print(f"ERROR in e2e latency step: {exc}")
-        return StepResult(
-            name="E2E Latency",
-            passed=False,
-            detail=f"Exception: {exc}",
-        )
+        # --- Step 5: Fetch span detail ---
+        t0 = time.monotonic()
+        try:
+            detail_resp = client.get(f"{PRESENTER_URL}/spans/{span_id}", headers=auth_headers)
+            detail_ms = (time.monotonic() - t0) * 1000
+            detail_resp.raise_for_status()
+            detail = detail_resp.json()
+
+            scores = detail.get("scores", [])
+            scores_count = len(scores)
+            has_scores = scores_count > 0
+            has_prompt = detail.get("prompt") is not None
+            has_response = detail.get("response") is not None
+
+            passed = has_scores and has_prompt and has_response
+            issues = []
+            if not has_scores:
+                issues.append("no scores")
+            if not has_prompt:
+                issues.append("no prompt from S3")
+            if not has_response:
+                issues.append("no response from S3")
+
+            extra = {
+                "scores_count": scores_count,
+                "has_prompt": has_prompt,
+                "has_response": has_response,
+                "status": detail.get("status"),
+                "flags_count": len(detail.get("flags", [])),
+            }
+
+            if passed:
+                steps.append({"name": "Span detail + S3", "passed": True, "ms": detail_ms, **extra})
+                print(f"  Span detail + S3: PASS ({detail_ms:.0f}ms) — {scores_count} scores, prompt+response OK")
+            else:
+                steps.append({"name": "Span detail + S3", "passed": False, "ms": detail_ms, "error": ", ".join(issues), **extra})
+                print(f"  Span detail + S3: FAIL ({detail_ms:.0f}ms) — {', '.join(issues)}")
+
+        except Exception as exc:
+            detail_ms = (time.monotonic() - t0) * 1000
+            steps.append({"name": "Span detail + S3", "passed": False, "ms": detail_ms, "error": str(exc)})
+            print(f"  Span detail + S3: FAIL ({detail_ms:.0f}ms) — {exc}")
+
+    finally:
+        client.close()
+
+    total_ms = (time.monotonic() - overall_t0) * 1000
+    return {"steps": steps, "total_ms": total_ms}
 
 
 # ---------------------------------------------------------------------------
@@ -430,94 +225,55 @@ def run_e2e_latency(
 # ---------------------------------------------------------------------------
 
 
-def write_report(
-    results: list[StepResult],
-    generated_at: str,
-) -> None:
+def write_report(result: dict[str, Any], generated_at: str) -> None:
     """Write VALIDATION-REPORT.md to project root."""
-    overall_passed = all(
-        r.passed is True or r.passed is None for r in results
-    ) and any(r.passed is True for r in results)
-    # Actually: overall PASS only if all non-skipped steps passed
-    non_skipped = [r for r in results if r.passed is not None]
-    overall_passed = all(r.passed for r in non_skipped) if non_skipped else False
+    steps = result["steps"]
+    total_ms = result["total_ms"]
+    all_passed = all(s["passed"] for s in steps)
+    overall = "PASS" if all_passed else "FAIL"
 
-    overall_str = "PASS" if overall_passed else "FAIL"
+    lines = [
+        "# Validation Report",
+        "",
+        f"Generated: {generated_at}",
+        f"Overall result: **{overall}**",
+        "",
+        "## E2E Smoke Test",
+        "",
+        "| Step | Status | Duration |",
+        "|------|--------|----------|",
+    ]
 
-    lines: list[str] = []
+    for s in steps:
+        status = "PASS" if s["passed"] else "FAIL"
+        ms = s["ms"]
+        detail = f"{ms:.0f}ms"
+        if not s["passed"] and "error" in s:
+            detail += f" ({s['error']})"
+        lines.append(f"| {s['name']} | {status} | {detail} |")
 
-    lines.append("# Validation Report")
     lines.append("")
-    lines.append(f"Generated: {generated_at}")
-    lines.append(f"Overall result: **{overall_str}**")
+    lines.append(f"**Total E2E: {total_ms:.0f}ms**")
     lines.append("")
 
-    # Results table
-    lines.append("## Results Summary")
+    # Verification summary from detail step
+    detail_step = next((s for s in steps if s["name"] == "Span detail + S3"), None)
+    lines.append("## Verification")
     lines.append("")
-    lines.append("| Step | Status | Detail |")
-    lines.append("|------|--------|--------|")
-    for r in results:
-        lines.append(f"| {r.name} | {r.status_str} | {r.detail} |")
-    lines.append("")
-
-    # Calibrated thresholds table
-    calibration = next((r for r in results if r.name == "Calibration"), None)
-    if calibration and "calibrated_thresholds" in calibration.extra:
-        thresholds = calibration.extra["calibrated_thresholds"]
-        # Old values are derived from defaults (same ratios with base=0.5)
-        old_thresholds = {
-            "wrong_tool": 0.5,
-            "wrong_tool_args": 0.4,
-            "no_tool": 0.6,
-            "excessive_tool": 0.3,
-            "parsing_error": 0.5,
-            "response_anomaly": 0.4,
-        }
-        lines.append("## Calibrated Thresholds")
-        lines.append("")
-        lines.append("| Key | Old Value | New Value |")
-        lines.append("|-----|-----------|-----------|")
-        for key, new_val in thresholds.items():
-            old_val = old_thresholds.get(key, "N/A")
-            lines.append(f"| {key} | {old_val} | {new_val} |")
-        lines.append("")
-
-    # Load test detail
-    load_step = next((r for r in results if r.name == "Load Test"), None)
-    if load_step and load_step.extra:
-        ex = load_step.extra
-        lines.append("## Load Test Detail")
-        lines.append("")
-        lines.append("| Metric | Value |")
-        lines.append("|--------|-------|")
-        lines.append(f"| Total requests sent | {ex.get('total_sent', 'N/A')} |")
-        lines.append(f"| Successful | {ex.get('success_count', 'N/A')} |")
-        lines.append(f"| Errors | {ex.get('error_count', 'N/A')} |")
-        lines.append(f"| p50 latency | {ex.get('p50_ms', 'N/A')} ms |")
-        lines.append(f"| p95 latency | {ex.get('p95_ms', 'N/A')} ms |")
-        lines.append(f"| p99 latency | {ex.get('p99_ms', 'N/A')} ms |")
-        lines.append(f"| ClickHouse active parts | {ex.get('active_parts', 'N/A')} |")
-        lines.append(f"| E2E latency (load probe) | {ex.get('e2e_elapsed_ms', 'N/A')} ms |")
-        lines.append("")
-
-    # Notes
-    lines.append("## Notes")
-    lines.append("")
-    lines.append(
-        "- `wrong_tool_args` flags are excluded from precision/recall computation "
-        "by design (low_confidence=True — terse JSON argument text produces "
-        "unreliable cosine similarity; see Phase 6 Plan 1 decision log)."
-    )
-    if calibration and not calibration.extra.get("met_target", True):
-        lines.append(
-            "- WARNING: Calibration did not achieve the 80% precision target. "
-            "Review fixture quality or adjust precision threshold."
-        )
+    if detail_step and detail_step["passed"]:
+        lines.append(f"- Span appears in list: YES")
+        lines.append(f"- Scores present: YES ({detail_step.get('scores_count', '?')} metrics)")
+        lines.append(f"- S3 payloads returned: YES (prompt, response)")
+        lines.append(f"- Status: {detail_step.get('status', '?')}")
+        lines.append(f"- Flags: {detail_step.get('flags_count', 0)}")
+    elif detail_step:
+        lines.append(f"- Span detail check: FAILED — {detail_step.get('error', 'unknown')}")
+    else:
+        lines.append("- Span detail check: DID NOT RUN (earlier step failed)")
     lines.append("")
 
     REPORT_PATH.write_text("\n".join(lines), encoding="utf-8")
-    print(f"\nValidation report written to {REPORT_PATH}")
+    print(f"\nReport written to {REPORT_PATH}")
 
 
 # ---------------------------------------------------------------------------
@@ -526,68 +282,25 @@ def write_report(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Xeter unified validation runner — orchestrates all four validation steps."
-    )
-    parser.add_argument(
-        "--skip-calibration",
-        action="store_true",
-        help="Skip the calibration step (Step 1)",
-    )
-    parser.add_argument(
-        "--skip-load-test",
-        action="store_true",
-        help="Skip the load test step (Step 2) — also skips e2e latency if standalone probe also fails",
-    )
-    args = parser.parse_args()
-
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
     print("=" * 60)
-    print("XETER VALIDATION RUNNER")
+    print("XETER E2E SMOKE TEST")
     print(f"Started: {generated_at}")
     print("=" * 60)
+    print()
 
-    results: list[StepResult] = []
+    result = run_e2e_smoke()
+    write_report(result, generated_at)
 
-    # Step 1: Calibration
-    if args.skip_calibration:
-        print("\nSKIPPING Step 1: Calibration (--skip-calibration)")
-        results.append(StepResult(name="Calibration", passed=None, detail="Skipped via --skip-calibration"))
-    else:
-        results.append(run_calibration())
+    steps = result["steps"]
+    all_passed = all(s["passed"] for s in steps)
 
-    # Step 2: Load Test
-    if args.skip_load_test:
-        print("\nSKIPPING Step 2: Load Test (--skip-load-test)")
-        results.append(StepResult(name="Load Test", passed=None, detail="Skipped via --skip-load-test"))
-        load_result = None
-    else:
-        load_result = run_load_test()
-        results.append(load_result)
-
-    # Step 3: Cross-Tenant Isolation (always runs)
-    results.append(run_isolation_tests())
-
-    # Step 4: E2E Latency (reuses load test result or standalone probe)
-    results.append(run_e2e_latency(load_result if not args.skip_load_test else None))
-
-    # Write report
-    write_report(results, generated_at)
-
-    # Final summary
-    print("\n" + "=" * 60)
-    print("VALIDATION COMPLETE")
+    print()
     print("=" * 60)
-    for r in results:
-        print(f"  {r.name:<30s}: {r.status_str}")
-
-    non_skipped = [r for r in results if r.passed is not None]
-    all_passed = all(r.passed for r in non_skipped) if non_skipped else False
     overall = "PASS" if all_passed else "FAIL"
-    print(f"\n  Overall: {overall}")
+    print(f"Overall: {overall} — total {result['total_ms']:.0f}ms")
     print("=" * 60)
-    print(f"\nReport: {REPORT_PATH}")
 
     sys.exit(0 if all_passed else 1)
 

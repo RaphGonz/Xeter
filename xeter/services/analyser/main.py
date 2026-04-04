@@ -22,6 +22,7 @@ from fastapi import FastAPI
 from xeter.services.analyser.batch import SpanBatcher, get_clickhouse_client
 from xeter.services.analyser.ingest import router as ingest_router
 from xeter.services.analyser.s3 import get_s3_client
+from xeter.shared.db.clickhouse import create_spans_table
 from xeter.shared.db.redis import get_redis_client
 
 logger = logging.getLogger(__name__)
@@ -42,7 +43,9 @@ async def lifespan(app: FastAPI):
     """
     # Startup
     logger.info("analyser: starting up")
-    app.state.batcher = SpanBatcher(get_clickhouse_client())
+    ch_client = get_clickhouse_client()
+    create_spans_table(ch_client)
+    app.state.batcher = SpanBatcher(ch_client)
     await app.state.batcher.start()
     app.state.redis = get_redis_client()
     app.state.s3_client = get_s3_client()

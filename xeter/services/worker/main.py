@@ -30,10 +30,11 @@ from __future__ import annotations
 import logging
 import os
 import signal
+import time
 
 import redis
-from sentence_transformers import SentenceTransformer
 
+from xeter.services.worker.base import EmbedderClient
 from xeter.services.worker.flag_writer import write_flags
 from xeter.services.worker.score_writer import write_scores
 from xeter.services.worker.span_fetcher import fetch_span
@@ -113,11 +114,12 @@ def main() -> None:
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
 
-    logger.info("worker: loading sentence-transformers model …")
-    model = SentenceTransformer("all-MiniLM-L6-v2")
-    logger.info("worker: model loaded")
+    embedder_url = os.environ.get("EMBEDDER_URL", "http://embedder:8002")
+    logger.info("worker: connecting to embedder at %s", embedder_url)
+    embedder = EmbedderClient(embedder_url)
+    logger.info("worker: embedder client ready")
 
-    analyzers = [ToolCallAnalyzer(model, THRESHOLDS)]
+    analyzers = [ToolCallAnalyzer(embedder, THRESHOLDS)]
 
     r = redis.Redis.from_url(os.environ["REDIS_URL"], decode_responses=True)
 
@@ -131,12 +133,24 @@ def main() -> None:
         if result is None:
             continue
         _, span_id = result
-        try:
-            process_span(span_id, analyzers)
-            logger.info("worker: processed span_id=%s", span_id)
-        except Exception as exc:
-            logger.error("worker: failed to process span %s: %s", span_id, exc)
-            # log-and-skip: no retry, no dead-letter queue (user decision)
+        # Retry up to 3 times with backoff — the batcher may not have
+        # flushed the span to ClickHouse yet when Redis delivers the id.
+        for attempt in range(3):
+            try:
+                process_span(span_id, analyzers)
+                logger.info("worker: processed span_id=%s", span_id)
+                break
+            except ValueError as exc:
+                # "span not found" — likely batcher hasn't flushed yet
+                if attempt < 2:
+                    wait = (attempt + 1) * 5
+                    logger.warning("worker: span %s not found (attempt %d/3), retrying in %ds", span_id, attempt + 1, wait)
+                    time.sleep(wait)
+                else:
+                    logger.error("worker: failed to process span %s after 3 attempts: %s", span_id, exc)
+            except Exception as exc:
+                logger.error("worker: failed to process span %s: %s", span_id, exc)
+                break
 
     logger.info("worker: shutdown complete")
 

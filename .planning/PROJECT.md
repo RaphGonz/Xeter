@@ -31,14 +31,22 @@ When a tool call fails, tell the developer whether it was the model, the archite
 
 ### Active
 
-<!-- Next milestone scope. -->
+<!-- v1.1 scope — Analyser Accuracy -->
 
-- [ ] Diagnosticer: LLM-powered root cause analysis (reads full trace + flags, returns model/architecture/prompt diagnosis)
-- [ ] TypeScript SDK (lags Python by one release cycle)
-- [ ] Cloud deployment (SaaS hosting, not just local Docker Compose)
-- [ ] SSE push events for real-time flag updates and diagnostic completion
-- [ ] Trace tree visualization (parent/child span relationships with flag overlay)
-- [ ] Alerting: configurable alerts when flag thresholds are breached
+- [ ] Redesign `_check_wrong_tool` with correct conceptual signal
+- [ ] Redesign `_check_wrong_args` with correct conceptual signal
+- [ ] Split `_check_no_tool` into two methods: capability gap (tool needed, none called) + tool-use violation (prompt forbids tools, tool called anyway)
+- [ ] Redesign `_check_excessive_tool` with span-local multi-signal approach (prompt vs each called tool, per-span)
+
+## Current Milestone: v1.1 Analyser Accuracy
+
+**Goal:** Replace the four conceptually-wrong heuristic check methods in ToolCallAnalyzer with research-backed, correctly-reasoned implementations — one method at a time, user-piloted.
+
+**Target features:**
+- Redesigned `_check_wrong_tool`
+- Redesigned `_check_wrong_args`
+- Split `_check_no_tool` → `_check_no_tool` + `_check_tool_use_violation`
+- Redesigned `_check_excessive_tool` (span-local signals only)
 
 ### Out of Scope
 
@@ -91,4 +99,4 @@ When a tool call fails, tell the developer whether it was the model, the archite
 | BRPOP with 5s retry backoff in worker | Race: Redis delivers span_id before ClickHouse batcher flush (5s interval) | ✓ Good — fixed silent "span not found" |
 
 ---
-*Last updated: 2026-04-04 after v1.0 milestone*
+*Last updated: 2026-04-06 after v1.1 milestone start*

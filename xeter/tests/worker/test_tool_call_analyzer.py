@@ -243,10 +243,10 @@ def test_wrong_tool_uses_available_tools_ranking():
 
 
 # ---------------------------------------------------------------------------
-# Test 7: wrong_args flag always includes low_confidence: True (FLAG-12)
+# Test 7: wrong_args flag must NOT include low_confidence (ARGS-05)
 # ---------------------------------------------------------------------------
 
-def test_wrong_args_flag_has_low_confidence():
+def test_wrong_args_flag_has_no_low_confidence():
     # Prompt and args get orthogonal vectors → low similarity → wrong_tool_args flag
     embedder = make_mock_embedder()
     call_idx = [0]
@@ -266,7 +266,9 @@ def test_wrong_args_flag_has_low_confidence():
     flags = analyzer.analyze(span)
     wrong_args_flags = [f for f in flags if f.flag_type == "wrong_tool_args"]
     assert len(wrong_args_flags) >= 1, "Expected a wrong_tool_args flag"
-    assert wrong_args_flags[0].detail.get("low_confidence") is True
+    assert "low_confidence" not in wrong_args_flags[0].detail, (
+        "ARGS-05: low_confidence must be absent from wrong_tool_args flag detail"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -474,3 +476,67 @@ def test_hybrid_score_custom_weight():
 
 def test_hybrid_score_both_max():
     assert hybrid_score(1.0, 1.0) == 1.0
+
+
+# ---------------------------------------------------------------------------
+# Tests for rewritten _check_wrong_args (ARGS-01, ARGS-04, ARGS-05)
+# ---------------------------------------------------------------------------
+
+def test_wrong_args_error_pattern_fires_without_embedding():
+    """ARGS-01: tool_output with error pattern triggers flag; encode is never called."""
+    embedder = make_mock_embedder()
+    analyzer = make_analyzer(embedder)
+    span = make_clean_span(
+        tool_arguments='{"query": "python docs"}',
+        prompt="Search for Python typing documentation",
+        tool_output="invalid argument: expected string, got integer",
+    )
+    flags = analyzer._check_wrong_args(span)
+    assert any(f.flag_type == "wrong_tool_args" for f in flags), (
+        "Expected wrong_tool_args flag from error pattern"
+    )
+    wrong_args = [f for f in flags if f.flag_type == "wrong_tool_args"][0]
+    assert wrong_args.score == 1.0
+    assert wrong_args.detail.get("metric") == "output_error_pattern"
+    # ARGS-01 must short-circuit before any embed() call
+    assert embedder.encode.call_count == 0, (
+        f"ARGS-01 must not call embed(); got {embedder.encode.call_count} calls"
+    )
+
+
+def test_wrong_args_skips_all_numeric_flattened_values():
+    """ARGS-04: all-numeric flattened values must not be embedded or flagged."""
+    embedder = make_mock_embedder(_orthogonal_vec())  # low sim if embedded
+    analyzer = make_analyzer(embedder)
+    span = make_clean_span(
+        tool_arguments='{"amount": "10000 * (1 + 0.05) ** 3"}',
+        prompt="Calculate compound interest",
+        tool_output="Success",
+    )
+    flags = analyzer._check_wrong_args(span)
+    wrong_args_flags = [f for f in flags if f.flag_type == "wrong_tool_args"]
+    assert len(wrong_args_flags) == 0, (
+        "ARGS-04: all-numeric flattened values must not produce a flag"
+    )
+
+
+def test_wrong_args_no_low_confidence_in_detail():
+    """ARGS-05: flag detail must never contain low_confidence key."""
+    embedder = make_mock_embedder()
+    call_idx = [0]
+    def encode_side_effect(text):
+        call_idx[0] += 1
+        return _unit_vec() if call_idx[0] % 2 == 1 else _orthogonal_vec()
+    embedder.encode.side_effect = encode_side_effect
+    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS, "wrong_tool_args": 0.4})
+    span = make_clean_span(
+        tool_arguments='{"query": "some unrelated text"}',
+        prompt="Calculate the square root of 144",
+        tool_output="Success",
+    )
+    flags = analyzer._check_wrong_args(span)
+    wrong_args_flags = [f for f in flags if f.flag_type == "wrong_tool_args"]
+    if wrong_args_flags:
+        assert "low_confidence" not in wrong_args_flags[0].detail, (
+            "ARGS-05: low_confidence must be absent"
+        )

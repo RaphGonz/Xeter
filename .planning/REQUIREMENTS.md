@@ -51,8 +51,8 @@ Untouched: `_check_parsing_error`, `_check_response_anomaly`.
 
 ### Calibration Infrastructure
 
-- [ ] **CAL-01**: `calibrate.py` supports `"binary": true` per flag type to exclude from numeric P/R sweep
-- [ ] **CAL-02**: `calibrate.py` supports per-method mode — calibrate a single flag_type in isolation
+- [x] **CAL-01**: `calibrate.py` supports `"binary": true` per flag type to exclude from numeric P/R sweep
+- [x] **CAL-02**: `calibrate.py` supports per-method mode — calibrate a single flag_type in isolation
 
 ## Future Requirements
 
@@ -107,8 +107,8 @@ Untouched: `_check_parsing_error`, `_check_response_anomaly`.
 | EXTOOL-02 | Phase 10 | Pending |
 | EXTOOL-03 | Phase 10 | Pending |
 | EXTOOL-04 | Phase 10 | Pending |
-| CAL-01 | Phase 7 | Pending |
-| CAL-02 | Phase 7 | Pending |
+| CAL-01 | Phase 7 | Complete |
+| CAL-02 | Phase 7 | Complete |
 
 **Coverage:**
 - v1.1 requirements: 27 total

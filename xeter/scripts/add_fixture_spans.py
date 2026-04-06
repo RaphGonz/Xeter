@@ -1,0 +1,198 @@
+"""Add diverse wrong_tool_args spans to the fixture."""
+import json
+import uuid
+from pathlib import Path
+
+new_spans = [
+    # Wrong location (weather)
+    {
+        "span_id": "flagged-wrong-args-0010",
+        "tenant_id": "calibration-tenant",
+        "trace_id": str(uuid.uuid4()),
+        "agent_name": "assistant-agent",
+        "agent_model": "gpt-4o",
+        "tool_name": "get_weather",
+        "tool_description": "Get current weather and forecasts for a location",
+        "tool_arguments": '{"location": "London", "units": "celsius"}',
+        "tool_output": "Partly cloudy, 14 degrees",
+        "prompt": "What is the weather like in Paris today?",
+        "response": "The weather in London is partly cloudy at 14 degrees.",
+        "raw_response": "{}",
+        "available_tools": [{"name": "get_weather", "description": "Get current weather and forecasts for a location"}],
+        "label": "flagged",
+        "anomaly_type": "wrong_tool_args",
+    },
+    # Wrong date (calendar)
+    {
+        "span_id": "flagged-wrong-args-0011",
+        "tenant_id": "calibration-tenant",
+        "trace_id": str(uuid.uuid4()),
+        "agent_name": "calendar-agent",
+        "agent_model": "gpt-4o",
+        "tool_name": "create_event",
+        "tool_description": "Create a calendar event",
+        "tool_arguments": '{"title": "Team Meeting", "date": "2024-04-10", "time": "14:00"}',
+        "tool_output": "Event created successfully",
+        "prompt": "Schedule a team meeting for Monday April 15th at 2pm.",
+        "response": "I have scheduled the team meeting for April 10th.",
+        "raw_response": "{}",
+        "available_tools": [{"name": "create_event", "description": "Create a calendar event"}],
+        "label": "flagged",
+        "anomaly_type": "wrong_tool_args",
+    },
+    # Wrong search query topic
+    {
+        "span_id": "flagged-wrong-args-0012",
+        "tenant_id": "calibration-tenant",
+        "trace_id": str(uuid.uuid4()),
+        "agent_name": "research-agent",
+        "agent_model": "gpt-4o",
+        "tool_name": "web_search",
+        "tool_description": "Search the web for information",
+        "tool_arguments": '{"query": "Premier League football results this week", "max_results": 5}',
+        "tool_output": "Found 5 results about football",
+        "prompt": "Search for the latest breakthroughs in quantum computing research.",
+        "response": "Here are the latest football results.",
+        "raw_response": "{}",
+        "available_tools": [{"name": "web_search", "description": "Search the web for information"}],
+        "label": "flagged",
+        "anomaly_type": "wrong_tool_args",
+    },
+    # Wrong user email
+    {
+        "span_id": "flagged-wrong-args-0013",
+        "tenant_id": "calibration-tenant",
+        "trace_id": str(uuid.uuid4()),
+        "agent_name": "ops-agent",
+        "agent_model": "gpt-4o",
+        "tool_name": "get_user_profile",
+        "tool_description": "Retrieve a user profile by email",
+        "tool_arguments": '{"email": "jane.smith@company.com"}',
+        "tool_output": "Profile retrieved for jane.smith",
+        "prompt": "Fetch the profile for john.doe@company.com.",
+        "response": "Here is the profile for jane.smith@company.com.",
+        "raw_response": "{}",
+        "available_tools": [{"name": "get_user_profile", "description": "Retrieve a user profile by email"}],
+        "label": "flagged",
+        "anomaly_type": "wrong_tool_args",
+    },
+    # Wrong target language
+    {
+        "span_id": "flagged-wrong-args-0014",
+        "tenant_id": "calibration-tenant",
+        "trace_id": str(uuid.uuid4()),
+        "agent_name": "translation-agent",
+        "agent_model": "gpt-4o",
+        "tool_name": "translate_text",
+        "tool_description": "Translate text between languages",
+        "tool_arguments": '{"text": "Hello, how are you?", "source_lang": "en", "target_lang": "de"}',
+        "tool_output": "Hallo, wie geht es Ihnen?",
+        "prompt": "Translate the phrase Hello, how are you from English to Spanish.",
+        "response": "The German translation is: Hallo, wie geht es Ihnen?",
+        "raw_response": "{}",
+        "available_tools": [{"name": "translate_text", "description": "Translate text between languages"}],
+        "label": "flagged",
+        "anomaly_type": "wrong_tool_args",
+    },
+    # Wrong SQL filter (active vs inactive)
+    {
+        "span_id": "flagged-wrong-args-0015",
+        "tenant_id": "calibration-tenant",
+        "trace_id": str(uuid.uuid4()),
+        "agent_name": "analytics-agent",
+        "agent_model": "gpt-4o",
+        "tool_name": "execute_sql",
+        "tool_description": "Execute a SQL query against a database",
+        "tool_arguments": '{"query": "SELECT id, email FROM users WHERE status = active ORDER BY created_at DESC LIMIT 20"}',
+        "tool_output": "Query executed: 20 rows returned",
+        "prompt": "Get all inactive users who have not logged in for the past 90 days.",
+        "response": "Here are the active users from the database.",
+        "raw_response": "{}",
+        "available_tools": [{"name": "execute_sql", "description": "Execute a SQL query against a database"}],
+        "label": "flagged",
+        "anomaly_type": "wrong_tool_args",
+    },
+    # Wrong file path
+    {
+        "span_id": "flagged-wrong-args-0016",
+        "tenant_id": "calibration-tenant",
+        "trace_id": str(uuid.uuid4()),
+        "agent_name": "devops-agent",
+        "agent_model": "gpt-4o",
+        "tool_name": "read_file",
+        "tool_description": "Read the contents of a file from the filesystem",
+        "tool_arguments": '{"path": "/etc/app/settings.yaml"}',
+        "tool_output": "File contents returned successfully",
+        "prompt": "Read the database configuration file at /etc/app/database.json.",
+        "response": "Here are the contents of settings.yaml.",
+        "raw_response": "{}",
+        "available_tools": [{"name": "read_file", "description": "Read the contents of a file from the filesystem"}],
+        "label": "flagged",
+        "anomaly_type": "wrong_tool_args",
+    },
+    # Wrong news topic
+    {
+        "span_id": "flagged-wrong-args-0017",
+        "tenant_id": "calibration-tenant",
+        "trace_id": str(uuid.uuid4()),
+        "agent_name": "news-agent",
+        "agent_model": "gpt-4o",
+        "tool_name": "get_news",
+        "tool_description": "Fetch latest news articles on a topic",
+        "tool_arguments": '{"topic": "climate change", "max_results": 5}',
+        "tool_output": "Found 5 articles about climate change",
+        "prompt": "Get the latest news about electric vehicles and battery technology.",
+        "response": "Here are recent articles about climate change.",
+        "raw_response": "{}",
+        "available_tools": [{"name": "get_news", "description": "Fetch latest news articles on a topic"}],
+        "label": "flagged",
+        "anomaly_type": "wrong_tool_args",
+    },
+    # Wrong route (directions)
+    {
+        "span_id": "flagged-wrong-args-0018",
+        "tenant_id": "calibration-tenant",
+        "trace_id": str(uuid.uuid4()),
+        "agent_name": "travel-agent",
+        "agent_model": "gpt-4o",
+        "tool_name": "get_directions",
+        "tool_description": "Get driving or walking directions between locations",
+        "tool_arguments": '{"from": "Chicago, IL", "to": "Detroit, MI", "mode": "driving"}',
+        "tool_output": "Route found: 4h 30min via I-94",
+        "prompt": "Get driving directions from Boston to New York City.",
+        "response": "Here are directions from Chicago to Detroit.",
+        "raw_response": "{}",
+        "available_tools": [{"name": "get_directions", "description": "Get driving or walking directions between locations"}],
+        "label": "flagged",
+        "anomaly_type": "wrong_tool_args",
+    },
+    # Wrong summarization source
+    {
+        "span_id": "flagged-wrong-args-0019",
+        "tenant_id": "calibration-tenant",
+        "trace_id": str(uuid.uuid4()),
+        "agent_name": "assistant-agent",
+        "agent_model": "gpt-4o",
+        "tool_name": "summarize_text",
+        "tool_description": "Summarize a long piece of text",
+        "tool_arguments": '{"text": "The French Revolution began in 1789 with the storming of the Bastille. It fundamentally transformed French society.", "max_length": 100}',
+        "tool_output": "Summary generated successfully",
+        "prompt": "Summarize this article about the history of the Roman Empire and its military campaigns.",
+        "response": "Here is a summary about the French Revolution.",
+        "raw_response": "{}",
+        "available_tools": [{"name": "summarize_text", "description": "Summarize a long piece of text"}],
+        "label": "flagged",
+        "anomaly_type": "wrong_tool_args",
+    },
+]
+
+fixture_path = Path("fixtures/labelled_spans.jsonl")
+existing = fixture_path.read_text(encoding="utf-8")
+new_lines = "\n".join(json.dumps(s) for s in new_spans)
+fixture_path.write_text(existing.rstrip() + "\n" + new_lines + "\n", encoding="utf-8")
+print(f"Added {len(new_spans)} new wrong_tool_args spans.")
+
+rows = [json.loads(l) for l in fixture_path.read_text().splitlines() if l.strip()]
+wa = [r for r in rows if r.get("anomaly_type") == "wrong_tool_args"]
+print(f"Total wrong_tool_args spans: {len(wa)}")
+print(f"Total spans: {len(rows)}")

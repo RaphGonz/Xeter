@@ -51,6 +51,8 @@ _WRONG_ARGS_ERROR_PATTERNS: list[re.Pattern] = [
 ]
 
 _NUMERIC_TOKEN_RE = re.compile(r'^[\d\.\-\+\*\/\(\)\^\%\s]+$')
+# Code heuristic: contains Python/JS syntax tokens that indicate a code string
+_CODE_SYNTAX_RE = re.compile(r'(def |print\(|import |return |for .* in |if .*:|==[^=]|!=|<=|>=|\bprint\b.*\(|;\s*\w)')
 
 
 def _flatten_arg_values(args_str: str) -> str:
@@ -71,16 +73,20 @@ def _flatten_arg_values(args_str: str) -> str:
 
 
 def _should_skip_embedding(flattened: str) -> bool:
-    """Return True if flattened values are empty or entirely numeric/operator tokens.
+    """Return True if flattened values are empty, entirely numeric, or code syntax.
 
-    Skips embedding when there is no meaningful text signal (ARGS-04).
-    The regex requires the ENTIRE string to be numeric/operator — any letter
-    character causes it to fail and embedding proceeds.
+    Skips embedding when there is no meaningful natural-language signal (ARGS-04):
+    - Empty string
+    - Entirely numeric/operator tokens (e.g. "42", "1 + 2")
+    - Code strings (e.g. Python snippets) — code embeddings are incomparable to
+      natural-language prompt embeddings, producing spurious low scores.
     """
     text = flattened.strip()
     if not text:
         return True
-    return bool(_NUMERIC_TOKEN_RE.match(text))
+    if _NUMERIC_TOKEN_RE.match(text):
+        return True
+    return bool(_CODE_SYNTAX_RE.search(text))
 
 
 class ToolCallAnalyzer(BaseAnalyzer):

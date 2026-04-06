@@ -11,7 +11,7 @@ Untouched: `_check_parsing_error`, `_check_response_anomaly`.
 
 ### Cross-cutting
 
-- [ ] **HYBRID-01**: Shared hybrid scoring utility — 50/50 blend of cosine similarity (embedding) and bag-of-words score (token overlap / BM25) used by all similarity-based checks
+- [x] **HYBRID-01**: Shared hybrid scoring utility — 50/50 blend of cosine similarity (embedding) and bag-of-words score (token overlap / BM25) used by all similarity-based checks
 
 ### wrong_args Rewrite
 
@@ -82,7 +82,7 @@ Untouched: `_check_parsing_error`, `_check_response_anomaly`.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| HYBRID-01 | Phase 7 | Pending |
+| HYBRID-01 | Phase 7 | Complete |
 | ARGS-01 | Phase 7 | Pending |
 | ARGS-02 | Phase 7 | Pending |
 | ARGS-03 | Phase 7 | Pending |

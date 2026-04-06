@@ -42,14 +42,14 @@ See `.planning/milestones/v1.0-ROADMAP.md` for full phase details.
   3. `low_confidence: True` is absent from all `wrong_args` flag details
   4. Running `calibrate.py --flag-type wrong_tool_args` in isolation completes and reports P/R metrics without crashing
   5. Running `calibrate.py` with a binary flag type (e.g., `tool_use_violation`) skips the numeric sweep and reports correctly
-**Plans**: TBD
+**Plans**: 5 plans
 
 Plans:
-- [ ] 07-01: Calibration infrastructure — add binary flag support (CAL-01) and per-method mode (CAL-02) to calibrate.py
-- [ ] 07-02: Hybrid scoring utility (HYBRID-01) — shared 50/50 cosine + BOW helper used by all check methods
-- [ ] 07-03: wrong_args rewrite — output-error priority path (ARGS-01), flattened-values embedding (ARGS-02, ARGS-03, ARGS-04), remove low_confidence (ARGS-05)
-- [ ] 07-04: Schema file v0 — draft initial negation motifs and tool-triggering terms; user reviews and approves draft
-- [ ] 07-05: Calibration run — wrong_args calibration passes P/R benchmark (ARGS-06)
+- [ ] 07-01-PLAN.md — Calibration infrastructure: BINARY_FLAG_TYPES set + --flag-type arg for calibrate.py (CAL-01, CAL-02)
+- [ ] 07-02-PLAN.md — Hybrid scoring utility: bow_score + hybrid_score in base.py (HYBRID-01)
+- [ ] 07-03-PLAN.md — wrong_args rewrite: error-priority path + flattened-values hybrid scoring, remove low_confidence (ARGS-01 to ARGS-05)
+- [ ] 07-04-PLAN.md — Schema file v0: draft detection_patterns.yml; user reviews and approves (NOTOOL-04/06 prep)
+- [ ] 07-05-PLAN.md — Calibration run: wrong_tool_args calibration passes P/R benchmark (ARGS-06)
 
 ### Phase 8: wrong_tool Rewrite
 **Goal**: `_check_wrong_tool` flags spans where the model chose a meaningfully lower-ranked tool, using a two-gate approach that fires on high-confidence disagreements and reports the gap as the severity score
@@ -112,7 +112,7 @@ Plans:
 | 4. Read Path | v1.0 | 3/3 | Complete | 2026-03-30 |
 | 5. Dashboard | v1.0 | 4/4 | Complete | 2026-03-31 |
 | 6. Validation | v1.0 | 3/3 | Complete | 2026-04-04 |
-| 7. wrong_args Rewrite | v1.1 | 0/5 | Not started | - |
+| 7. wrong_args Rewrite | v1.1 | 0/5 | Planned | - |
 | 8. wrong_tool Rewrite | v1.1 | 0/3 | Not started | - |
 | 9. no_tool + tool_use_violation Split | v1.1 | 0/4 | Not started | - |
 | 10. excessive_tool Rewrite | v1.1 | 0/3 | Not started | - |

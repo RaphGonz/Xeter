@@ -1,7 +1,11 @@
 """Unit tests for ToolCallAnalyzer — TDD RED phase.
 
 Tests are written against the contract before the implementation exists.
-Mock model is used so no real sentence-transformers weights are needed.
+Mock embedder is used so no real sentence-transformers weights are needed.
+
+The embedder client is mocked: encode() returns controllable vectors.
+Cosine similarity is computed by BaseAnalyzer.compare() using numpy.
+To control similarity scores, we return specific vectors from encode().
 """
 
 from __future__ import annotations
@@ -10,7 +14,7 @@ import numpy as np
 import pytest
 from unittest.mock import MagicMock, call
 
-from xeter.services.worker.base import Flag, SpanData
+from xeter.services.worker.base import Flag, SpanData, bow_score, hybrid_score
 from xeter.services.worker.tool_call_analyzer import ToolCallAnalyzer
 
 
@@ -28,18 +32,40 @@ DEFAULT_THRESHOLDS = {
 }
 
 
-def make_mock_model():
-    """Mock SentenceTransformer that returns deterministic embeddings.
+def _unit_vec(dim=384) -> np.ndarray:
+    """Return a unit vector (all components equal)."""
+    v = np.ones(dim)
+    return v / np.linalg.norm(v)
 
-    encode() returns a fixed vector.
-    similarity() returns a configurable value — default low (0.3).
+
+def _orthogonal_vec(dim=384) -> np.ndarray:
+    """Return a vector orthogonal-ish to unit_vec (cosine sim ~ 0)."""
+    v = np.zeros(dim)
+    v[0] = 1.0
+    v[1] = -1.0
+    return v / np.linalg.norm(v)
+
+
+def _low_sim_vec(dim=384) -> np.ndarray:
+    """Return a vector with low but nonzero similarity to unit_vec (~0.2)."""
+    v = np.random.RandomState(42).randn(dim)
+    # Mix a small amount of the unit direction to get low positive similarity
+    unit = _unit_vec(dim)
+    v = 0.2 * unit + 0.8 * (v / np.linalg.norm(v))
+    return v / np.linalg.norm(v)
+
+
+def make_mock_embedder(default_vec=None):
+    """Mock embedder client.
+
+    encode() returns a fixed vector by default.
+    Can set .encode.side_effect for sequence of vectors.
     """
-    model = MagicMock()
-    # encode() always returns a 384-dim unit vector
-    model.encode.return_value = np.ones(384) / np.sqrt(384)
-    # similarity() returns a 2D tensor — mock as nested list for float(sim[0][0])
-    model.similarity.return_value = [[0.3]]  # default low similarity
-    return model
+    embedder = MagicMock()
+    if default_vec is None:
+        default_vec = _unit_vec()
+    embedder.encode.return_value = default_vec
+    return embedder
 
 
 def make_clean_span(**kwargs) -> SpanData:
@@ -66,12 +92,12 @@ def make_clean_span(**kwargs) -> SpanData:
     return SpanData(**defaults)
 
 
-def make_analyzer(model=None, thresholds=None) -> ToolCallAnalyzer:
-    if model is None:
-        model = make_mock_model()
+def make_analyzer(embedder=None, thresholds=None) -> ToolCallAnalyzer:
+    if embedder is None:
+        embedder = make_mock_embedder()
     if thresholds is None:
         thresholds = dict(DEFAULT_THRESHOLDS)
-    return ToolCallAnalyzer(model, thresholds)
+    return ToolCallAnalyzer(embedder, thresholds)
 
 
 # ---------------------------------------------------------------------------
@@ -88,9 +114,9 @@ def test_name():
 # ---------------------------------------------------------------------------
 
 def test_analyze_returns_list():
-    model = make_mock_model()
-    model.similarity.return_value = [[0.9]]  # high similarity everywhere = clean span
-    analyzer = make_analyzer(model)
+    # All same vectors → high similarity → clean span
+    embedder = make_mock_embedder(_unit_vec())
+    analyzer = make_analyzer(embedder)
     span = make_clean_span()
     result = analyzer.analyze(span)
     assert isinstance(result, list)
@@ -101,12 +127,21 @@ def test_analyze_returns_list():
 # ---------------------------------------------------------------------------
 
 def test_wrong_tool_flagged_when_below_threshold():
-    model = make_mock_model()
-    # Low similarity — called tool is not ranked top
-    model.similarity.return_value = [[0.2]]
-    analyzer = make_analyzer(model, thresholds={**DEFAULT_THRESHOLDS, "wrong_tool": 0.5})
+    # Prompt gets one direction, tools get orthogonal → low cosine similarity
+    embedder = make_mock_embedder()
+    call_idx = [0]
+    def encode_side_effect(text):
+        call_idx[0] += 1
+        # First call is prompt — give it unit vec
+        # Tool descriptions get orthogonal vec → low similarity
+        if call_idx[0] == 1:
+            return _unit_vec()
+        return _orthogonal_vec()
+
+    embedder.encode.side_effect = encode_side_effect
+    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS, "wrong_tool": 0.5})
     span = make_clean_span(
-        tool_name="calculator",  # called the calculator
+        tool_name="calculator",
         available_tools=[
             {"name": "search_web", "description": "Searches the web"},
             {"name": "calculator", "description": "Performs math calculations"},
@@ -122,9 +157,9 @@ def test_wrong_tool_flagged_when_below_threshold():
 # ---------------------------------------------------------------------------
 
 def test_wrong_tool_not_flagged_when_above_threshold():
-    model = make_mock_model()
-    model.similarity.return_value = [[0.8]]  # high similarity
-    analyzer = make_analyzer(model, thresholds={**DEFAULT_THRESHOLDS, "wrong_tool": 0.5})
+    # All same vectors → cosine sim = 1.0
+    embedder = make_mock_embedder(_unit_vec())
+    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS, "wrong_tool": 0.5})
     span = make_clean_span(
         tool_name="search_web",
         available_tools=[
@@ -141,9 +176,8 @@ def test_wrong_tool_not_flagged_when_above_threshold():
 # ---------------------------------------------------------------------------
 
 def test_scores_logged_regardless_of_flag():
-    model = make_mock_model()
-    model.similarity.return_value = [[0.9]]  # high similarity — no flags expected
-    analyzer = make_analyzer(model)
+    embedder = make_mock_embedder(_unit_vec())
+    analyzer = make_analyzer(embedder)
     span = make_clean_span()
     analyzer.analyze(span)
     scores = analyzer.flush_scores()
@@ -157,41 +191,47 @@ def test_scores_logged_regardless_of_flag():
 def test_wrong_tool_uses_available_tools_ranking():
     """If the called tool is not the top-ranked match for the prompt → wrong_tool flag.
 
-    Strategy: encode always returns the same unit vector (default mock).
-    similarity.side_effect returns high score for search_web (rank 1) and low for
-    calculator (rank 2). Since span.tool_name = "calculator" (not top-ranked) and
-    top score (0.95) is above threshold, we need top score BELOW threshold to trigger.
-    We set all remaining calls to 0.2 (below wrong_tool threshold of 0.5).
+    Condition: top_tool_name != span.tool_name AND top_score < threshold.
+    Both tools must have LOW similarity with prompt (top_score < 0.5),
+    but search_web slightly higher than calculator → search_web is top-ranked.
+    Called tool is calculator (not top) → wrong_tool flag.
     """
-    model = make_mock_model()
+    embedder = make_mock_embedder()
 
-    # All encode calls return the same unit vector — ranking is driven by similarity scores.
-    # similarity side_effect (in call order from _check_wrong_tool with 2 tools):
-    #   call 1: compare(prompt_vec, search_vec)  → 0.05 (search_web ranks lower)
-    #   call 2: compare(prompt_vec, calc_vec)    → 0.95 (calculator ranks top)
-    #   BUT we want: called tool "calculator" = top-ranked, so no flag fires UNLESS
-    #   called tool != top-ranked. So: search_web=0.95 (top), calculator=0.05 (low).
-    #   Then top_tool_name = "search_web", span.tool_name = "calculator" → mismatch.
-    #   top_score = 0.95 > threshold=0.5 → no flag (condition requires score < threshold).
-    #
-    #   To get a flag: top_score must also be < threshold. Use both 0.2:
-    #   search_web=0.2, calculator=0.1 → top is search_web (0.2 > 0.1), top_score=0.2 < 0.5.
-    #   span.tool_name="calculator" != "search_web" AND 0.2 < 0.5 → wrong_tool flag.
-    model.similarity.side_effect = [
-        [[0.2]],   # compare(prompt, search_web_vec) — search_web = top ranked (0.2)
-        [[0.1]],   # compare(prompt, calc_vec)        — calculator ranks lower (0.1)
-        [[0.2]],   # prompt_vs_tool_name (calculator)
-        [[0.2]],   # prompt_vs_tool_description
-        [[0.2]],   # _check_wrong_args: prompt_vs_tool_args
-        [[0.9]],   # _check_excessive_tool: prompt_vs_tool_relevance (high = no flag)
-        [[0.9]],   # _check_parsing_error: model_prompt_vs_response (high = no flag)
-        [[0.9]],   # _check_response_anomaly: prompt_vs_response (high = no flag)
-    ]
+    # Build vectors where cosine(prompt, search_desc) ≈ 0.3 and cosine(prompt, calc_desc) ≈ 0.1
+    # Both below threshold 0.5, but search > calc
+    dim = 384
+    rng = np.random.RandomState(99)
+    prompt_vec = _unit_vec(dim)
 
-    analyzer = make_analyzer(model, thresholds={**DEFAULT_THRESHOLDS, "wrong_tool": 0.5})
+    # search_web: small positive correlation with prompt
+    noise1 = rng.randn(dim)
+    noise1 /= np.linalg.norm(noise1)
+    search_vec = 0.3 * prompt_vec + 0.95 * noise1
+    search_vec /= np.linalg.norm(search_vec)
+
+    # calculator: near-orthogonal to prompt
+    noise2 = rng.randn(dim)
+    noise2 /= np.linalg.norm(noise2)
+    calc_vec = 0.1 * prompt_vec + 0.99 * noise2
+    calc_vec /= np.linalg.norm(calc_vec)
+
+    def encode_side_effect(text):
+        t = text.lower()
+        # Match tool descriptions but NOT the prompt
+        if "web" in t and ("info" in t or "searches" in t):
+            return search_vec
+        elif "calculator" in t or "math" in t or "calcul" in t:
+            return calc_vec
+        else:
+            return prompt_vec
+
+    embedder.encode.side_effect = encode_side_effect
+
+    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS, "wrong_tool": 0.5})
     span = make_clean_span(
         tool_name="calculator",
-        prompt="Search for Python typing documentation",
+        prompt="Find Python typing documentation",
         available_tools=[
             {"name": "search_web", "description": "Searches the web for information"},
             {"name": "calculator", "description": "Performs math calculations"},
@@ -207,9 +247,18 @@ def test_wrong_tool_uses_available_tools_ranking():
 # ---------------------------------------------------------------------------
 
 def test_wrong_args_flag_has_low_confidence():
-    model = make_mock_model()
-    model.similarity.return_value = [[0.1]]  # low similarity for all checks
-    analyzer = make_analyzer(model, thresholds={**DEFAULT_THRESHOLDS, "wrong_tool_args": 0.4})
+    # Prompt and args get orthogonal vectors → low similarity → wrong_tool_args flag
+    embedder = make_mock_embedder()
+    call_idx = [0]
+    def encode_side_effect(text):
+        call_idx[0] += 1
+        # Alternate: odd calls get unit_vec, even get orthogonal
+        # This ensures prompt and args embeddings differ
+        if call_idx[0] % 2 == 1:
+            return _unit_vec()
+        return _orthogonal_vec()
+    embedder.encode.side_effect = encode_side_effect
+    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS, "wrong_tool_args": 0.4})
     span = make_clean_span(
         tool_arguments='{"query": "some unrelated text"}',
         prompt="Calculate the square root of 144",
@@ -225,10 +274,9 @@ def test_wrong_args_flag_has_low_confidence():
 # ---------------------------------------------------------------------------
 
 def test_no_tool_flagged():
-    model = make_mock_model()
-    # High similarity between prompt and "use tool" reference string → no_tool flag
-    model.similarity.return_value = [[0.9]]
-    analyzer = make_analyzer(model, thresholds={**DEFAULT_THRESHOLDS, "no_tool": 0.6})
+    # High similarity between prompt and "call a function tool" reference → no_tool flag
+    embedder = make_mock_embedder(_unit_vec())
+    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS, "no_tool": 0.6})
     span = make_clean_span(
         tool_name=None,
         tool_description=None,
@@ -246,10 +294,16 @@ def test_no_tool_flagged():
 # ---------------------------------------------------------------------------
 
 def test_excessive_tool_flagged():
-    model = make_mock_model()
-    # Low similarity between prompt and tool_name → excessive_tool flag
-    model.similarity.return_value = [[0.1]]
-    analyzer = make_analyzer(model, thresholds={**DEFAULT_THRESHOLDS, "excessive_tool": 0.3})
+    # Low similarity between prompt and tool → excessive_tool
+    embedder = make_mock_embedder()
+
+    def encode_side_effect(text):
+        if "hello" in text.lower():
+            return _orthogonal_vec()  # prompt about "hello" is unrelated to tool
+        return _unit_vec()
+
+    embedder.encode.side_effect = encode_side_effect
+    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS, "excessive_tool": 0.3})
     span = make_clean_span(
         tool_name="search_web",
         prompt="Just say hello",
@@ -265,9 +319,8 @@ def test_excessive_tool_flagged():
 
 def test_parsing_error_flagged_unknown_model():
     """Unknown model in registry produces parsing_error flag."""
-    model = make_mock_model()
-    model.similarity.return_value = [[0.9]]
-    analyzer = make_analyzer(model)
+    embedder = make_mock_embedder(_unit_vec())
+    analyzer = make_analyzer(embedder)
     span = make_clean_span(
         agent_model="unknown-model-xyz",
         raw_response='{"some": "json"}',
@@ -279,9 +332,8 @@ def test_parsing_error_flagged_unknown_model():
 
 def test_parsing_error_flagged_raw_text_no_match():
     """raw_text model with no matching format pattern produces parsing_error flag."""
-    model = make_mock_model()
-    model.similarity.return_value = [[0.9]]
-    analyzer = make_analyzer(model)
+    embedder = make_mock_embedder(_unit_vec())
+    analyzer = make_analyzer(embedder)
     span = make_clean_span(
         agent_model="hermes-2-pro",
         raw_response="Just a plain text response with no tool call tags.",
@@ -293,9 +345,8 @@ def test_parsing_error_flagged_raw_text_no_match():
 
 def test_parsing_error_not_flagged_when_format_matches():
     """raw_text model with matching format pattern produces no parsing_error flag."""
-    model = make_mock_model()
-    model.similarity.return_value = [[0.9]]
-    analyzer = make_analyzer(model)
+    embedder = make_mock_embedder(_unit_vec())
+    analyzer = make_analyzer(embedder)
     span = make_clean_span(
         agent_model="hermes-2-pro",
         raw_response='<tool_call>{"name": "search", "arguments": {}}</tool_call>',
@@ -310,9 +361,8 @@ def test_parsing_error_not_flagged_when_format_matches():
 # ---------------------------------------------------------------------------
 
 def test_tool_embed_cache_hit():
-    model = make_mock_model()
-    model.similarity.return_value = [[0.9]]
-    analyzer = make_analyzer(model)
+    embedder = make_mock_embedder(_unit_vec())
+    analyzer = make_analyzer(embedder)
 
     available_tools = [
         {"name": "search_web", "description": "Searches the web"},
@@ -322,17 +372,13 @@ def test_tool_embed_cache_hit():
 
     # First analyze call
     analyzer.analyze(span)
-    first_encode_count = model.encode.call_count
+    first_encode_count = embedder.encode.call_count
 
     # Second analyze call with same tools — cache should prevent re-embedding tools
     analyzer.analyze(span)
-    second_encode_count = model.encode.call_count
+    second_encode_count = embedder.encode.call_count
 
     # The number of encode calls for tool embeddings should not double
-    # (tool embeddings = 2 per call without cache, 0 on cache hit)
-    # Total encodes for non-tool texts should be consistent
-    tool_embed_calls_first = 2  # two tools
-    # If cache works, second call should not add 2 more tool embed calls
     added_calls = second_encode_count - first_encode_count
     assert added_calls < first_encode_count, (
         f"Expected fewer encode calls on second run (cache hit). "
@@ -346,12 +392,18 @@ def test_tool_embed_cache_hit():
 
 def test_response_anomaly_flagged():
     """Low prompt-vs-response similarity produces response_anomaly flag (FLAG-06)."""
-    model = make_mock_model()
-    model.similarity.return_value = [[0.2]]  # low similarity
-    analyzer = make_analyzer(model, thresholds={**DEFAULT_THRESHOLDS, "response_anomaly": 0.4})
+    embedder = make_mock_embedder()
+
+    def encode_side_effect(text):
+        if "weather" in text.lower() or "paris" in text.lower() or "sunny" in text.lower():
+            return _orthogonal_vec()  # response is unrelated
+        return _unit_vec()
+
+    embedder.encode.side_effect = encode_side_effect
+    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS, "response_anomaly": 0.4})
     span = make_clean_span(
         prompt="Search for Python typing documentation",
-        response="The weather in Paris is sunny.",  # unrelated response
+        response="The weather in Paris is sunny.",
     )
     flags = analyzer.analyze(span)
     anomaly_flags = [f for f in flags if f.flag_type == "response_anomaly"]
@@ -362,9 +414,8 @@ def test_response_anomaly_flagged():
 
 def test_response_anomaly_not_flagged_when_above_threshold():
     """High prompt-vs-response similarity produces no response_anomaly flag."""
-    model = make_mock_model()
-    model.similarity.return_value = [[0.9]]  # high similarity
-    analyzer = make_analyzer(model, thresholds={**DEFAULT_THRESHOLDS, "response_anomaly": 0.4})
+    embedder = make_mock_embedder(_unit_vec())
+    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS, "response_anomaly": 0.4})
     span = make_clean_span(
         prompt="Search for Python typing documentation",
         response="Python supports type hints via PEP 484.",
@@ -376,10 +427,50 @@ def test_response_anomaly_not_flagged_when_above_threshold():
 
 def test_response_anomaly_skipped_when_response_none():
     """_check_response_anomaly() must return [] (no crash) when response is None."""
-    model = make_mock_model()
-    model.similarity.return_value = [[0.2]]
-    analyzer = make_analyzer(model)
+    embedder = make_mock_embedder(_low_sim_vec())
+    analyzer = make_analyzer(embedder)
     span = make_clean_span(response=None)
-    # Should not raise
     result = analyzer._check_response_anomaly(span)
     assert result == []
+
+
+# ---------------------------------------------------------------------------
+# Tests 15–16: HYBRID-01 utility functions (bow_score, hybrid_score)
+# ---------------------------------------------------------------------------
+
+def test_bow_score_partial_overlap():
+    # "hello world" vs "hello earth" — shared: {"hello"}, union: {"hello","world","earth"}
+    score = bow_score("hello world", "hello earth")
+    assert abs(score - 1/3) < 0.001, f"Expected ~0.333, got {score}"
+
+
+def test_bow_score_identical_strings():
+    score = bow_score("search for python docs", "search for python docs")
+    assert score == 1.0
+
+
+def test_bow_score_no_overlap():
+    score = bow_score("apple banana", "cherry delta")
+    assert score == 0.0
+
+
+def test_bow_score_empty_string_returns_zero():
+    assert bow_score("", "hello") == 0.0
+    assert bow_score("hello", "") == 0.0
+    assert bow_score("", "") == 0.0
+
+
+def test_hybrid_score_equal_weight():
+    # 0.5 * 0.8 + 0.5 * 0.2 = 0.5
+    result = hybrid_score(0.8, 0.2)
+    assert abs(result - 0.5) < 0.001
+
+
+def test_hybrid_score_custom_weight():
+    # weight=0.7: 0.7 * 1.0 + 0.3 * 0.0 = 0.7
+    result = hybrid_score(1.0, 0.0, weight=0.7)
+    assert abs(result - 0.7) < 0.001
+
+
+def test_hybrid_score_both_max():
+    assert hybrid_score(1.0, 1.0) == 1.0

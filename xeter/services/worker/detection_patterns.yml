@@ -1,0 +1,29 @@
+# Detection patterns for _check_tool_use_violation (Phase 9)
+# Editable without code rebuild (NOTOOL-04).
+# Reviewed and approved by user before Phase 9 implementation (NOTOOL-06).
+
+negation_motifs:
+  - "do not"
+  - "don't"
+  - "never"
+  - "avoid"
+  - "without"
+  - "skip"
+  - "no"
+  - "refrain from"
+  - "instead of"
+  - "rather than"
+
+tool_triggering_terms:
+  - "use"
+  - "call"
+  - "invoke"
+  - "run"
+  - "execute"
+  - "fetch"
+  - "search"
+  - "query"
+  - "look up"
+  - "retrieve"
+  - "check"
+  - "get"

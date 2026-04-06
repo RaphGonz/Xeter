@@ -21,11 +21,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from typing import Optional
 
 import numpy as np
 
-from xeter.services.worker.base import BaseAnalyzer, Flag, SpanData
+from xeter.services.worker.base import BaseAnalyzer, Flag, SpanData, bow_score, hybrid_score
 from xeter.services.worker.tool_call_registry import (
     TOOL_CALL_REGISTRY,
     FORMAT_GROUPS,
@@ -33,11 +34,60 @@ from xeter.services.worker.tool_call_registry import (
 )
 
 
+_WRONG_ARGS_ERROR_PATTERNS: list[re.Pattern] = [
+    re.compile(r'invalid argument', re.IGNORECASE),
+    re.compile(r'invalid param', re.IGNORECASE),
+    re.compile(r'missing required', re.IGNORECASE),
+    re.compile(r'missing param', re.IGNORECASE),
+    re.compile(r'required field', re.IGNORECASE),
+    re.compile(r'validation error', re.IGNORECASE),
+    re.compile(r'type error', re.IGNORECASE),
+    re.compile(r'value error', re.IGNORECASE),
+    re.compile(r'parse error', re.IGNORECASE),
+    re.compile(r'HTTP [4][0-9][0-9]', re.IGNORECASE),
+    re.compile(r'status[ _]?code[: ]*4[0-9][0-9]', re.IGNORECASE),
+    re.compile(r'400 bad request', re.IGNORECASE),
+    re.compile(r'422 unprocessable', re.IGNORECASE),
+]
+
+_NUMERIC_TOKEN_RE = re.compile(r'^[\d\.\-\+\*\/\(\)\^\%\s]+$')
+
+
+def _flatten_arg_values(args_str: str) -> str:
+    """Extract leaf values from tool_arguments JSON and join as plain text.
+
+    Parses the JSON string and joins only the values (not keys) so that
+    embedding is not polluted by field names. Falls back to raw string
+    if parsing fails.
+    """
+    import json as _json
+    try:
+        parsed = _json.loads(args_str)
+        if not isinstance(parsed, dict):
+            return args_str
+        return " ".join(str(v) for v in parsed.values() if v is not None)
+    except (ValueError, TypeError):
+        return args_str
+
+
+def _should_skip_embedding(flattened: str) -> bool:
+    """Return True if flattened values are empty or entirely numeric/operator tokens.
+
+    Skips embedding when there is no meaningful text signal (ARGS-04).
+    The regex requires the ENTIRE string to be numeric/operator — any letter
+    character causes it to fail and embedding proceeds.
+    """
+    text = flattened.strip()
+    if not text:
+        return True
+    return bool(_NUMERIC_TOKEN_RE.match(text))
+
+
 class ToolCallAnalyzer(BaseAnalyzer):
     """Analyze SpanData for tool-call anomalies using embedding similarity."""
 
-    def __init__(self, model, thresholds: dict[str, float]) -> None:
-        super().__init__(model, thresholds)
+    def __init__(self, embedder, thresholds: dict[str, float]) -> None:
+        super().__init__(embedder, thresholds)
         self._tool_embed_cache: dict[str, list[np.ndarray]] = {}
 
     # ------------------------------------------------------------------
@@ -180,30 +230,53 @@ class ToolCallAnalyzer(BaseAnalyzer):
     def _check_wrong_args(self, span: SpanData) -> list[Flag]:
         """Detect when tool arguments are semantically unrelated to the prompt.
 
-        Always attaches low_confidence: True because argument text is often
-        terse JSON keys/values that are hard to compare fairly (FLAG-12).
+        Two-path detection (ARGS-01 takes priority):
+
+        Path 1 — output-error priority (ARGS-01):
+          If tool_output contains an error pattern (regex), flag immediately.
+          Score=1.0. No embedding call.
+
+        Path 2 — semantic mismatch via hybrid scoring (ARGS-02/03/04):
+          Flatten argument values (not raw JSON), skip if empty or all-numeric,
+          then compute 50/50 cosine+BOW hybrid score and flag if below threshold.
+
+        low_confidence is NOT included in flag detail (ARGS-05).
         """
         if span.tool_arguments is None or span.prompt is None:
             return []
 
-        prompt_vec = self.embed(span.prompt)
-        args_vec = self.embed(span.tool_arguments)
-        score = self.compare(prompt_vec, args_vec)
+        # ARGS-01: output-error priority path (no embedding)
+        if span.tool_output and any(
+            p.search(span.tool_output) for p in _WRONG_ARGS_ERROR_PATTERNS
+        ):
+            self.log_score("wrong_args_output_error", 1.0)
+            return [Flag(
+                flag_type="wrong_tool_args",
+                score=1.0,
+                detail={"metric": "output_error_pattern", "source": "tool_output"},
+            )]
 
-        self.log_score("prompt_vs_tool_args", score)
+        # ARGS-02/04: flatten argument values; skip if empty or all-numeric
+        flattened = _flatten_arg_values(span.tool_arguments)
+        if _should_skip_embedding(flattened):
+            return []
+
+        # ARGS-02/03: embed flattened values and compute hybrid score
+        prompt_vec = self.embed(span.prompt)
+        args_vec = self.embed(flattened)
+        cosine = self.compare(prompt_vec, args_vec)
+        bow = bow_score(span.prompt, flattened)
+        score = hybrid_score(cosine, bow)
+
+        self.log_score("prompt_vs_args_hybrid", score)  # log BEFORE threshold
 
         if score < self._thresholds["wrong_tool_args"]:
-            return [
-                Flag(
-                    flag_type="wrong_tool_args",
-                    score=score,
-                    detail={
-                        "metric": "prompt_vs_tool_args",
-                        "score": score,
-                        "low_confidence": True,
-                    },
-                )
-            ]
+            return [Flag(
+                flag_type="wrong_tool_args",
+                score=score,
+                detail={"metric": "prompt_vs_args_hybrid", "score": score},
+                # ARGS-05: no low_confidence key
+            )]
         return []
 
     # ------------------------------------------------------------------

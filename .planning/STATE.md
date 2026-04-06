@@ -27,7 +27,7 @@ Plan: —
 Status: Ready to plan
 Last activity: 2026-04-06 — Roadmap created; v1.1 phases 7–10 defined
 
-Progress: [░░░░░░░░░░] 0% (0/8 plans)
+Progress: [░░░░░░░░░░] 0% (0/15 plans)
 
 ## Performance Metrics
 

@@ -47,7 +47,9 @@ See `.planning/milestones/v1.0-ROADMAP.md` for full phase details.
 Plans:
 - [ ] 07-01: Calibration infrastructure — add binary flag support (CAL-01) and per-method mode (CAL-02) to calibrate.py
 - [ ] 07-02: Hybrid scoring utility (HYBRID-01) — shared 50/50 cosine + BOW helper used by all check methods
-- [ ] 07-03: wrong_args rewrite — output-error priority path (ARGS-01), flattened-values embedding (ARGS-02, ARGS-03, ARGS-04), remove low_confidence (ARGS-05), calibration run (ARGS-06)
+- [ ] 07-03: wrong_args rewrite — output-error priority path (ARGS-01), flattened-values embedding (ARGS-02, ARGS-03, ARGS-04), remove low_confidence (ARGS-05)
+- [ ] 07-04: Schema file v0 — draft initial negation motifs and tool-triggering terms; user reviews and approves draft
+- [ ] 07-05: Calibration run — wrong_args calibration passes P/R benchmark (ARGS-06)
 
 ### Phase 8: wrong_tool Rewrite
 **Goal**: `_check_wrong_tool` flags spans where the model chose a meaningfully lower-ranked tool, using a two-gate approach that fires on high-confidence disagreements and reports the gap as the severity score
@@ -62,7 +64,9 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 08-01: wrong_tool rewrite — two-gate logic (WTOOL-01), gap-as-score (WTOOL-02), empty-tools guard (WTOOL-03), hybrid scoring (WTOOL-04), three threshold keys (WTOOL-05), calibration run (WTOOL-06)
+- [ ] 08-01: wrong_tool rewrite — two-gate logic (WTOOL-01), gap-as-score (WTOOL-02), empty-tools guard (WTOOL-03), hybrid scoring (WTOOL-04), three threshold keys (WTOOL-05)
+- [ ] 08-02: Schema file review — refine negation motifs and tool-triggering terms based on phase 7 calibration data; user approves changes
+- [ ] 08-03: Calibration run — wrong_tool calibration passes P/R benchmark (WTOOL-06)
 
 ### Phase 9: no_tool + tool_use_violation Split
 **Goal**: The single `_check_no_tool` method is split into two independently-calibrated methods — one for capability gaps (tool needed, none called) using available_tools similarity, and one for explicit prohibition violations using keyword regex; both pass P/R benchmarks
@@ -77,9 +81,10 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 09-01: Schema file — draft negation motifs and tool-triggering terms patterns file; user reviews and approves (NOTOOL-04, NOTOOL-06)
-- [ ] 09-02: no_tool rewrite — max hybrid similarity against available_tools (NOTOOL-01, NOTOOL-02), calibration run (NOTOOL-08 partial)
-- [ ] 09-03: tool_use_violation extraction — new method with windowed proximity detection (NOTOOL-03, NOTOOL-05), calibrate.py proximity scoring (NOTOOL-07), calibration runs for both methods (NOTOOL-08)
+- [ ] 09-01: Schema file final approval — user reviews and approves patterns file before implementation begins (NOTOOL-04, NOTOOL-06)
+- [ ] 09-02: no_tool rewrite — max hybrid similarity against available_tools (NOTOOL-01, NOTOOL-02)
+- [ ] 09-03: tool_use_violation extraction — new method with windowed proximity detection (NOTOOL-03, NOTOOL-05), calibrate.py proximity scoring (NOTOOL-07)
+- [ ] 09-04: Calibration run — no_tool and tool_use_violation calibration both pass P/R benchmark (NOTOOL-08)
 
 ### Phase 10: excessive_tool Rewrite
 **Goal**: `_check_excessive_tool` identifies spans where the prompt did not require any tool call, using a necessity delta signal that measures how much more the prompt resembles "answer directly" than "use a tool"; the method calibrates cleanly and does not double-fire with wrong_tool
@@ -93,7 +98,9 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 10-01: excessive_tool rewrite — necessity delta signal (EXTOOL-01), secondary overlap signal (EXTOOL-02), threshold direction documentation (EXTOOL-03), calibration run (EXTOOL-04)
+- [ ] 10-01: excessive_tool rewrite — necessity delta signal (EXTOOL-01), secondary overlap signal (EXTOOL-02), threshold direction documentation (EXTOOL-03)
+- [ ] 10-02: Schema file final review — post-implementation pass over all patterns; user approves final state
+- [ ] 10-03: Calibration run — excessive_tool calibration passes P/R benchmark; full suite run across all v1.1 methods (EXTOOL-04)
 
 ## Progress
 
@@ -105,7 +112,7 @@ Plans:
 | 4. Read Path | v1.0 | 3/3 | Complete | 2026-03-30 |
 | 5. Dashboard | v1.0 | 4/4 | Complete | 2026-03-31 |
 | 6. Validation | v1.0 | 3/3 | Complete | 2026-04-04 |
-| 7. wrong_args Rewrite | v1.1 | 0/3 | Not started | - |
-| 8. wrong_tool Rewrite | v1.1 | 0/1 | Not started | - |
-| 9. no_tool + tool_use_violation Split | v1.1 | 0/3 | Not started | - |
-| 10. excessive_tool Rewrite | v1.1 | 0/1 | Not started | - |
+| 7. wrong_args Rewrite | v1.1 | 0/5 | Not started | - |
+| 8. wrong_tool Rewrite | v1.1 | 0/3 | Not started | - |
+| 9. no_tool + tool_use_violation Split | v1.1 | 0/4 | Not started | - |
+| 10. excessive_tool Rewrite | v1.1 | 0/3 | Not started | - |

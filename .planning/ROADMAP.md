@@ -25,7 +25,7 @@ See `.planning/milestones/v1.0-ROADMAP.md` for full phase details.
 
 **Milestone Goal:** Replace the four conceptually-wrong heuristic check methods in ToolCallAnalyzer with research-backed implementations — one method at a time. Each phase ends with a per-method calibration run that must pass P/R benchmarks before the next phase begins.
 
-- [ ] **Phase 7: wrong_args Rewrite** - `_check_wrong_args` redesigned with output-error priority + flattened embedding, calibration infra updated, and hybrid scoring utility in place
+- [x] **Phase 7: wrong_args Rewrite** - `_check_wrong_args` redesigned with output-error priority + flattened embedding, calibration infra updated, and hybrid scoring utility in place
 - [ ] **Phase 8: wrong_tool Rewrite** - `_check_wrong_tool` redesigned with two-gate logic (rank floor + gap), calibrated against P/R benchmark
 - [ ] **Phase 9: no_tool + tool_use_violation Split** - `_check_no_tool` redesigned against available_tools; `_check_tool_use_violation` extracted as keyword-regex-only method, both calibrated
 - [ ] **Phase 10: excessive_tool Rewrite** - `_check_excessive_tool` redesigned with necessity delta signal, calibrated against P/R benchmark
@@ -45,11 +45,11 @@ See `.planning/milestones/v1.0-ROADMAP.md` for full phase details.
 **Plans**: 5 plans
 
 Plans:
-- [ ] 07-01-PLAN.md — Calibration infrastructure: BINARY_FLAG_TYPES set + --flag-type arg for calibrate.py (CAL-01, CAL-02)
-- [ ] 07-02-PLAN.md — Hybrid scoring utility: bow_score + hybrid_score in base.py (HYBRID-01)
-- [ ] 07-03-PLAN.md — wrong_args rewrite: error-priority path + flattened-values hybrid scoring, remove low_confidence (ARGS-01 to ARGS-05)
-- [ ] 07-04-PLAN.md — Schema file v0: draft detection_patterns.yml; user reviews and approves (NOTOOL-04/06 prep)
-- [ ] 07-05-PLAN.md — Calibration run: wrong_tool_args calibration passes P/R benchmark (ARGS-06)
+- [x] 07-01-PLAN.md — Calibration infrastructure: BINARY_FLAG_TYPES set + --flag-type arg for calibrate.py (CAL-01, CAL-02)
+- [x] 07-02-PLAN.md — Hybrid scoring utility: bow_score + hybrid_score in base.py (HYBRID-01)
+- [x] 07-03-PLAN.md — wrong_args rewrite: error-priority path + flattened-values hybrid scoring, remove low_confidence (ARGS-01 to ARGS-05)
+- [x] 07-04-PLAN.md — Schema file v0: draft detection_patterns.yml; user reviews and approves (NOTOOL-04/06 prep)
+- [x] 07-05-PLAN.md — Calibration run: wrong_tool_args calibration — threshold=0.30, P=0.40, R=0.90; ARGS-06 satisfied
 
 ### Phase 8: wrong_tool Rewrite
 **Goal**: `_check_wrong_tool` flags spans where the model chose a meaningfully lower-ranked tool, using a two-gate approach that fires on high-confidence disagreements and reports the gap as the severity score
@@ -112,7 +112,7 @@ Plans:
 | 4. Read Path | v1.0 | 3/3 | Complete | 2026-03-30 |
 | 5. Dashboard | v1.0 | 4/4 | Complete | 2026-03-31 |
 | 6. Validation | v1.0 | 3/3 | Complete | 2026-04-04 |
-| 7. wrong_args Rewrite | 4/5 | In Progress|  | - |
+| 7. wrong_args Rewrite | v1.1 | 5/5 | Complete | 2026-04-06 |
 | 8. wrong_tool Rewrite | v1.1 | 0/3 | Not started | - |
 | 9. no_tool + tool_use_violation Split | v1.1 | 0/4 | Not started | - |
 | 10. excessive_tool Rewrite | v1.1 | 0/3 | Not started | - |

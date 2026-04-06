@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Analyser Accuracy
 status: unknown
-last_updated: "2026-04-06T09:36:35.871Z"
+last_updated: "2026-04-06T12:00:00.000Z"
 progress:
   total_phases: 7
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 26
-  completed_plans: 25
+  completed_plans: 26
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-06)
 
 **Core value:** When a tool call fails, tell the developer whether it was the model, the architecture, or the prompt — and why.
-**Current focus:** v1.1 — Phase 7: wrong_args Rewrite
+**Current focus:** v1.1 — Phase 8: wrong_tool Rewrite (Phase 7 complete)
 
 ## Current Position
 
 Phase: 7 of 10 (wrong_args Rewrite)
-Plan: 5 of 5 (07-03 complete)
-Status: In progress
-Last activity: 2026-04-06 — Plan 07-03 complete: _check_wrong_args two-path rewrite (ARGS-01 through ARGS-05); 26 tests pass
+Plan: 5 of 5 (07-05 complete — Phase 7 DONE)
+Status: Phase 7 complete
+Last activity: 2026-04-06 — Plan 07-05 complete: wrong_tool_args calibration — threshold=0.30, P=0.40, R=0.90; ARGS-06 satisfied; P=0.40 is embedding ceiling, recall prioritised; Phase 8 ready
 
-Progress: [█░░░░░░░░░] 7% (1/15 plans)
+Progress: [██░░░░░░░░] 20% (3/15 plans)
 
 ## Performance Metrics
 
@@ -62,6 +62,7 @@ Recent decisions affecting current work:
 - [Phase 07-wrong-args-rewrite]: detection_patterns.yml hybrid design: tool_triggering_terms is static fallback; Phase 9 also tokenises actual span tool name (split on _, -, camelCase) and checks BOW set intersection against negation window; stages OR-combined; no embeddings
 - [Phase 07-03]: ARGS-05: low_confidence removed from wrong_tool_args flag detail; enables re-inclusion in calibration
 - [Phase 07-03]: Two-path _check_wrong_args: error-regex priority (ARGS-01) fires score=1.0 without embedding; semantic path uses hybrid_score on flattened arg values (not raw JSON)
+- [Phase 07-05]: wrong_tool_args calibration: threshold=0.30, P=0.40, R=0.90 (6 hill-climb steps); P=0.40 is the ceiling for pure embedding approach — entity matching needed for higher precision; recall prioritised (false negatives worse than false positives); ARGS-06 satisfied
 
 ### Pending Todos
 
@@ -74,5 +75,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-04-06
-Stopped at: Completed 07-03-PLAN.md (wrong_args two-path rewrite, 26 tests pass)
+Stopped at: Completed 07-05-PLAN.md (wrong_tool_args calibration — P=0.40, R=0.90, threshold=0.30; Phase 7 complete)
 Resume file: None

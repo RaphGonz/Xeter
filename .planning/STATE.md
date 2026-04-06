@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Analyser Accuracy
 status: unknown
-last_updated: "2026-04-06T09:08:31.846Z"
+last_updated: "2026-04-06T09:21:02.432Z"
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 26
-  completed_plans: 23
+  completed_plans: 24
 ---
 
 # Project State
@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-04-06)
 ## Current Position
 
 Phase: 7 of 10 (wrong_args Rewrite)
-Plan: 3 of 5 (07-02 complete)
+Plan: 5 of 5 (07-04 complete)
 Status: In progress
-Last activity: 2026-04-06 — Plan 07-02 complete: bow_score and hybrid_score utility functions added to base.py (HYBRID-01)
+Last activity: 2026-04-06 — Plan 07-04 complete: detection_patterns.yml schema approved with hybrid static+BOW design (NOTOOL-06 resolved)
 
 Progress: [█░░░░░░░░░] 7% (1/15 plans)
 
@@ -56,7 +56,9 @@ Recent decisions affecting current work:
 - v1.1 start: wrong_tool AND gate was inverted — fix is surgical (invert threshold direction, report gap not top_score)
 - v1.1 start: wrong_tool_args excluded from P/R calibration removed — rewrite enables re-inclusion once low_confidence flag is gone
 - 07-02: HYBRID-01 utility functions placed module-level in base.py; stdlib set ops only, no new deps; default weight=0.5
+- 07-04: detection_patterns.yml uses hybrid detection — static tool_triggering_terms list (fallback) + dynamic tool-name BOW matching (tokenise on _, -, camelCase; set intersection with negation window); stages OR-combined; no embeddings needed
 - 07-01: Use set() not {} for BINARY_FLAG_TYPES (Python {} is always dict); guard None P/R for binary types in serialization
+- [Phase 07-wrong-args-rewrite]: detection_patterns.yml hybrid design: tool_triggering_terms is static fallback; Phase 9 also tokenises actual span tool name (split on _, -, camelCase) and checks BOW set intersection against negation window; stages OR-combined; no embeddings
 
 ### Pending Todos
 
@@ -64,10 +66,10 @@ None.
 
 ### Blockers/Concerns
 
-- NOTOOL-06: User must review and approve detection patterns schema file before Phase 9 implementation begins — plan 09-01 is a user-approval gate, not a code task.
+None.
 
 ## Session Continuity
 
 Last session: 2026-04-06
-Stopped at: Completed 07-02-PLAN.md (HYBRID-01 utility functions: bow_score, hybrid_score)
+Stopped at: Completed 07-04-PLAN.md (detection_patterns.yml schema approved, NOTOOL-06 resolved)
 Resume file: None

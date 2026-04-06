@@ -15,11 +15,11 @@ Untouched: `_check_parsing_error`, `_check_response_anomaly`.
 
 ### wrong_args Rewrite
 
-- [ ] **ARGS-01**: Detects bad arguments via tool_output error pattern matching (regex, no embedding, fires first)
-- [ ] **ARGS-02**: Detects semantic mismatch by embedding flattened argument *values* (not raw JSON string)
-- [ ] **ARGS-03**: Uses hybrid scoring (50/50 embed + BOW) for the semantic path
-- [ ] **ARGS-04**: Skips semantic check when flattened values are empty or all-numeric
-- [ ] **ARGS-05**: `low_confidence: True` removed from flag detail
+- [x] **ARGS-01**: Detects bad arguments via tool_output error pattern matching (regex, no embedding, fires first)
+- [x] **ARGS-02**: Detects semantic mismatch by embedding flattened argument *values* (not raw JSON string)
+- [x] **ARGS-03**: Uses hybrid scoring (50/50 embed + BOW) for the semantic path
+- [x] **ARGS-04**: Skips semantic check when flattened values are empty or all-numeric
+- [x] **ARGS-05**: `low_confidence: True` removed from flag detail
 - [ ] **ARGS-06**: Per-method calibration run passes P/R benchmark before next phase
 
 ### wrong_tool Rewrite
@@ -83,11 +83,11 @@ Untouched: `_check_parsing_error`, `_check_response_anomaly`.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | HYBRID-01 | Phase 7 | Complete |
-| ARGS-01 | Phase 7 | Pending |
-| ARGS-02 | Phase 7 | Pending |
-| ARGS-03 | Phase 7 | Pending |
-| ARGS-04 | Phase 7 | Pending |
-| ARGS-05 | Phase 7 | Pending |
+| ARGS-01 | Phase 7 | Complete |
+| ARGS-02 | Phase 7 | Complete |
+| ARGS-03 | Phase 7 | Complete |
+| ARGS-04 | Phase 7 | Complete |
+| ARGS-05 | Phase 7 | Complete |
 | ARGS-06 | Phase 7 | Pending |
 | WTOOL-01 | Phase 8 | Pending |
 | WTOOL-02 | Phase 8 | Pending |

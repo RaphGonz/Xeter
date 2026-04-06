@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Analyser Accuracy
 status: unknown
-last_updated: "2026-04-06T09:21:02.432Z"
+last_updated: "2026-04-06T09:36:35.871Z"
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 26
-  completed_plans: 24
+  completed_plans: 25
 ---
 
 # Project State
@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-04-06)
 ## Current Position
 
 Phase: 7 of 10 (wrong_args Rewrite)
-Plan: 5 of 5 (07-04 complete)
+Plan: 5 of 5 (07-03 complete)
 Status: In progress
-Last activity: 2026-04-06 — Plan 07-04 complete: detection_patterns.yml schema approved with hybrid static+BOW design (NOTOOL-06 resolved)
+Last activity: 2026-04-06 — Plan 07-03 complete: _check_wrong_args two-path rewrite (ARGS-01 through ARGS-05); 26 tests pass
 
 Progress: [█░░░░░░░░░] 7% (1/15 plans)
 
@@ -44,6 +44,7 @@ Progress: [█░░░░░░░░░] 7% (1/15 plans)
 
 *Updated after each plan completion*
 | Phase 07-wrong-args-rewrite P01 | 14min | 1 tasks | 1 files |
+| Phase 07-wrong-args-rewrite P03 | 10min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -59,6 +60,8 @@ Recent decisions affecting current work:
 - 07-04: detection_patterns.yml uses hybrid detection — static tool_triggering_terms list (fallback) + dynamic tool-name BOW matching (tokenise on _, -, camelCase; set intersection with negation window); stages OR-combined; no embeddings needed
 - 07-01: Use set() not {} for BINARY_FLAG_TYPES (Python {} is always dict); guard None P/R for binary types in serialization
 - [Phase 07-wrong-args-rewrite]: detection_patterns.yml hybrid design: tool_triggering_terms is static fallback; Phase 9 also tokenises actual span tool name (split on _, -, camelCase) and checks BOW set intersection against negation window; stages OR-combined; no embeddings
+- [Phase 07-03]: ARGS-05: low_confidence removed from wrong_tool_args flag detail; enables re-inclusion in calibration
+- [Phase 07-03]: Two-path _check_wrong_args: error-regex priority (ARGS-01) fires score=1.0 without embedding; semantic path uses hybrid_score on flattened arg values (not raw JSON)
 
 ### Pending Todos
 
@@ -71,5 +74,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-04-06
-Stopped at: Completed 07-04-PLAN.md (detection_patterns.yml schema approved, NOTOOL-06 resolved)
+Stopped at: Completed 07-03-PLAN.md (wrong_args two-path rewrite, 26 tests pass)
 Resume file: None

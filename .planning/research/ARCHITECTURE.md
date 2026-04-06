@@ -32,9 +32,11 @@
 │  │  - BRPOP span_id from queue                                   │  │
 │  │  - fetch span fields from ClickHouse                          │  │
 │  │  - embed: prompt, tool_name, tool_description, response       │  │
+│  │  - embed prompt vs each tool in available_tools (from S3)     │  │
+│  │  - embed prompt vs tool_arguments values (inline JSON)        │  │
 │  │  - cosine similarity comparisons                              │  │
-│  │  - classify: wrong_tool / no_tool / excessive_tool /          │  │
-│  │              parsing_error                                    │  │
+│  │  - classify: wrong_tool / wrong_tool_args / no_tool /         │  │
+│  │              excessive_tool / parsing_error                   │  │
 │  │  - INSERT flag rows into PostgreSQL                           │  │
 │  └───────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────┘
@@ -89,7 +91,7 @@
 | Embedding Worker | Consume queue, compute similarities, write flag rows | Async from ingestion; failure leaves span unflagged (not lost) |
 | ClickHouse | Store all spans, immutable, OLAP scan for list/filter queries | Append-only; no mutations; `tenant_id` partition key |
 | PostgreSQL | Store flags, diagnostics, auth, tenants — all mutable relational data | Append-only rows for flags/diagnostics; FK to ClickHouse span_id |
-| S3 / MinIO | Store large text payloads (prompt, response, raw_response) | Referenced by key in ClickHouse; fetched lazily by Presenter |
+| S3 / MinIO | Store large text payloads (prompt, response, raw_response, available_tools) | Referenced by key in ClickHouse; fetched lazily by Presenter; tool_arguments stored inline in ClickHouse (small) |
 | Redis | Decouple ingestion from embedding worker via queue; optional: event cache | BRPOP queue; no durability requirement (span already in ClickHouse) |
 | Presenter | Backend API; merge ClickHouse + PostgreSQL results per request | REST + SSE; parallelises two store queries; lazy S3 fetch |
 | Diagnosticer | On-demand LLM diagnostic service; called by Presenter | Separate process; slow calls isolated; configurable LLM backend |
@@ -267,7 +269,7 @@ async def get_span_detail(span_id: str, tenant_id: str):
 
 ### Pattern 4: S3 as Large-Payload Offload
 
-**What:** Large text fields (prompt, response, raw_response) are uploaded to S3 at ingestion time. ClickHouse stores only the S3 object key (`prompt_ref`, `response_ref`, `raw_response_ref`). The Presenter fetches S3 content lazily — only when a user opens a span detail view, never during list queries.
+**What:** Large text fields (prompt, response, raw_response, available_tools) are uploaded to S3 at ingestion time. ClickHouse stores only the S3 object key (`prompt_ref`, `response_ref`, `raw_response_ref`, `available_tools_ref`). `tool_arguments` is small enough to store inline as JSON in ClickHouse. The Presenter fetches S3 content lazily — only when a user opens a span detail view, never during list queries.
 
 **When to use:** Always in LLM observability platforms. Prompt and response fields regularly exceed 10KB–100KB. Storing them inline in ClickHouse causes row bloat, degrades scan performance, and inflates storage costs. This pattern is confirmed by Langfuse v3 ("raw ingestion events stored in S3") and the ClickHouse tiered storage playbook.
 
@@ -300,17 +302,24 @@ Analyser
               Embedding Worker
                     ├── fetch span from ClickHouse
                     ├── fetch prompt from S3 (needed for embedding)
+                    ├── fetch available_tools from S3 (via available_tools_ref)
                     ├── sentence-transformers encode():
                     │     embed(prompt) → p_vec
                     │     embed(tool_name) → tn_vec
                     │     embed(tool_description) → td_vec
                     │     embed(response) → r_vec
                     │     embed(model_name + prompt) → mp_vec
+                    │     embed(each tool in available_tools) → at_vecs[]
+                    │     embed(each tool_arguments value) → ta_vecs[]
                     ├── cosine_similarity(p_vec, tn_vec) → score_1
                     ├── cosine_similarity(p_vec, td_vec) → score_2
                     ├── cosine_similarity(p_vec, r_vec)  → score_3
+                    ├── rank at_vecs[] by similarity to p_vec → ranked_tools
+                    ├── cosine_similarity(p_vec, each ta_vec) → arg_scores[]
                     ├── classify based on scores + thresholds
-                    │     wrong_tool:      score_1 < threshold_A
+                    │     wrong_tool:      called tool not top-ranked in ranked_tools (A1)
+                    │                      or score_1 < threshold_A (coarse signal)
+                    │     wrong_tool_args: min(arg_scores) < threshold_B (low-confidence, A7)
                     │     no_tool:         tool_name is null + p_vec suggests tool expected
                     │     excessive_tool:  count of tool spans in trace > expected
                     │     parsing_error:   mp_vec pattern match

@@ -113,6 +113,6 @@ Plans:
 | 5. Dashboard | v1.0 | 4/4 | Complete | 2026-03-31 |
 | 6. Validation | v1.0 | 3/3 | Complete | 2026-04-04 |
 | 7. wrong_args Rewrite | v1.1 | 5/5 | Complete | 2026-04-06 |
-| 8. wrong_tool Rewrite | 1/3 | In Progress|  | - |
+| 8. wrong_tool Rewrite | 2/3 | In Progress|  | - |
 | 9. no_tool + tool_use_violation Split | v1.1 | 0/4 | Not started | - |
 | 10. excessive_tool Rewrite | v1.1 | 0/3 | Not started | - |

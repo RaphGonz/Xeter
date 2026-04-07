@@ -73,9 +73,14 @@ None.
 
 None — no external service configuration required.
 
+## User Approval
+
+**Status:** APPROVED (2026-04-07)
+User reviewed the three-branch algorithm and approved it. No issues were raised. Calibration in 08-03 is unblocked.
+
 ## Next Phase Readiness
 
-- 08-03 (calibration run) is ready to execute once user approves algorithm
+- 08-03 (calibration run) is ready to execute — user approval received
 - Implementation verified intact: `_check_wrong_tool` at lines 141-205 of `tool_call_analyzer.py`
 - All 5 threshold-rename files confirmed: `tool_call_analyzer.py`, `main.py`, `calibrate.py`, `docker-compose.yml`, `calibrated_thresholds.json`
 

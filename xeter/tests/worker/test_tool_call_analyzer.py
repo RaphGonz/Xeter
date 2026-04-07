@@ -23,7 +23,7 @@ from xeter.services.worker.tool_call_analyzer import ToolCallAnalyzer
 # ---------------------------------------------------------------------------
 
 DEFAULT_THRESHOLDS = {
-    "wrong_tool": 0.5,
+    "wrong_tool_called": 0.5,
     "wrong_tool_args": 0.4,
     "no_tool": 0.6,
     "excessive_tool": 0.3,
@@ -139,7 +139,7 @@ def test_wrong_tool_flagged_when_below_threshold():
         return _orthogonal_vec()
 
     embedder.encode.side_effect = encode_side_effect
-    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS, "wrong_tool": 0.5})
+    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS, "wrong_tool_called": 0.5})
     span = make_clean_span(
         tool_name="calculator",
         available_tools=[
@@ -159,7 +159,7 @@ def test_wrong_tool_flagged_when_below_threshold():
 def test_wrong_tool_not_flagged_when_above_threshold():
     # All same vectors → cosine sim = 1.0
     embedder = make_mock_embedder(_unit_vec())
-    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS, "wrong_tool": 0.5})
+    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS, "wrong_tool_called": 0.5})
     span = make_clean_span(
         tool_name="search_web",
         available_tools=[
@@ -228,7 +228,7 @@ def test_wrong_tool_uses_available_tools_ranking():
 
     embedder.encode.side_effect = encode_side_effect
 
-    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS, "wrong_tool": 0.5})
+    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS, "wrong_tool_called": 0.5})
     span = make_clean_span(
         tool_name="calculator",
         prompt="Find Python typing documentation",

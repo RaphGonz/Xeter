@@ -139,95 +139,70 @@ class ToolCallAnalyzer(BaseAnalyzer):
     # ------------------------------------------------------------------
 
     def _check_wrong_tool(self, span: SpanData) -> list[Flag]:
-        """Detect when the called tool is not the top semantic match for the prompt.
+        """Detect when the called tool is not the best semantic match for the prompt.
 
-        Three signals are combined:
-          - prompt vs tool_name (FLAG-04)
-          - prompt vs tool_description (FLAG-05)
-          - available_tools ranking — top-ranked tool by similarity (FLAG-11)
+        Three cases (WTOOL-01):
+          1. No available_tools: immediate flag (WTOOL-03)
+          2. top1_tool != called_tool AND top1_score >= threshold: better tool existed
+          3. top1_score < threshold: no tool was appropriate
 
-        A wrong_tool flag is raised when available_tools ranking disagrees with
-        the called tool AND the top-ranked similarity is below threshold.
+        Correct: top1_tool == called_tool AND top1_score >= threshold.
+        Reported score: top1_score via hybrid_score (WTOOL-02, WTOOL-04).
         """
         if span.tool_name is None:
             return []
+
+        # WTOOL-03: immediate flag — tool called but none available
+        if not span.available_tools:
+            self.log_score("no_available_tools", 1.0)
+            return [Flag(
+                flag_type="wrong_tool",
+                score=1.0,
+                detail={
+                    "metric": "no_available_tools",
+                    "actual_tool": span.tool_name,
+                },
+            )]
+
         if span.prompt is None:
             return []
 
         prompt_vec = self.embed(span.prompt)
+        tool_vecs = self._get_tool_embeddings(span.available_tools)
 
-        # --- available_tools ranking (FLAG-11) ---
-        if span.available_tools is not None and len(span.available_tools) > 0:
-            tool_vecs = self._get_tool_embeddings(span.available_tools)
-            tool_scores: list[tuple[str, float]] = []
-            for tool, tool_vec in zip(span.available_tools, tool_vecs):
-                score = self.compare(prompt_vec, tool_vec)
-                tool_scores.append((tool.get("name", ""), score))
+        # WTOOL-04: hybrid score (50/50 cosine + BOW) for each tool
+        tool_scores: list[tuple[str, float]] = []
+        for tool, tool_vec in zip(span.available_tools, tool_vecs):
+            name = tool.get("name", "")
+            desc = tool.get("description", "")
+            tool_text = f"{name} {desc}".strip() if desc else name
+            cosine = self.compare(prompt_vec, tool_vec)
+            bow = bow_score(span.prompt, tool_text)
+            score = hybrid_score(cosine, bow)
+            tool_scores.append((name, score))
 
-            # Sort descending — highest similarity first
-            tool_scores.sort(key=lambda x: x[1], reverse=True)
-            top_tool_name, top_score = tool_scores[0]
+        tool_scores.sort(key=lambda x: x[1], reverse=True)
+        top1_name, top1_score = tool_scores[0]
 
-            # Log the ranking score
-            self.log_score("prompt_vs_tool_rank", top_score)
+        # WTOOL-02: log top1_score before threshold check
+        self.log_score("prompt_vs_top1_tool_hybrid", top1_score)
 
-            # Also log individual signals (FLAG-04 / FLAG-05)
-            if span.tool_name is not None:
-                tool_name_vec = self.embed(span.tool_name)
-                name_score = self.compare(prompt_vec, tool_name_vec)
-                self.log_score("prompt_vs_tool_name", name_score)
+        # Correct case: called the best tool with trustworthy score — no flag
+        if top1_name == span.tool_name and top1_score >= self._thresholds["wrong_tool_called"]:
+            return []
 
-            if span.tool_description is not None:
-                desc_vec = self.embed(span.tool_description)
-                desc_score = self.compare(prompt_vec, desc_vec)
-                self.log_score("prompt_vs_tool_description", desc_score)
-
-            # Flag if: called tool is not top-ranked AND top similarity below threshold
-            if (
-                span.tool_name != top_tool_name
-                and top_score < self._thresholds["wrong_tool"]
-            ):
-                ranked_detail = [
-                    {"name": name, "score": score} for name, score in tool_scores
-                ]
-                return [
-                    Flag(
-                        flag_type="wrong_tool",
-                        score=top_score,
-                        detail={
-                            "metric": "prompt_vs_tool_rank",
-                            "expected_tool": top_tool_name,
-                            "actual_tool": span.tool_name,
-                            "score": top_score,
-                            "ranked_tools": ranked_detail,
-                        },
-                    )
-                ]
-        else:
-            # No available_tools — fall back to prompt vs tool_name (FLAG-04)
-            tool_name_vec = self.embed(span.tool_name)
-            name_score = self.compare(prompt_vec, tool_name_vec)
-            self.log_score("prompt_vs_tool_name", name_score)
-
-            if span.tool_description is not None:
-                desc_vec = self.embed(span.tool_description)
-                desc_score = self.compare(prompt_vec, desc_vec)
-                self.log_score("prompt_vs_tool_description", desc_score)
-
-            if name_score < self._thresholds["wrong_tool"]:
-                return [
-                    Flag(
-                        flag_type="wrong_tool",
-                        score=name_score,
-                        detail={
-                            "metric": "prompt_vs_tool_name",
-                            "actual_tool": span.tool_name,
-                            "score": name_score,
-                        },
-                    )
-                ]
-
-        return []
+        # Case B (better tool existed) and Case C (no tool appropriate): both flag
+        return [Flag(
+            flag_type="wrong_tool",
+            score=top1_score,
+            detail={
+                "metric": "prompt_vs_top1_tool_hybrid",
+                "expected_tool": top1_name,
+                "actual_tool": span.tool_name,
+                "score": top1_score,
+                "ranked_tools": [{"name": n, "score": s} for n, s in tool_scores],
+            },
+        )]
 
     # ------------------------------------------------------------------
     # Check methods — FLAG-12

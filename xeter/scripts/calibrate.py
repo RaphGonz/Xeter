@@ -43,7 +43,7 @@ EMBEDDER_URL = "http://localhost:8002"
 
 # Flag types to calibrate independently via hill climbing
 FLAG_TYPES = [
-    "wrong_tool",
+    "wrong_tool_called",
     "wrong_tool_args",
     "no_tool",
     "excessive_tool",
@@ -57,7 +57,7 @@ BINARY_FLAG_TYPES: set[str] = set()
 
 # Default starting thresholds (used as baseline when calibrating other flags)
 DEFAULT_THRESHOLDS: dict[str, float] = {
-    "wrong_tool": 0.5,
+    "wrong_tool_called": 0.5,
     "wrong_tool_args": 0.4,
     "no_tool": 0.6,
     "excessive_tool": 0.3,
@@ -264,7 +264,7 @@ def patch_docker_compose(calibrated: dict[str, float]) -> None:
         return
 
     key_to_env = {
-        "wrong_tool": "WORKER_THRESHOLD_WRONG_TOOL",
+        "wrong_tool_called": "WORKER_THRESHOLD_WRONG_TOOL_CALLED",
         "wrong_tool_args": "WORKER_THRESHOLD_WRONG_ARGS",
         "no_tool": "WORKER_THRESHOLD_NO_TOOL",
         "excessive_tool": "WORKER_THRESHOLD_EXCESSIVE_TOOL",

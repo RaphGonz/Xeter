@@ -17,7 +17,7 @@ Environment variables:
   CLICKHOUSE_HOST                   — ClickHouse host (default: "clickhouse")
   S3_ENDPOINT_URL / S3_ACCESS_KEY / S3_SECRET_KEY / S3_BUCKET
                                     — MinIO/S3 credentials (required by fetcher)
-  WORKER_THRESHOLD_WRONG_TOOL       — cosine threshold, default 0.5
+  WORKER_THRESHOLD_WRONG_TOOL_CALLED — cosine threshold, default 0.5
   WORKER_THRESHOLD_WRONG_ARGS       — cosine threshold, default 0.4
   WORKER_THRESHOLD_NO_TOOL          — cosine threshold, default 0.6
   WORKER_THRESHOLD_EXCESSIVE_TOOL   — cosine threshold, default 0.3
@@ -46,7 +46,7 @@ QUEUE_KEY = "analysis_queue"
 BRPOP_TIMEOUT = 2  # seconds — allows SIGTERM response within ~2 s
 
 THRESHOLDS: dict[str, float] = {
-    "wrong_tool": float(os.environ.get("WORKER_THRESHOLD_WRONG_TOOL", "0.5")),
+    "wrong_tool_called": float(os.environ.get("WORKER_THRESHOLD_WRONG_TOOL_CALLED", "0.5")),
     "wrong_tool_args": float(os.environ.get("WORKER_THRESHOLD_WRONG_ARGS", "0.4")),
     "no_tool": float(os.environ.get("WORKER_THRESHOLD_NO_TOOL", "0.6")),
     "excessive_tool": float(os.environ.get("WORKER_THRESHOLD_EXCESSIVE_TOOL", "0.3")),

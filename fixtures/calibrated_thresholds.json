@@ -1,6 +1,6 @@
 {
   "thresholds": {
-    "wrong_tool": 0.5,
+    "wrong_tool_called": 0.5,
     "wrong_tool_args": 0.3,
     "no_tool": 0.6,
     "excessive_tool": 0.3,

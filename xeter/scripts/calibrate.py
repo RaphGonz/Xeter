@@ -51,6 +51,13 @@ FLAG_TYPES = [
     "response_anomaly",
 ]
 
+# Maps threshold key → actual emitted flag_type (and fixture anomaly_type).
+# Needed when threshold key differs from the emitted flag type (e.g. after a
+# threshold-key rename that preserved the public flag_type string).
+FLAG_TYPE_ALIAS: dict[str, str] = {
+    "wrong_tool_called": "wrong_tool",
+}
+
 # Binary detectors — skip numeric threshold sweep; detected by logic, not cosine
 # (empty for now; "tool_use_violation" is added in Phase 9)
 BINARY_FLAG_TYPES: set[str] = set()
@@ -127,8 +134,15 @@ def evaluate_flag_type(
 
     Varies only flag_type's threshold; all others stay at current_thresholds.
     Counts only spans whose anomaly_type matches flag_type as actual positives.
+
+    FLAG_TYPE_ALIAS is applied so that threshold keys that differ from the
+    emitted flag_type (e.g. "wrong_tool_called" vs "wrong_tool") are resolved
+    correctly when matching fixture labels and analyzer outputs.
     """
     from xeter.services.worker.tool_call_analyzer import ToolCallAnalyzer
+
+    # Resolve the actual emitted flag_type string used in fixture + analyzer
+    emitted_flag_type = FLAG_TYPE_ALIAS.get(flag_type, flag_type)
 
     thresholds = dict(current_thresholds)
     thresholds[flag_type] = threshold
@@ -136,12 +150,12 @@ def evaluate_flag_type(
 
     tp = fp = fn = 0
     for row in spans:
-        actual = row.get("anomaly_type") == flag_type
+        actual = row.get("anomaly_type") == emitted_flag_type
         span = build_span_data(row)
         flags = analyzer.analyze(span)
         analyzer.flush_scores()
 
-        predicted = any(f.flag_type == flag_type for f in flags)
+        predicted = any(f.flag_type == emitted_flag_type for f in flags)
 
         if predicted and actual:
             tp += 1

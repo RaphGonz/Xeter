@@ -243,6 +243,88 @@ def test_wrong_tool_uses_available_tools_ranking():
 
 
 # ---------------------------------------------------------------------------
+# Test: WTOOL-03 — immediate flag when no available_tools (None)
+# ---------------------------------------------------------------------------
+
+def test_wrong_tool_immediate_flag_no_available_tools():
+    """WTOOL-03: tool called but available_tools is None → immediate flag, no embed call."""
+    embedder = make_mock_embedder(_unit_vec())
+    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS})
+    span = make_clean_span(tool_name="search_web", available_tools=None)
+    flags = analyzer._check_wrong_tool(span)
+    assert len(flags) == 1
+    assert flags[0].flag_type == "wrong_tool"
+    assert flags[0].detail.get("metric") == "no_available_tools"
+    assert flags[0].detail.get("actual_tool") == "search_web"
+    # No embed call — immediate flag before any scoring
+    embedder.encode.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Test: WTOOL-03 — immediate flag when available_tools is empty list
+# ---------------------------------------------------------------------------
+
+def test_wrong_tool_immediate_flag_empty_available_tools():
+    """WTOOL-03: tool called but available_tools is [] → immediate flag."""
+    embedder = make_mock_embedder(_unit_vec())
+    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS})
+    span = make_clean_span(tool_name="search_web", available_tools=[])
+    flags = analyzer._check_wrong_tool(span)
+    assert len(flags) == 1
+    assert flags[0].flag_type == "wrong_tool"
+    assert flags[0].detail.get("metric") == "no_available_tools"
+    embedder.encode.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Test: WTOOL-02 — reported score is top1 hybrid score
+# ---------------------------------------------------------------------------
+
+def test_wrong_tool_score_is_top1_hybrid():
+    """WTOOL-02: flag.score equals the top1 hybrid score, not a gap or name score."""
+    # Prompt vector = unit_vec; tool vec = orthogonal → low cosine, low hybrid → flags
+    embedder = make_mock_embedder()
+    call_idx = [0]
+    def encode_side_effect(text):
+        call_idx[0] += 1
+        if call_idx[0] == 1:
+            return _unit_vec()   # prompt
+        return _orthogonal_vec()  # tools → low similarity
+    embedder.encode.side_effect = encode_side_effect
+
+    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS})
+    span = make_clean_span(
+        tool_name="calculator",
+        available_tools=[
+            {"name": "search_web", "description": "Searches the web"},
+            {"name": "calculator", "description": "Math calculations"},
+        ],
+    )
+    flags = analyzer._check_wrong_tool(span)
+    assert len(flags) == 1
+    assert flags[0].flag_type == "wrong_tool"
+    # score must be a float between 0 and 1 (the top1 hybrid score, not 1.0 sentinel)
+    assert 0.0 <= flags[0].score <= 1.0
+    assert flags[0].detail.get("metric") == "prompt_vs_top1_tool_hybrid"
+
+
+# ---------------------------------------------------------------------------
+# Test: WTOOL-01 correct case — no flag when called_tool == top1 and score >= threshold
+# ---------------------------------------------------------------------------
+
+def test_wrong_tool_no_flag_correct_tool_above_threshold():
+    """WTOOL-01 correct case: top1 == called_tool, score >= threshold → no flag."""
+    embedder = make_mock_embedder(_unit_vec())  # all same → cosine=1.0 → high hybrid
+    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS})
+    span = make_clean_span(
+        tool_name="search_web",
+        available_tools=[{"name": "search_web", "description": "Searches the web for information"}],
+    )
+    flags = analyzer._check_wrong_tool(span)
+    assert not any(f.flag_type == "wrong_tool" for f in flags)
+
+
+# ---------------------------------------------------------------------------
 # Test 7: wrong_args flag must NOT include low_confidence (ARGS-05)
 # ---------------------------------------------------------------------------
 

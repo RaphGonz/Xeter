@@ -52,20 +52,20 @@ Plans:
 - [x] 07-05-PLAN.md — Calibration run: wrong_tool_args calibration — threshold=0.30, P=0.40, R=0.90; ARGS-06 satisfied
 
 ### Phase 8: wrong_tool Rewrite
-**Goal**: `_check_wrong_tool` flags spans where the model chose a meaningfully lower-ranked tool, using a two-gate approach that fires on high-confidence disagreements and reports the gap as the severity score
+**Goal**: `_check_wrong_tool` flags spans where the model called a tool that is not the best match for the prompt, using single-threshold logic on top1 tool score; also flags immediately when a tool was called but no tools were available
 **Depends on**: Phase 7
 **Requirements**: WTOOL-01, WTOOL-02, WTOOL-03, WTOOL-04, WTOOL-05, WTOOL-06
 **Success Criteria** (what must be TRUE):
-  1. A span where the top-ranked tool score exceeds `wrong_tool_rank_floor` and the gap between the top tool and the called tool exceeds `wrong_tool_gap` is flagged; the reported score is the gap value, not the top score
-  2. A span where `available_tools` is None or empty is not flagged (no crash, no false positive)
-  3. The three new threshold keys (`wrong_tool_gap`, `wrong_tool_rank_floor`, `wrong_tool_called`) appear in `calibrated_thresholds.json` after calibration
-  4. Running `calibrate.py --flag-type wrong_tool` completes and the resulting thresholds achieve >= 80% precision on labelled spans
+  1. A span where top1_score >= `wrong_tool_called` and the top-ranked tool differs from the called tool is flagged; a span where top1_score < `wrong_tool_called` (no tool was appropriate) is also flagged; reported score is top1_score
+  2. A span where a tool is called but `available_tools` is None or empty is immediately flagged (no threshold check needed)
+  3. The threshold key `wrong_tool_called` appears in `calibrated_thresholds.json` after calibration
+  4. Running `calibrate.py --flag-type wrong_tool` completes; calibration maximizes recall (minimize false negatives) while keeping precision as high as possible; both P and R are reported
   5. A span previously suppressed by the inverted AND gate (high top-score span with a wrong tool) is now correctly flagged
 **Plans**: TBD
 
 Plans:
-- [ ] 08-01: wrong_tool rewrite — two-gate logic (WTOOL-01), gap-as-score (WTOOL-02), empty-tools guard (WTOOL-03), hybrid scoring (WTOOL-04), three threshold keys (WTOOL-05)
-- [ ] 08-02: Schema file review — refine negation motifs and tool-triggering terms based on phase 7 calibration data; user approves changes
+- [ ] 08-01: wrong_tool rewrite — single-threshold logic (WTOOL-01), top1-as-score (WTOOL-02), no-available-tools immediate flag (WTOOL-03), hybrid scoring (WTOOL-04), one threshold key (WTOOL-05)
+- [ ] 08-02: Algorithm review — user reviews wrong_tool implementation and approves before calibration
 - [ ] 08-03: Calibration run — wrong_tool calibration passes P/R benchmark (WTOOL-06)
 
 ### Phase 9: no_tool + tool_use_violation Split

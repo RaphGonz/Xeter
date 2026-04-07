@@ -24,11 +24,11 @@ Untouched: `_check_parsing_error`, `_check_response_anomaly`.
 
 ### wrong_tool Rewrite
 
-- [ ] **WTOOL-01**: Two-gate logic: floor gate (ranking is trustworthy) + gap gate (top_tool − called_tool margin)
-- [ ] **WTOOL-02**: Reported score is the gap, not top_score
-- [ ] **WTOOL-03**: Skips check when available_tools is None or empty
+- [ ] **WTOOL-01**: Single-threshold logic: score all available tools against the prompt; top1 score vs `wrong_tool_called` determines both "no tool was appropriate" and "better tool existed" cases
+- [ ] **WTOOL-02**: Reported score is top1_score (the best available tool's similarity to the prompt)
+- [ ] **WTOOL-03**: Tool called with no available_tools → immediate flag (no threshold needed)
 - [ ] **WTOOL-04**: Uses hybrid scoring (50/50) for prompt vs tool similarity comparisons
-- [ ] **WTOOL-05**: Three threshold keys: `wrong_tool_gap`, `wrong_tool_rank_floor`, `wrong_tool_called`
+- [ ] **WTOOL-05**: One threshold key: `wrong_tool_called`
 - [ ] **WTOOL-06**: Per-method calibration run passes P/R benchmark before next phase
 
 ### no_tool + tool_use_violation Split

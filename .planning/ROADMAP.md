@@ -61,12 +61,12 @@ Plans:
   3. The threshold key `wrong_tool_called` appears in `calibrated_thresholds.json` after calibration
   4. Running `calibrate.py --flag-type wrong_tool` completes; calibration maximizes recall (minimize false negatives) while keeping precision as high as possible; both P and R are reported
   5. A span previously suppressed by the inverted AND gate (high top-score span with a wrong tool) is now correctly flagged
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 08-01: wrong_tool rewrite — single-threshold logic (WTOOL-01), top1-as-score (WTOOL-02), no-available-tools immediate flag (WTOOL-03), hybrid scoring (WTOOL-04), one threshold key (WTOOL-05)
-- [ ] 08-02: Algorithm review — user reviews wrong_tool implementation and approves before calibration
-- [ ] 08-03: Calibration run — wrong_tool calibration passes P/R benchmark (WTOOL-06)
+- [ ] 08-01-PLAN.md — wrong_tool rewrite: three-branch logic, threshold key rename across 5 files, 4 new unit tests (WTOOL-01, WTOOL-02, WTOOL-03, WTOOL-04, WTOOL-05)
+- [ ] 08-02-PLAN.md — Algorithm review: user inspects implementation and approves before calibration runs (WTOOL-01, WTOOL-02, WTOOL-03, WTOOL-04)
+- [ ] 08-03-PLAN.md — Calibration run: fixture augmentation + wrong_tool calibration passes P/R benchmark (WTOOL-06)
 
 ### Phase 9: no_tool + tool_use_violation Split
 **Goal**: The single `_check_no_tool` method is split into two independently-calibrated methods — one for capability gaps (tool needed, none called) using available_tools similarity, and one for explicit prohibition violations using keyword regex; both pass P/R benchmarks

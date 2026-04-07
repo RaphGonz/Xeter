@@ -24,11 +24,11 @@ Untouched: `_check_parsing_error`, `_check_response_anomaly`.
 
 ### wrong_tool Rewrite
 
-- [ ] **WTOOL-01**: Single-threshold logic: score all available tools against the prompt; top1 score vs `wrong_tool_called` determines both "no tool was appropriate" and "better tool existed" cases
-- [ ] **WTOOL-02**: Reported score is top1_score (the best available tool's similarity to the prompt)
-- [ ] **WTOOL-03**: Tool called with no available_tools → immediate flag (no threshold needed)
-- [ ] **WTOOL-04**: Uses hybrid scoring (50/50) for prompt vs tool similarity comparisons
-- [ ] **WTOOL-05**: One threshold key: `wrong_tool_called`
+- [x] **WTOOL-01**: Single-threshold logic: score all available tools against the prompt; top1 score vs `wrong_tool_called` determines both "no tool was appropriate" and "better tool existed" cases
+- [x] **WTOOL-02**: Reported score is top1_score (the best available tool's similarity to the prompt)
+- [x] **WTOOL-03**: Tool called with no available_tools → immediate flag (no threshold needed)
+- [x] **WTOOL-04**: Uses hybrid scoring (50/50) for prompt vs tool similarity comparisons
+- [x] **WTOOL-05**: One threshold key: `wrong_tool_called`
 - [ ] **WTOOL-06**: Per-method calibration run passes P/R benchmark before next phase
 
 ### no_tool + tool_use_violation Split
@@ -89,11 +89,11 @@ Untouched: `_check_parsing_error`, `_check_response_anomaly`.
 | ARGS-04 | Phase 7 | Complete |
 | ARGS-05 | Phase 7 | Complete |
 | ARGS-06 | Phase 7 | Pending |
-| WTOOL-01 | Phase 8 | Pending |
-| WTOOL-02 | Phase 8 | Pending |
-| WTOOL-03 | Phase 8 | Pending |
-| WTOOL-04 | Phase 8 | Pending |
-| WTOOL-05 | Phase 8 | Pending |
+| WTOOL-01 | Phase 8 | Complete |
+| WTOOL-02 | Phase 8 | Complete |
+| WTOOL-03 | Phase 8 | Complete |
+| WTOOL-04 | Phase 8 | Complete |
+| WTOOL-05 | Phase 8 | Complete |
 | WTOOL-06 | Phase 8 | Pending |
 | NOTOOL-01 | Phase 9 | Pending |
 | NOTOOL-02 | Phase 9 | Pending |

@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Analyser Accuracy
 status: unknown
-last_updated: "2026-04-06T11:55:11.618Z"
+last_updated: "2026-04-07T18:56:23.599Z"
 progress:
-  total_phases: 7
+  total_phases: 8
   completed_phases: 7
-  total_plans: 26
-  completed_plans: 26
+  total_plans: 29
+  completed_plans: 27
 ---
 
 # Project State
@@ -22,10 +22,10 @@ See: .planning/PROJECT.md (updated 2026-04-06)
 
 ## Current Position
 
-Phase: 7 of 10 (wrong_args Rewrite)
-Plan: 5 of 5 (07-05 complete — Phase 7 DONE)
-Status: Phase 7 complete
-Last activity: 2026-04-06 — Plan 07-05 complete: wrong_tool_args calibration — threshold=0.30, P=0.40, R=0.90; ARGS-06 satisfied; P=0.40 is embedding ceiling, recall prioritised; Phase 8 ready
+Phase: 8 of 10 (wrong_tool Rewrite)
+Plan: 1 of 3 (08-01 complete — _check_wrong_tool rewritten, wrong_tool_called key rename done)
+Status: Phase 8 in progress
+Last activity: 2026-04-07 — Plan 08-01 complete: three-branch wrong_tool logic, wrong_tool_called rename across 6 files, 4 new tests, 36 worker tests pass
 
 Progress: [██░░░░░░░░] 20% (3/15 plans)
 
@@ -45,6 +45,7 @@ Progress: [██░░░░░░░░] 20% (3/15 plans)
 *Updated after each plan completion*
 | Phase 07-wrong-args-rewrite P01 | 14min | 1 tasks | 1 files |
 | Phase 07-wrong-args-rewrite P03 | 10min | 2 tasks | 2 files |
+| Phase 08-wrong-tool-rewrite P01 | 12min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -63,6 +64,8 @@ Recent decisions affecting current work:
 - [Phase 07-03]: ARGS-05: low_confidence removed from wrong_tool_args flag detail; enables re-inclusion in calibration
 - [Phase 07-03]: Two-path _check_wrong_args: error-regex priority (ARGS-01) fires score=1.0 without embedding; semantic path uses hybrid_score on flattened arg values (not raw JSON)
 - [Phase 07-05]: wrong_tool_args calibration: threshold=0.30, P=0.40, R=0.90 (6 hill-climb steps); P=0.40 is the ceiling for pure embedding approach — entity matching needed for higher precision; recall prioritised (false negatives worse than false positives); ARGS-06 satisfied
+- [Phase 08-wrong-tool-rewrite]: Three-branch _check_wrong_tool: no_available_tools immediate flag (WTOOL-03), Case B better tool, Case C no appropriate tool — replaces inverted AND gate
+- [Phase 08-wrong-tool-rewrite]: Threshold key wrong_tool renamed to wrong_tool_called; env var WORKER_THRESHOLD_WRONG_TOOL -> WORKER_THRESHOLD_WRONG_TOOL_CALLED
 
 ### Pending Todos
 
@@ -74,6 +77,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-06
-Stopped at: Completed 07-05-PLAN.md (wrong_tool_args calibration — P=0.40, R=0.90, threshold=0.30; Phase 7 complete)
+Last session: 2026-04-07
+Stopped at: Completed 08-01-PLAN.md (wrong_tool rewrite — three-branch logic, wrong_tool_called key rename, 4 new tests, 36 worker tests pass)
 Resume file: None

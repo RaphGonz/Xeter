@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock, call, patch
 
 from xeter.services.worker.base import Flag, SpanData, bow_score, hybrid_score
 from xeter.services.worker.tool_call_analyzer import ToolCallAnalyzer
@@ -23,11 +23,10 @@ from xeter.services.worker.tool_call_analyzer import ToolCallAnalyzer
 # ---------------------------------------------------------------------------
 
 DEFAULT_THRESHOLDS = {
-    "wrong_tool_called": 0.5,
+    "tool_coherence_threshold": 0.15,
+    "unnecessary_tool_call": 0.15,
     "wrong_tool_args": 0.4,
     "no_tool": 0.6,
-    "excessive_tool": 0.3,
-    "parsing_error": 0.5,
     "response_anomaly": 0.4,
 }
 
@@ -123,52 +122,64 @@ def test_analyze_returns_list():
 
 
 # ---------------------------------------------------------------------------
-# Test 3: wrong_tool flagged when similarity below threshold
+# Test 3: wrong_tool — no flag when containment match (spaCy lemma overlap)
 # ---------------------------------------------------------------------------
 
-def test_wrong_tool_flagged_when_below_threshold():
-    # Prompt gets one direction, tools get orthogonal → low cosine similarity
-    embedder = make_mock_embedder()
-    call_idx = [0]
-    def encode_side_effect(text):
-        call_idx[0] += 1
-        # First call is prompt — give it unit vec
-        # Tool descriptions get orthogonal vec → low similarity
-        if call_idx[0] == 1:
-            return _unit_vec()
-        return _orthogonal_vec()
+def test_wrong_tool_choice_no_flag_containment_match():
+    """Step 1: prompt shares a lemma with called tool's name+description → no flag.
 
-    embedder.encode.side_effect = encode_side_effect
-    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS, "wrong_tool_called": 0.5})
+    "Search for Python documentation" and "search_web Search the internet"
+    both lemmatize to include "search" → intersection non-empty → no embed call.
+    """
+    embedder = make_mock_embedder(_unit_vec())
+    analyzer = make_analyzer(embedder)
     span = make_clean_span(
-        tool_name="calculator",
+        prompt="Search for Python documentation",
+        tool_name="search_web",
         available_tools=[
-            {"name": "search_web", "description": "Searches the web"},
+            {"name": "search_web", "description": "Search the internet for information"},
             {"name": "calculator", "description": "Performs math calculations"},
         ],
     )
-    flags = analyzer.analyze(span)
-    flag_types = [f.flag_type for f in flags]
-    assert "wrong_tool" in flag_types
+    flags = analyzer._check_wrong_tool_choice(span)
+    assert not any(f.flag_type == "wrong_tool_choice" for f in flags)
+    # Containment match short-circuits before any embedding
+    embedder.encode.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
-# Test 4: wrong_tool NOT flagged when similarity above threshold
+# Test 4: wrong_tool — no flag when called tool is rank 1 by cosine
 # ---------------------------------------------------------------------------
 
-def test_wrong_tool_not_flagged_when_above_threshold():
-    # All same vectors → cosine sim = 1.0
-    embedder = make_mock_embedder(_unit_vec())
-    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS, "wrong_tool_called": 0.5})
+def test_wrong_tool_choice_no_flag_rank_1():
+    """Step 2: called tool has highest cosine similarity → rank 1 → no flag."""
+    dim = 384
+    prompt_vec = _unit_vec(dim)
+
+    embedder = make_mock_embedder()
+    def encode_side_effect(text):
+        t = text.lower()
+        if "search" in t or "web" in t:
+            return _unit_vec(dim)      # high sim with prompt
+        elif "calculator" in t or "math" in t:
+            return _orthogonal_vec(dim)  # low sim with prompt
+        else:
+            return prompt_vec          # prompt itself
+    embedder.encode.side_effect = encode_side_effect
+
+    analyzer = make_analyzer(embedder)
     span = make_clean_span(
         tool_name="search_web",
+        prompt="a completely neutral task",
         available_tools=[
-            {"name": "search_web", "description": "Searches the web"},
+            {"name": "search_web", "description": "Search the internet"},
+            {"name": "calculator", "description": "Performs math calculations"},
         ],
     )
-    flags = analyzer.analyze(span)
-    flag_types = [f.flag_type for f in flags]
-    assert "wrong_tool" not in flag_types
+    with patch("xeter.services.worker.tool_call_analyzer._lemma_set", return_value=set()):
+        flags = analyzer._check_wrong_tool_choice(span)
+
+    assert not any(f.flag_type == "wrong_tool_choice" for f in flags)
 
 
 # ---------------------------------------------------------------------------
@@ -185,75 +196,61 @@ def test_scores_logged_regardless_of_flag():
 
 
 # ---------------------------------------------------------------------------
-# Test 6: wrong_tool uses available_tools ranking (FLAG-11)
+# Test 6: wrong_tool — flag fires when called tool is rank 2
 # ---------------------------------------------------------------------------
 
-def test_wrong_tool_uses_available_tools_ranking():
-    """If the called tool is not the top-ranked match for the prompt → wrong_tool flag.
+def test_wrong_tool_choice_flagged_rank_2():
+    """Step 2: called tool ranks below rank 1 → wrong_tool_choice flag with rank and top_candidate.
 
-    Condition: top_tool_name != span.tool_name AND top_score < threshold.
-    Both tools must have LOW similarity with prompt (top_score < 0.5),
-    but search_web slightly higher than calculator → search_web is top-ranked.
-    Called tool is calculator (not top) → wrong_tool flag.
+    Calculator gets cosine ~0.2 (above tool_coherence_threshold=0.15) so the coherence
+    check passes and the flag fires for rank, not low coherence.
     """
-    embedder = make_mock_embedder()
-
-    # Build vectors where cosine(prompt, search_desc) ≈ 0.3 and cosine(prompt, calc_desc) ≈ 0.1
-    # Both below threshold 0.5, but search > calc
     dim = 384
-    rng = np.random.RandomState(99)
     prompt_vec = _unit_vec(dim)
 
-    # search_web: small positive correlation with prompt
-    noise1 = rng.randn(dim)
-    noise1 /= np.linalg.norm(noise1)
-    search_vec = 0.3 * prompt_vec + 0.95 * noise1
-    search_vec /= np.linalg.norm(search_vec)
-
-    # calculator: near-orthogonal to prompt
-    noise2 = rng.randn(dim)
-    noise2 /= np.linalg.norm(noise2)
-    calc_vec = 0.1 * prompt_vec + 0.99 * noise2
-    calc_vec /= np.linalg.norm(calc_vec)
-
+    embedder = make_mock_embedder()
     def encode_side_effect(text):
         t = text.lower()
-        # Match tool descriptions but NOT the prompt
-        if "web" in t and ("info" in t or "searches" in t):
-            return search_vec
-        elif "calculator" in t or "math" in t or "calcul" in t:
-            return calc_vec
+        if "search" in t or "web" in t:
+            return _unit_vec(dim)      # cosine 1.0 — rank 1
+        elif "calculator" in t or "math" in t:
+            return _low_sim_vec(dim)   # cosine ~0.2 — rank 2, above coherence floor
         else:
-            return prompt_vec
-
+            return prompt_vec          # prompt
     embedder.encode.side_effect = encode_side_effect
 
-    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS, "wrong_tool_called": 0.5})
+    analyzer = make_analyzer(embedder)
     span = make_clean_span(
         tool_name="calculator",
-        prompt="Find Python typing documentation",
+        prompt="a completely neutral task",
         available_tools=[
-            {"name": "search_web", "description": "Searches the web for information"},
+            {"name": "search_web", "description": "Search the internet"},
             {"name": "calculator", "description": "Performs math calculations"},
         ],
     )
-    flags = analyzer.analyze(span)
-    flag_types = [f.flag_type for f in flags]
-    assert "wrong_tool" in flag_types
+    with patch("xeter.services.worker.tool_call_analyzer._lemma_set", return_value=set()):
+        flags = analyzer._check_wrong_tool_choice(span)
+
+    assert len(flags) == 1
+    assert flags[0].flag_type == "wrong_tool_choice"
+    assert flags[0].detail["rank"] == 2
+    assert flags[0].detail["top_candidate"] == "search_web"
+    assert flags[0].detail["actual_tool"] == "calculator"
+    assert flags[0].detail["metric"] == "embedding_rank"
 
 
 # ---------------------------------------------------------------------------
 # Test: WTOOL-03 — immediate flag when no available_tools (None)
 # ---------------------------------------------------------------------------
 
-def test_wrong_tool_immediate_flag_no_available_tools():
+def test_tool_not_available_immediate_flag_no_available_tools():
     """WTOOL-03: tool called but available_tools is None → immediate flag, no embed call."""
     embedder = make_mock_embedder(_unit_vec())
     analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS})
     span = make_clean_span(tool_name="search_web", available_tools=None)
-    flags = analyzer._check_wrong_tool(span)
+    flags = analyzer._check_tool_not_available(span)
     assert len(flags) == 1
-    assert flags[0].flag_type == "wrong_tool"
+    assert flags[0].flag_type == "tool_not_available"
     assert flags[0].detail.get("metric") == "no_available_tools"
     assert flags[0].detail.get("actual_tool") == "search_web"
     # No embed call — immediate flag before any scoring
@@ -264,64 +261,134 @@ def test_wrong_tool_immediate_flag_no_available_tools():
 # Test: WTOOL-03 — immediate flag when available_tools is empty list
 # ---------------------------------------------------------------------------
 
-def test_wrong_tool_immediate_flag_empty_available_tools():
+def test_tool_not_available_immediate_flag_empty_available_tools():
     """WTOOL-03: tool called but available_tools is [] → immediate flag."""
     embedder = make_mock_embedder(_unit_vec())
     analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS})
     span = make_clean_span(tool_name="search_web", available_tools=[])
-    flags = analyzer._check_wrong_tool(span)
+    flags = analyzer._check_tool_not_available(span)
     assert len(flags) == 1
-    assert flags[0].flag_type == "wrong_tool"
+    assert flags[0].flag_type == "tool_not_available"
     assert flags[0].detail.get("metric") == "no_available_tools"
     embedder.encode.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
-# Test: WTOOL-02 — reported score is top1 hybrid score
+# Test: flag.score is the called tool's own cosine, not the top tool's score
 # ---------------------------------------------------------------------------
 
-def test_wrong_tool_score_is_top1_hybrid():
-    """WTOOL-02: flag.score equals the top1 hybrid score, not a gap or name score."""
-    # Prompt vector = unit_vec; tool vec = orthogonal → low cosine, low hybrid → flags
+def test_unnecessary_tool_call_flag_score_is_called_tool_score():
+    """Flag.score equals the called tool's cosine similarity, not the top tool's score.
+
+    When called tool's score is below tool_coherence_threshold, the
+    unnecessary_tool_call flag fires (not wrong_tool_choice).
+    """
+    dim = 384
+    prompt_vec = _unit_vec(dim)
+
     embedder = make_mock_embedder()
-    call_idx = [0]
     def encode_side_effect(text):
-        call_idx[0] += 1
-        if call_idx[0] == 1:
-            return _unit_vec()   # prompt
-        return _orthogonal_vec()  # tools → low similarity
+        t = text.lower()
+        if "search" in t or "web" in t:
+            return _unit_vec(dim)       # high sim ~1.0
+        elif "calculator" in t or "math" in t:
+            return _orthogonal_vec(dim)  # low sim ~0
+        else:
+            return prompt_vec
     embedder.encode.side_effect = encode_side_effect
 
-    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS})
+    analyzer = make_analyzer(embedder)
     span = make_clean_span(
         tool_name="calculator",
+        prompt="a completely neutral task",
         available_tools=[
-            {"name": "search_web", "description": "Searches the web"},
-            {"name": "calculator", "description": "Math calculations"},
+            {"name": "search_web", "description": "Search the internet"},
+            {"name": "calculator", "description": "Performs math calculations"},
         ],
     )
-    flags = analyzer._check_wrong_tool(span)
+    flags = analyzer._check_unnecessary_tool_call(span)
+
     assert len(flags) == 1
-    assert flags[0].flag_type == "wrong_tool"
-    # score must be a float between 0 and 1 (the top1 hybrid score, not 1.0 sentinel)
-    assert 0.0 <= flags[0].score <= 1.0
-    assert flags[0].detail.get("metric") == "prompt_vs_top1_tool_hybrid"
+    assert flags[0].flag_type == "unnecessary_tool_call"
+    # score is calculator's own cosine (~0), clearly less than search_web's score (~1.0)
+    assert flags[0].score < 0.5
+    assert flags[0].detail["top_score"] > flags[0].score
 
 
 # ---------------------------------------------------------------------------
-# Test: WTOOL-01 correct case — no flag when called_tool == top1 and score >= threshold
+# Test: no flag when tool_name is None
 # ---------------------------------------------------------------------------
 
-def test_wrong_tool_no_flag_correct_tool_above_threshold():
-    """WTOOL-01 correct case: top1 == called_tool, score >= threshold → no flag."""
-    embedder = make_mock_embedder(_unit_vec())  # all same → cosine=1.0 → high hybrid
-    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS})
+def test_tool_not_available_no_flag_tool_name_none():
+    """Guard: tool_name is None → skip detection entirely, no flag."""
+    analyzer = make_analyzer(make_mock_embedder())
+    span = make_clean_span(tool_name=None)
+    flags = analyzer._check_tool_not_available(span)
+    assert not any(f.flag_type == "tool_not_available" for f in flags)
+
+
+# ---------------------------------------------------------------------------
+# Test: flag when called tool is absent from available_tools
+# ---------------------------------------------------------------------------
+
+def test_tool_not_available_flagged_tool_not_in_list():
+    """Called tool absent from available_tools → tool_not_available flag, score=1.0."""
+    embedder = make_mock_embedder(_unit_vec())
+    analyzer = make_analyzer(embedder)
     span = make_clean_span(
-        tool_name="search_web",
-        available_tools=[{"name": "search_web", "description": "Searches the web for information"}],
+        tool_name="unknown_tool",
+        prompt="Do something",
+        available_tools=[
+            {"name": "search_web", "description": "Search the internet"},
+            {"name": "calculator", "description": "Performs math calculations"},
+        ],
     )
-    flags = analyzer._check_wrong_tool(span)
-    assert not any(f.flag_type == "wrong_tool" for f in flags)
+    flags = analyzer._check_tool_not_available(span)
+    assert len(flags) == 1
+    assert flags[0].flag_type == "tool_not_available"
+    assert flags[0].score == 1.0
+    assert flags[0].detail["metric"] == "tool_not_in_list"
+    assert flags[0].detail["actual_tool"] == "unknown_tool"
+    assert "search_web" in flags[0].detail["available_tools"]
+
+
+# ---------------------------------------------------------------------------
+# Test: flag when rank 1 but score below tool_coherence_threshold (Case C)
+# ---------------------------------------------------------------------------
+
+def test_unnecessary_tool_call_flagged_low_coherence():
+    """Called_score < unnecessary_tool_call threshold → low_tool_coherence flag.
+
+    Models the case where no available tool was semantically grounded in the
+    prompt (e.g. 'Tell me a joke' with only [calculator, translator] available).
+    Prompt gets unit_vec; tools get orthogonal_vec → cosine ≈ 0 < 0.15 floor.
+    """
+    dim = 384
+    prompt_vec = _unit_vec(dim)
+    tool_vec = _orthogonal_vec(dim)  # cosine ~0 with prompt
+
+    embedder = make_mock_embedder()
+    def encode_side_effect(text):
+        if "joke" in text.lower() or "tell" in text.lower():
+            return prompt_vec
+        return tool_vec
+    embedder.encode.side_effect = encode_side_effect
+
+    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS, "unnecessary_tool_call": 0.15})
+    span = make_clean_span(
+        tool_name="calculator",
+        prompt="Tell me a joke",
+        available_tools=[
+            {"name": "calculator", "description": "Performs math calculations"},
+            {"name": "translator", "description": "Translates text between languages"},
+        ],
+    )
+    flags = analyzer._check_unnecessary_tool_call(span)
+
+    assert len(flags) == 1
+    assert flags[0].flag_type == "unnecessary_tool_call"
+    assert flags[0].detail["metric"] == "low_tool_coherence"
+    assert flags[0].score < 0.15
 
 
 # ---------------------------------------------------------------------------
@@ -329,28 +396,26 @@ def test_wrong_tool_no_flag_correct_tool_above_threshold():
 # ---------------------------------------------------------------------------
 
 def test_wrong_args_flag_has_no_low_confidence():
-    # Prompt and args get orthogonal vectors → low similarity → wrong_tool_args flag
+    # "144" (CARDINAL) in prompt; grounding score of "some unrelated text" vs candidates
+    # will be low → score < threshold=0.4 → wrong_tool_args flag fires
     embedder = make_mock_embedder()
-    call_idx = [0]
-    def encode_side_effect(text):
-        call_idx[0] += 1
-        # Alternate: odd calls get unit_vec, even get orthogonal
-        # This ensures prompt and args embeddings differ
-        if call_idx[0] % 2 == 1:
-            return _unit_vec()
-        return _orthogonal_vec()
-    embedder.encode.side_effect = encode_side_effect
     analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS, "wrong_tool_args": 0.4})
     span = make_clean_span(
         tool_arguments='{"query": "some unrelated text"}',
         prompt="Calculate the square root of 144",
+        tool_output="Success",
     )
     flags = analyzer.analyze(span)
     wrong_args_flags = [f for f in flags if f.flag_type == "wrong_tool_args"]
     assert len(wrong_args_flags) >= 1, "Expected a wrong_tool_args flag"
-    assert "low_confidence" not in wrong_args_flags[0].detail, (
+    detail = wrong_args_flags[0].detail
+    assert "low_confidence" not in detail, (
         "ARGS-05: low_confidence must be absent from wrong_tool_args flag detail"
     )
+    assert detail.get("metric") == "arg_grounding", (
+        "Detail metric must be 'arg_grounding'"
+    )
+    assert "violations" in detail, "Detail must contain 'violations' list"
 
 
 # ---------------------------------------------------------------------------
@@ -374,27 +439,34 @@ def test_no_tool_flagged():
 
 
 # ---------------------------------------------------------------------------
-# Test 9: excessive_tool flag when tool called but prompt doesn't warrant it
+# Test 9: unnecessary_tool_call flag when tool called but prompt doesn't warrant it
 # ---------------------------------------------------------------------------
 
-def test_excessive_tool_flagged():
-    # Low similarity between prompt and tool → excessive_tool
+def test_unnecessary_tool_call_flagged_via_analyze():
+    """Low coherence between prompt and all available tools → unnecessary_tool_call."""
+    dim = 384
+    prompt_vec = _unit_vec(dim)
+    tool_vec = _orthogonal_vec(dim)  # cosine ~0 with prompt
+
     embedder = make_mock_embedder()
-
     def encode_side_effect(text):
-        if "hello" in text.lower():
-            return _orthogonal_vec()  # prompt about "hello" is unrelated to tool
-        return _unit_vec()
-
+        if "hello" in text.lower() or "say" in text.lower():
+            return prompt_vec
+        return tool_vec
     embedder.encode.side_effect = encode_side_effect
-    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS, "excessive_tool": 0.3})
+
+    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS, "unnecessary_tool_call": 0.15})
     span = make_clean_span(
         tool_name="search_web",
         prompt="Just say hello",
+        available_tools=[
+            {"name": "search_web", "description": "Search the internet"},
+            {"name": "calculator", "description": "Performs math calculations"},
+        ],
     )
     flags = analyzer.analyze(span)
     flag_types = [f.flag_type for f in flags]
-    assert "excessive_tool" in flag_types
+    assert "unnecessary_tool_call" in flag_types
 
 
 # ---------------------------------------------------------------------------
@@ -454,13 +526,16 @@ def test_tool_embed_cache_hit():
     ]
     span = make_clean_span(available_tools=available_tools)
 
-    # First analyze call
-    analyzer.analyze(span)
-    first_encode_count = embedder.encode.call_count
+    # Patch _lemma_set to return empty sets so containment never fires and
+    # Step 2 (embedding ranking) runs — that's the path where the cache matters.
+    with patch("xeter.services.worker.tool_call_analyzer._lemma_set", return_value=set()):
+        # First analyze call
+        analyzer.analyze(span)
+        first_encode_count = embedder.encode.call_count
 
-    # Second analyze call with same tools — cache should prevent re-embedding tools
-    analyzer.analyze(span)
-    second_encode_count = embedder.encode.call_count
+        # Second analyze call with same tools — cache should prevent re-embedding tools
+        analyzer.analyze(span)
+        second_encode_count = embedder.encode.call_count
 
     # The number of encode calls for tool embeddings should not double
     added_calls = second_encode_count - first_encode_count
@@ -586,9 +661,9 @@ def test_wrong_args_error_pattern_fires_without_embedding():
     )
 
 
-def test_wrong_args_skips_all_numeric_flattened_values():
-    """ARGS-04: all-numeric flattened values must not be embedded or flagged."""
-    embedder = make_mock_embedder(_orthogonal_vec())  # low sim if embedded
+def test_wrong_args_no_flag_when_no_context_candidates():
+    """No NER entities or noun chunks in prompt → no signal → no wrong_tool_args flag."""
+    embedder = make_mock_embedder()
     analyzer = make_analyzer(embedder)
     span = make_clean_span(
         tool_arguments='{"amount": "10000 * (1 + 0.05) ** 3"}',
@@ -598,22 +673,17 @@ def test_wrong_args_skips_all_numeric_flattened_values():
     flags = analyzer._check_wrong_args(span)
     wrong_args_flags = [f for f in flags if f.flag_type == "wrong_tool_args"]
     assert len(wrong_args_flags) == 0, (
-        "ARGS-04: all-numeric flattened values must not produce a flag"
+        "No context candidates in prompt → no signal, must not produce a flag"
     )
 
 
 def test_wrong_args_no_low_confidence_in_detail():
     """ARGS-05: flag detail must never contain low_confidence key."""
     embedder = make_mock_embedder()
-    call_idx = [0]
-    def encode_side_effect(text):
-        call_idx[0] += 1
-        return _unit_vec() if call_idx[0] % 2 == 1 else _orthogonal_vec()
-    embedder.encode.side_effect = encode_side_effect
     analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS, "wrong_tool_args": 0.4})
     span = make_clean_span(
-        tool_arguments='{"query": "some unrelated text"}',
-        prompt="Calculate the square root of 144",
+        tool_arguments='{"query": "zzzzz unrelated zzzzz"}',
+        prompt="Fetch orders for customer ID 99823",
         tool_output="Success",
     )
     flags = analyzer._check_wrong_args(span)
@@ -622,3 +692,126 @@ def test_wrong_args_no_low_confidence_in_detail():
         assert "low_confidence" not in wrong_args_flags[0].detail, (
             "ARGS-05: low_confidence must be absent"
         )
+
+
+# ---------------------------------------------------------------------------
+# New tests — per-argument grounding and format heuristics
+# ---------------------------------------------------------------------------
+
+def test_wrong_args_location_mismatch_flagged():
+    """fwta-001: prompt says Tokyo, args say London → grounding miss → flag fires."""
+    embedder = make_mock_embedder()
+    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS, "wrong_tool_args": 0.4})
+    span = make_clean_span(
+        tool_name="get_weather",
+        tool_arguments='{"location": "London", "date": "2025-11-20"}',
+        prompt="Get the current weather conditions in Tokyo, Japan on March 5th.",
+        tool_output="London: 10°C overcast",
+    )
+    flags = analyzer._check_wrong_args(span)
+    wrong_args_flags = [f for f in flags if f.flag_type == "wrong_tool_args"]
+    assert len(wrong_args_flags) == 1, "Expected wrong_tool_args flag for location mismatch"
+    detail = wrong_args_flags[0].detail
+    assert detail["metric"] == "arg_grounding"
+    assert any(v["key"] == "location" for v in detail["violations"]), (
+        "'location' arg should appear in violations"
+    )
+
+
+def test_wrong_args_hallucinated_recipient_flagged():
+    """fwta-003: prompt specifies alice@engineering.com, args use bob@marketing.com → flag."""
+    embedder = make_mock_embedder()
+    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS, "wrong_tool_args": 0.4})
+    span = make_clean_span(
+        tool_name="send_email",
+        tool_arguments='{"to": "bob@marketing.com", "subject": "Q4 marketing campaign", "body": "Please review."}',
+        prompt="Send an email to alice@engineering.com about the code review for PR 4521.",
+        tool_output="Email delivered",
+    )
+    flags = analyzer._check_wrong_args(span)
+    wrong_args_flags = [f for f in flags if f.flag_type == "wrong_tool_args"]
+    assert len(wrong_args_flags) == 1, "Expected wrong_tool_args flag for hallucinated recipient"
+    violations = wrong_args_flags[0].detail["violations"]
+    violation_keys = [v["key"] for v in violations]
+    assert "to" in violation_keys or "subject" in violation_keys, (
+        "At least one ungrounded arg should be reported"
+    )
+
+
+def test_wrong_args_format_heuristic_invalid_email():
+    """Format heuristic: key containing 'email' with non-email value → format violation → flag."""
+    embedder = make_mock_embedder()
+    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS, "wrong_tool_args": 0.4})
+    span = make_clean_span(
+        tool_name="send_email",
+        tool_arguments='{"email_address": "not-an-email", "subject": "Hello Alice"}',
+        prompt="Email Alice about the project status update.",
+        tool_output="Success",
+    )
+    flags = analyzer._check_wrong_args(span)
+    wrong_args_flags = [f for f in flags if f.flag_type == "wrong_tool_args"]
+    assert len(wrong_args_flags) == 1, "Expected format violation flag"
+    violations = wrong_args_flags[0].detail["violations"]
+    email_violation = next((v for v in violations if v["key"] == "email_address"), None)
+    assert email_violation is not None, "'email_address' arg must appear in violations"
+    assert email_violation["reason"] == "invalid_email_format"
+    assert email_violation["score"] == 0.0
+
+
+def test_wrong_args_format_heuristic_invalid_date():
+    """Format heuristic: key ending in '_date' with non-date value → format violation."""
+    embedder = make_mock_embedder()
+    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS, "wrong_tool_args": 0.4})
+    span = make_clean_span(
+        tool_name="get_weather",
+        tool_arguments='{"location": "Paris", "start_date": "not-a-date-at-all"}',
+        prompt="Get weather in Paris for the conference.",
+        tool_output="Success",
+    )
+    flags = analyzer._check_wrong_args(span)
+    wrong_args_flags = [f for f in flags if f.flag_type == "wrong_tool_args"]
+    assert len(wrong_args_flags) == 1, "Expected format violation flag for bad date"
+    violations = wrong_args_flags[0].detail["violations"]
+    date_violation = next((v for v in violations if v["key"] == "start_date"), None)
+    assert date_violation is not None, "'start_date' must appear in violations"
+    assert date_violation["reason"] == "invalid_date_format"
+
+
+def test_wrong_args_multiple_violations_worst_score_wins():
+    """Multiple ungrounded args: flag score = min(scores) across all violations."""
+    embedder = make_mock_embedder()
+    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS, "wrong_tool_args": 0.4})
+    span = make_clean_span(
+        tool_name="get_weather",
+        tool_arguments='{"location": "zzzzzzz", "units": "xxxxxxx"}',
+        prompt="Get the current weather conditions in Tokyo, Japan.",
+        tool_output="Success",
+    )
+    flags = analyzer._check_wrong_args(span)
+    wrong_args_flags = [f for f in flags if f.flag_type == "wrong_tool_args"]
+    assert len(wrong_args_flags) == 1
+    flag = wrong_args_flags[0]
+    violations = flag.detail["violations"]
+    assert len(violations) >= 1
+    # flag.score must equal the minimum score across violations
+    min_violation_score = min(v["score"] for v in violations)
+    assert flag.score == min_violation_score, (
+        f"Flag score {flag.score} must equal worst violation score {min_violation_score}"
+    )
+
+
+def test_wrong_args_valid_grounded_args_no_flag():
+    """Args that match prompt entities closely → no flag."""
+    embedder = make_mock_embedder()
+    analyzer = make_analyzer(embedder, thresholds={**DEFAULT_THRESHOLDS, "wrong_tool_args": 0.4})
+    span = make_clean_span(
+        tool_name="get_weather",
+        tool_arguments='{"location": "Tokyo", "date": "2025-03-05"}',
+        prompt="Get the current weather conditions in Tokyo, Japan on March 5th.",
+        tool_output="Tokyo: 18°C sunny",
+    )
+    flags = analyzer._check_wrong_args(span)
+    wrong_args_flags = [f for f in flags if f.flag_type == "wrong_tool_args"]
+    assert len(wrong_args_flags) == 0, (
+        "Grounded args (Tokyo in prompt and args) must not produce a flag"
+    )

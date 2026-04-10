@@ -1,14 +1,15 @@
 """ToolCallAnalyzer — concrete analyzer for tool-call anomaly detection.
 
-Detects five categories of tool-call anomaly by computing cosine similarities
+Detects seven categories of tool-call anomaly by computing cosine similarities
 between prompt, tool, argument, and response embeddings:
 
-  wrong_tool        — called tool is not the best semantic match for the prompt
-  wrong_tool_args   — tool arguments are semantically unrelated to the prompt
-  no_tool           — prompt implies a tool call that was never made
-  excessive_tool    — tool was called but the prompt did not warrant it
-  parsing_error     — model+prompt vs response shows a structural mismatch
-  response_anomaly  — prompt vs response similarity is unusually low
+  tool_not_available      — called tool was not offered (absent or no list)
+  wrong_tool_choice       — a better tool existed among available ones
+  unnecessary_tool_call   — no available tool was appropriate for the prompt
+  wrong_tool_args         — tool arguments are semantically unrelated to the prompt
+  no_tool                 — prompt implies a tool call that was never made
+  parsing_error           — model+prompt vs response shows a structural mismatch
+  response_anomaly        — prompt vs response similarity is unusually low
 
 All similarity scores are logged via self.log_score() BEFORE threshold comparison
 so that non-flagged spans still contribute to the calibration dataset (Phase 6).
@@ -22,7 +23,10 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from datetime import datetime
+from difflib import SequenceMatcher
 from typing import Optional
+from urllib.parse import urlparse
 
 import numpy as np
 
@@ -50,43 +54,176 @@ _WRONG_ARGS_ERROR_PATTERNS: list[re.Pattern] = [
     re.compile(r'422 unprocessable', re.IGNORECASE),
 ]
 
-_NUMERIC_TOKEN_RE = re.compile(r'^[\d\.\-\+\*\/\(\)\^\%\s]+$')
-# Code heuristic: contains Python/JS syntax tokens that indicate a code string
-_CODE_SYNTAX_RE = re.compile(r'(def |print\(|import |return |for .* in |if .*:|==[^=]|!=|<=|>=|\bprint\b.*\(|;\s*\w)')
+# ---------------------------------------------------------------------------
+# spaCy helpers — lazy-loaded to avoid paying import cost at module level
+# ---------------------------------------------------------------------------
+
+_NLP = None
 
 
-def _flatten_arg_values(args_str: str) -> str:
-    """Extract leaf values from tool_arguments JSON and join as plain text.
+def _get_spacy():
+    global _NLP
+    if _NLP is None:
+        import spacy
+        _NLP = spacy.load("en_core_web_md")
+    return _NLP
 
-    Parses the JSON string and joins only the values (not keys) so that
-    embedding is not polluted by field names. Falls back to raw string
-    if parsing fails.
+
+_CLAUSE_DEPS = frozenset({"ROOT", "advcl", "relcl", "xcomp", "ccomp", "conj"})
+
+
+def _extract_non_negated_clauses(text: str) -> list[str]:
+    """Extract all non-negated action clauses from text using spaCy dependency parse.
+
+    Finds all clause-head verbs (ROOT, advcl, relcl, xcomp, ccomp, conj) and skips
+    any whose immediate children include a negation token (dep_ == "neg"). Returns
+    the full subtree span for each non-negated clause head, deduplicated by span
+    boundaries. Falls back to [text] when no verbs are found.
+
+    A prompt can contain multiple independent action intents; returning all
+    non-negated clauses lets _check_wrong_tool score each intent separately and
+    take the best match per tool.
     """
-    import json as _json
+    nlp = _get_spacy()
+    doc = nlp(text)
+    seen: set[tuple[int, int]] = set()
+    clauses: list[str] = []
+    for token in doc:
+        if token.pos_ not in ("VERB", "AUX"):
+            continue
+        if token.dep_ not in _CLAUSE_DEPS:
+            continue
+        if any(child.dep_ == "neg" for child in token.children):
+            continue
+        subtree = sorted(token.subtree, key=lambda t: t.i)
+        start, end = subtree[0].i, subtree[-1].i + 1
+        if (start, end) not in seen:
+            seen.add((start, end))
+            clauses.append(doc[start:end].text.strip())
+    return [c for c in clauses if c] or [text]
+
+
+_NER_ENTITY_TYPES = frozenset({
+    "CARDINAL", "DATE", "TIME", "PERSON", "ORG", "GPE", "LOC",
+    "MONEY", "QUANTITY", "ORDINAL", "PRODUCT", "EVENT",
+})
+
+
+def _extract_context_candidates(prompt: str) -> set[str]:
+    """Extract candidate strings from the prompt for argument grounding checks.
+
+    Returns NER entities (dates, names, IDs, quantities, etc.) and proper-noun-headed
+    noun chunks, lowercased and deduplicated. Restricting chunks to proper-noun heads
+    (PROPN) avoids adding common noun phrases like "compound interest" which provide
+    no meaningful grounding signal and cause false positives.
+    """
+    nlp = _get_spacy()
+    doc = nlp(prompt)
+    candidates: set[str] = set()
+    for ent in doc.ents:
+        if ent.label_ in _NER_ENTITY_TYPES:
+            candidates.add(ent.text.lower().strip())
+    for chunk in doc.noun_chunks:
+        if chunk.root.pos_ == "PROPN":
+            candidates.add(chunk.text.lower().strip())
+    return {c for c in candidates if len(c) > 1}
+
+
+def _arg_grounding_score(value: str, candidates: set[str]) -> float:
+    """Return a grounding score for value against context candidates.
+
+    Two-signal check (takes the max):
+    1. Containment: if any candidate appears as a substring of value, score=1.0.
+       Handles long arg values (SQL queries, sentences) that embed a NER entity.
+    2. SequenceMatcher: character-level ratio of the whole value vs each candidate.
+       Handles short values (location names, IDs) that should closely resemble the entity.
+
+    Returns 1.0 when candidates is empty (no NER signal → no evidence of mismatch).
+    """
+    if not candidates:
+        return 1.0
+    normalized = value.lower().strip()
+    if any(c in normalized for c in candidates):
+        return 1.0
+    return max(SequenceMatcher(None, normalized, c).ratio() for c in candidates)
+
+
+# ---------------------------------------------------------------------------
+# Schema-free format heuristics (key-name based)
+# ---------------------------------------------------------------------------
+
+def _validate_email(value: str) -> str | None:
+    if re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', value.strip()):
+        return None
+    return "invalid_email_format"
+
+
+def _validate_date(value: str) -> str | None:
+    stripped = value.strip()
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y"):
+        try:
+            datetime.strptime(stripped, fmt)
+            return None
+        except ValueError:
+            pass
+    # Accept natural language date indicators
+    if re.search(
+        r'\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|\d{4}|'
+        r'today|tomorrow|yesterday|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b',
+        stripped, re.IGNORECASE,
+    ):
+        return None
+    return "invalid_date_format"
+
+
+def _validate_url(value: str) -> str | None:
     try:
-        parsed = _json.loads(args_str)
-        if not isinstance(parsed, dict):
-            return args_str
-        return " ".join(str(v) for v in parsed.values() if v is not None)
-    except (ValueError, TypeError):
-        return args_str
+        r = urlparse(value.strip())
+        if r.scheme in ("http", "https", "ftp", "ftps") and r.netloc:
+            return None
+    except Exception:
+        pass
+    return "invalid_url_format"
 
 
-def _should_skip_embedding(flattened: str) -> bool:
-    """Return True if flattened values are empty, entirely numeric, or code syntax.
+_FORMAT_KEY_PATTERNS: list[tuple[re.Pattern, object]] = [
+    # "email" anywhere in key — avoids \b which treats _ as a word char
+    (re.compile(r'email', re.IGNORECASE), _validate_email),
+    # Match "date" as standalone or after "_" (avoids matching "update")
+    (re.compile(r'(?:^|_)date(?:_|$)|_at$|_on$', re.IGNORECASE), _validate_date),
+    (re.compile(r'(?:^|_)url(?:_|$)|(?:^|_)uri(?:_|$)', re.IGNORECASE), _validate_url),
+]
 
-    Skips embedding when there is no meaningful natural-language signal (ARGS-04):
-    - Empty string
-    - Entirely numeric/operator tokens (e.g. "42", "1 + 2")
-    - Code strings (e.g. Python snippets) — code embeddings are incomparable to
-      natural-language prompt embeddings, producing spurious low scores.
+
+def _key_has_format_pattern(key: str) -> bool:
+    """Return True if any format pattern applies to this key."""
+    return any(p.search(key) for p, _ in _FORMAT_KEY_PATTERNS)
+
+
+def _check_format_heuristic(key: str, value: str) -> str | None:
+    """Return an error reason string if value fails the format implied by key name.
+
+    Matches key against _FORMAT_KEY_PATTERNS in order and runs the corresponding
+    validator. Returns None if key matches no known pattern or value passes validation.
     """
-    text = flattened.strip()
-    if not text:
-        return True
-    if _NUMERIC_TOKEN_RE.match(text):
-        return True
-    return bool(_CODE_SYNTAX_RE.search(text))
+    for pattern, validator in _FORMAT_KEY_PATTERNS:
+        if pattern.search(key):
+            return validator(value)  # type: ignore[operator]
+    return None
+
+
+def _lemma_set(text: str) -> set[str]:
+    """Return the set of lowercase content-word lemmas from text (spaCy).
+
+    Filters out stop words ("a", "the", "in", …) to avoid spurious
+    containment matches on function words.
+    """
+    nlp = _get_spacy()
+    return {
+        token.lemma_.lower()
+        for token in nlp(text)
+        if token.is_alpha and not token.is_stop
+    }
 
 
 class ToolCallAnalyzer(BaseAnalyzer):
@@ -105,12 +242,13 @@ class ToolCallAnalyzer(BaseAnalyzer):
         return "tool_call"
 
     def analyze(self, span: SpanData) -> list[Flag]:
-        """Run all six check methods and return a flat list of Flag instances."""
+        """Run all seven check methods and return a flat list of Flag instances."""
         flags: list[Flag] = []
-        flags.extend(self._check_wrong_tool(span))
+        flags.extend(self._check_tool_not_available(span))
+        flags.extend(self._check_wrong_tool_choice(span))
+        flags.extend(self._check_unnecessary_tool_call(span))
         flags.extend(self._check_wrong_args(span))
         flags.extend(self._check_no_tool(span))
-        flags.extend(self._check_excessive_tool(span))
         flags.extend(self._check_parsing_error(span))
         flags.extend(self._check_response_anomaly(span))
         return flags
@@ -135,28 +273,24 @@ class ToolCallAnalyzer(BaseAnalyzer):
         return self._tool_embed_cache[cache_key]
 
     # ------------------------------------------------------------------
-    # Check methods — FLAG-04, FLAG-05, FLAG-11
+    # Check methods — tool_not_available (deterministic, binary)
     # ------------------------------------------------------------------
 
-    def _check_wrong_tool(self, span: SpanData) -> list[Flag]:
-        """Detect when the called tool is not the best semantic match for the prompt.
+    def _check_tool_not_available(self, span: SpanData) -> list[Flag]:
+        """Detect when the called tool was not offered to the agent.
 
-        Three cases (WTOOL-01):
-          1. No available_tools: immediate flag (WTOOL-03)
-          2. top1_tool != called_tool AND top1_score >= threshold: better tool existed
-          3. top1_score < threshold: no tool was appropriate
-
-        Correct: top1_tool == called_tool AND top1_score >= threshold.
-        Reported score: top1_score via hybrid_score (WTOOL-02, WTOOL-04).
+        Two sub-cases:
+          - WTOOL-03: available_tools is None or empty — tool called with no list
+          - tool_not_in_list: called tool name is absent from available_tools
         """
         if span.tool_name is None:
             return []
 
-        # WTOOL-03: immediate flag — tool called but none available
+        # WTOOL-03: tool called but none available
         if not span.available_tools:
             self.log_score("no_available_tools", 1.0)
             return [Flag(
-                flag_type="wrong_tool",
+                flag_type="tool_not_available",
                 score=1.0,
                 detail={
                     "metric": "no_available_tools",
@@ -164,43 +298,165 @@ class ToolCallAnalyzer(BaseAnalyzer):
                 },
             )]
 
-        if span.prompt is None:
+        # Called tool absent from the offered list
+        if not any(t.get("name") == span.tool_name for t in span.available_tools):
+            self.log_score("tool_not_in_list", 1.0)
+            return [Flag(
+                flag_type="tool_not_available",
+                score=1.0,
+                detail={
+                    "metric": "tool_not_in_list",
+                    "actual_tool": span.tool_name,
+                    "available_tools": [t.get("name") for t in span.available_tools],
+                },
+            )]
+
+        return []
+
+    # ------------------------------------------------------------------
+    # Check methods — wrong_tool_choice (Case B: rank > 1, score ≥ floor)
+    # ------------------------------------------------------------------
+
+    def _check_wrong_tool_choice(self, span: SpanData) -> list[Flag]:
+        """Detect when a better tool existed among the available ones.
+
+        Requires tool IS in the list and score ≥ coherence floor (otherwise
+        unnecessary_tool_call handles it). Containment guard via spaCy lemma
+        overlap short-circuits before any embedding work.
+        """
+        if span.tool_name is None or not span.available_tools or span.prompt is None:
+            return []
+
+        # Skip if tool not in list — handled by _check_tool_not_available
+        candidate = next(
+            (t for t in span.available_tools if t.get("name") == span.tool_name),
+            None,
+        )
+        if candidate is None:
+            return []
+
+        # Step 1 — Stemmed containment check
+        prompt_lemmas = _lemma_set(span.prompt)
+        target_text = f"{candidate.get('name', '')} {candidate.get('description', '')}".strip()
+        target_lemmas = _lemma_set(target_text)
+        if prompt_lemmas & target_lemmas:
+            self.log_score("containment_match", 1.0)
+            return []
+
+        # Step 2 — Embedding ranking (pure cosine, full prompt)
+        prompt_vec = self.embed(span.prompt)
+        tool_vecs = self._get_tool_embeddings(span.available_tools)
+
+        tool_scores: list[tuple[str, float]] = []
+        for tool, tool_vec in zip(span.available_tools, tool_vecs):
+            name = tool.get("name", "")
+            sim = self.compare(prompt_vec, tool_vec)
+            tool_scores.append((name, sim))
+
+        tool_scores.sort(key=lambda x: x[1], reverse=True)
+
+        rank = next(
+            (i + 1 for i, (name, _) in enumerate(tool_scores) if name == span.tool_name),
+            None,
+        )
+        called_score = tool_scores[rank - 1][1]
+        self.log_score("embedding_rank", float(rank))
+        self.log_score("embedding_score", called_score)
+
+        top_name, top_score = tool_scores[0]
+
+        # Defer to _check_unnecessary_tool_call only when ALL tools are
+        # incoherent.  If the best tool is coherent, the called tool simply
+        # ranks below it → wrong_tool_choice (handled by the rank > 1 check).
+        if top_score < self._thresholds["tool_coherence_threshold"]:
+            return []
+
+        if rank == 1:
+            return []
+
+        # Case B: a better tool existed
+        return [Flag(
+            flag_type="wrong_tool_choice",
+            score=called_score,
+            detail={
+                "metric": "embedding_rank",
+                "rank": rank,
+                "top_candidate": top_name,
+                "top_score": top_score,
+                "actual_tool": span.tool_name,
+                "all_rankings": [{"name": n, "score": s} for n, s in tool_scores],
+            },
+        )]
+
+    # ------------------------------------------------------------------
+    # Check methods — unnecessary_tool_call (Case C: low coherence)
+    # ------------------------------------------------------------------
+
+    def _check_unnecessary_tool_call(self, span: SpanData) -> list[Flag]:
+        """Detect when no available tool was appropriate for the prompt.
+
+        The called tool's embedding score is below the coherence floor,
+        meaning no tool in the list was semantically grounded in the prompt.
+        Replaces the old excessive_tool check with a more principled signal.
+        """
+        if span.tool_name is None or not span.available_tools or span.prompt is None:
+            return []
+
+        # Skip if tool not in list — handled by _check_tool_not_available
+        candidate = next(
+            (t for t in span.available_tools if t.get("name") == span.tool_name),
+            None,
+        )
+        if candidate is None:
+            return []
+
+        # Containment guard — if prompt shares lemmas with the called tool,
+        # the tool call is textually grounded and not unnecessary
+        prompt_lemmas = _lemma_set(span.prompt)
+        target_text = f"{candidate.get('name', '')} {candidate.get('description', '')}".strip()
+        target_lemmas = _lemma_set(target_text)
+        if prompt_lemmas & target_lemmas:
+            self.log_score("containment_match", 1.0)
             return []
 
         prompt_vec = self.embed(span.prompt)
         tool_vecs = self._get_tool_embeddings(span.available_tools)
 
-        # WTOOL-04: hybrid score (50/50 cosine + BOW) for each tool
         tool_scores: list[tuple[str, float]] = []
         for tool, tool_vec in zip(span.available_tools, tool_vecs):
             name = tool.get("name", "")
-            desc = tool.get("description", "")
-            tool_text = f"{name} {desc}".strip() if desc else name
-            cosine = self.compare(prompt_vec, tool_vec)
-            bow = bow_score(span.prompt, tool_text)
-            score = hybrid_score(cosine, bow)
-            tool_scores.append((name, score))
+            sim = self.compare(prompt_vec, tool_vec)
+            tool_scores.append((name, sim))
 
         tool_scores.sort(key=lambda x: x[1], reverse=True)
-        top1_name, top1_score = tool_scores[0]
 
-        # WTOOL-02: log top1_score before threshold check
-        self.log_score("prompt_vs_top1_tool_hybrid", top1_score)
+        rank = next(
+            (i + 1 for i, (name, _) in enumerate(tool_scores) if name == span.tool_name),
+            None,
+        )
+        called_score = tool_scores[rank - 1][1]
+        self.log_score("tool_coherence_score", called_score)
 
-        # Correct case: called the best tool with trustworthy score — no flag
-        if top1_name == span.tool_name and top1_score >= self._thresholds["wrong_tool_called"]:
+        coherence_floor = self._thresholds["unnecessary_tool_call"]
+        top_name, top_score = tool_scores[0]
+
+        # If the best tool IS coherent, the issue is wrong_tool_choice, not
+        # unnecessary — a reasonable tool existed, the agent just ignored it.
+        if top_score >= coherence_floor:
             return []
 
-        # Case B (better tool existed) and Case C (no tool appropriate): both flag
+        if called_score >= coherence_floor:
+            return []
         return [Flag(
-            flag_type="wrong_tool",
-            score=top1_score,
+            flag_type="unnecessary_tool_call",
+            score=called_score,
             detail={
-                "metric": "prompt_vs_top1_tool_hybrid",
-                "expected_tool": top1_name,
+                "metric": "low_tool_coherence",
+                "rank": rank,
+                "top_candidate": top_name,
+                "top_score": top_score,
                 "actual_tool": span.tool_name,
-                "score": top1_score,
-                "ranked_tools": [{"name": n, "score": s} for n, s in tool_scores],
+                "all_rankings": [{"name": n, "score": s} for n, s in tool_scores],
             },
         )]
 
@@ -211,22 +467,29 @@ class ToolCallAnalyzer(BaseAnalyzer):
     def _check_wrong_args(self, span: SpanData) -> list[Flag]:
         """Detect when tool arguments are semantically unrelated to the prompt.
 
-        Two-path detection (ARGS-01 takes priority):
+        Three-path detection (ARGS-01 takes priority):
 
         Path 1 — output-error priority (ARGS-01):
           If tool_output contains an error pattern (regex), flag immediately.
-          Score=1.0. No embedding call.
+          Score=1.0. No spaCy call.
 
-        Path 2 — semantic mismatch via hybrid scoring (ARGS-02/03/04):
-          Flatten argument values (not raw JSON), skip if empty or all-numeric,
-          then compute 50/50 cosine+BOW hybrid score and flag if below threshold.
+        Path 2 — per-argument format heuristics (schema-free):
+          For arguments whose key name implies a known format (email, date, url),
+          validate the value against that format. Format violations score 0.0 and
+          skip the grounding check for that argument.
+
+        Path 3 — per-argument grounding check:
+          Build context candidates from the prompt (NER entities + noun chunks).
+          For each argument value, compute the best SequenceMatcher ratio against
+          candidates. If no candidates are found → no signal → no flag.
+          Flag if the worst-case score across all args is below threshold.
 
         low_confidence is NOT included in flag detail (ARGS-05).
         """
         if span.tool_arguments is None or span.prompt is None:
             return []
 
-        # ARGS-01: output-error priority path (no embedding)
+        # ARGS-01: output-error priority path (no spaCy)
         if span.tool_output and any(
             p.search(span.tool_output) for p in _WRONG_ARGS_ERROR_PATTERNS
         ):
@@ -237,28 +500,72 @@ class ToolCallAnalyzer(BaseAnalyzer):
                 detail={"metric": "output_error_pattern", "source": "tool_output"},
             )]
 
-        # ARGS-02/04: flatten argument values; skip if empty or all-numeric
-        flattened = _flatten_arg_values(span.tool_arguments)
-        if _should_skip_embedding(flattened):
+        # Skip empty / null args — nothing to compare
+        args_stripped = span.tool_arguments.strip()
+        if not args_stripped or args_stripped in ("{}", "[]", "null"):
             return []
 
-        # ARGS-02/03: embed flattened values and compute hybrid score
-        prompt_vec = self.embed(span.prompt)
-        args_vec = self.embed(flattened)
-        cosine = self.compare(prompt_vec, args_vec)
-        bow = bow_score(span.prompt, flattened)
-        score = hybrid_score(cosine, bow)
+        try:
+            parsed = json.loads(span.tool_arguments)
+        except (ValueError, TypeError):
+            return []
+        if not isinstance(parsed, dict) or not parsed:
+            return []
 
-        self.log_score("prompt_vs_args_hybrid", score)  # log BEFORE threshold
+        # Per-argument checks — format heuristics run unconditionally;
+        # grounding checks only when prompt yields candidates.
+        violations: list[dict] = []
+        all_scores: list[float] = []
+        needs_grounding: list[tuple[str, str]] = []  # (key, value) pairs deferred to grounding
 
-        if score < self._thresholds["wrong_tool_args"]:
-            return [Flag(
-                flag_type="wrong_tool_args",
-                score=score,
-                detail={"metric": "prompt_vs_args_hybrid", "score": score},
-                # ARGS-05: no low_confidence key
-            )]
-        return []
+        for key, value in parsed.items():
+            if value is None or str(value).strip() == "":
+                continue
+            str_value = str(value)
+
+            # Path 2: schema-free format heuristic
+            format_issue = _check_format_heuristic(key, str_value)
+            if format_issue is not None:
+                # Value is structurally malformed for this key type
+                all_scores.append(0.0)
+                violations.append({"key": key, "value": str_value, "score": 0.0, "reason": format_issue})
+                continue
+            if _key_has_format_pattern(key):
+                # Value passes format validation — trust it, skip grounding
+                # (e.g. ISO date "2025-03-05" won't SequenceMatcher-match "March 5th")
+                all_scores.append(1.0)
+                continue
+
+            needs_grounding.append((key, str_value))
+
+        # Path 3: grounding check — only when candidates are available
+        if needs_grounding:
+            candidates = _extract_context_candidates(span.prompt)
+            if candidates:
+                for key, str_value in needs_grounding:
+                    score = _arg_grounding_score(str_value, candidates)
+                    all_scores.append(score)
+                    if score < self._thresholds["wrong_tool_args"]:
+                        violations.append({"key": key, "value": str_value, "score": score, "reason": "not_grounded"})
+            else:
+                # No NER signal — treat remaining args as grounded
+                all_scores.extend(1.0 for _ in needs_grounding)
+
+        if not all_scores:
+            return []  # no checkable arguments
+
+        worst_score = min(all_scores)
+        self.log_score("arg_grounding", worst_score)  # log BEFORE threshold (ARGS-05)
+
+        if not violations:
+            return []
+
+        return [Flag(
+            flag_type="wrong_tool_args",
+            score=worst_score,
+            detail={"metric": "arg_grounding", "violations": violations},
+            # ARGS-05: no low_confidence key
+        )]
 
     # ------------------------------------------------------------------
     # Check methods — FLAG-08 (no_tool)
@@ -288,40 +595,6 @@ class ToolCallAnalyzer(BaseAnalyzer):
                     score=score,
                     detail={
                         "metric": "prompt_expects_tool",
-                        "score": score,
-                    },
-                )
-            ]
-        return []
-
-    # ------------------------------------------------------------------
-    # Check methods — FLAG-08 (excessive_tool)
-    # ------------------------------------------------------------------
-
-    def _check_excessive_tool(self, span: SpanData) -> list[Flag]:
-        """Detect when a tool was called but the prompt doesn't warrant it.
-
-        Low similarity between the prompt and the tool name suggests the
-        tool call was unnecessary or misdirected.
-        """
-        if span.tool_name is None:
-            return []  # no tool was called; this check is not applicable
-        if span.prompt is None:
-            return []
-
-        prompt_vec = self.embed(span.prompt)
-        tool_name_vec = self.embed(span.tool_name)
-        score = self.compare(prompt_vec, tool_name_vec)
-
-        self.log_score("prompt_vs_tool_relevance", score)
-
-        if score < self._thresholds["excessive_tool"]:
-            return [
-                Flag(
-                    flag_type="excessive_tool",
-                    score=score,
-                    detail={
-                        "metric": "prompt_vs_tool_relevance",
                         "score": score,
                     },
                 )

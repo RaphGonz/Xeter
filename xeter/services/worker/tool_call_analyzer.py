@@ -108,6 +108,17 @@ _NER_ENTITY_TYPES = frozenset({
     "MONEY", "QUANTITY", "ORDINAL", "PRODUCT", "EVENT",
 })
 
+# Mean embedding vector for social prompts (e.g. "thanks!", "great job").
+# Placeholder — replace with the actual centroid once the corpus is built.
+_SOCIAL_CENTROID: np.ndarray | None = None
+
+_ACTION_VERBS: frozenset[str] = frozenset({
+    "find", "search", "get", "fetch", "query", "calculate", "send", "create",
+    "update", "delete", "run", "execute", "show", "list", "compare", "retrieve",
+    "lookup", "add", "remove", "set", "check", "generate", "summarize", "analyze",
+    "read", "write", "open", "close", "save", "load", "download", "upload",
+})
+
 
 def _extract_context_candidates(prompt: str) -> set[str]:
     """Extract candidate strings from the prompt for argument grounding checks.
@@ -393,70 +404,57 @@ class ToolCallAnalyzer(BaseAnalyzer):
     # ------------------------------------------------------------------
 
     def _check_unnecessary_tool_call(self, span: SpanData) -> list[Flag]:
-        """Detect when no available tool was appropriate for the prompt.
+        """Detect tool calls triggered by social/phatic prompts (e.g. 'thanks!').
 
-        The called tool's embedding score is below the coherence floor,
-        meaning no tool in the list was semantically grounded in the prompt.
-        Replaces the old excessive_tool check with a more principled signal.
+        Four sequential gates — all must pass to flag:
+          1. Token length ≤ 20
+          2. No named entities (person, org, location, quantity, date, …)
+          3. No action verbs (find, search, get, …)
+          4. Centroid similarity ≥ threshold (social prompt embedding proximity)
         """
-        if span.tool_name is None or not span.available_tools or span.prompt is None:
+        if span.tool_name is None or span.prompt is None:
             return []
 
-        # Skip if tool not in list — handled by _check_tool_not_available
-        candidate = next(
-            (t for t in span.available_tools if t.get("name") == span.tool_name),
-            None,
-        )
-        if candidate is None:
+        nlp = _get_spacy()
+        doc = nlp(span.prompt)
+
+        # Gate 1: short prompt only
+        if len(doc) > 20:
             return []
 
-        # Containment guard — if prompt shares lemmas with the called tool,
-        # the tool call is textually grounded and not unnecessary
-        prompt_lemmas = _lemma_set(span.prompt)
-        target_text = f"{candidate.get('name', '')} {candidate.get('description', '')}".strip()
-        target_lemmas = _lemma_set(target_text)
-        if prompt_lemmas & target_lemmas:
-            self.log_score("containment_match", 1.0)
+        # Gate 2: no named entities
+        if any(ent.label_ in _NER_ENTITY_TYPES for ent in doc.ents):
             return []
 
-        prompt_vec = self.embed(span.prompt)
-        tool_vecs = self._get_tool_embeddings(span.available_tools)
-
-        tool_scores: list[tuple[str, float]] = []
-        for tool, tool_vec in zip(span.available_tools, tool_vecs):
-            name = tool.get("name", "")
-            sim = self.compare(prompt_vec, tool_vec)
-            tool_scores.append((name, sim))
-
-        tool_scores.sort(key=lambda x: x[1], reverse=True)
-
-        rank = next(
-            (i + 1 for i, (name, _) in enumerate(tool_scores) if name == span.tool_name),
-            None,
-        )
-        called_score = tool_scores[rank - 1][1]
-        self.log_score("tool_coherence_score", called_score)
-
-        coherence_floor = self._thresholds["unnecessary_tool_call"]
-        top_name, top_score = tool_scores[0]
-
-        # If the best tool IS coherent, the issue is wrong_tool_choice, not
-        # unnecessary — a reasonable tool existed, the agent just ignored it.
-        if top_score >= coherence_floor:
+        # Gate 3: no action verbs
+        if any(
+            token.pos_ == "VERB" and token.lemma_.lower() in _ACTION_VERBS
+            for token in doc
+        ):
             return []
 
-        if called_score >= coherence_floor:
+        # Gate 4: centroid similarity
+        if _SOCIAL_CENTROID is None:
+            # Centroid not yet built — skip embedding gate, trust gates 1-3
+            centroid_score = 1.0
+        else:
+            prompt_vec = self.embed(span.prompt)
+            centroid_score = float(self.compare(prompt_vec, _SOCIAL_CENTROID))
+
+        self.log_score("social_centroid_score", centroid_score)
+
+        threshold = self._thresholds["unnecessary_tool_call"]
+        if centroid_score < threshold:
             return []
+
         return [Flag(
             flag_type="unnecessary_tool_call",
-            score=called_score,
+            score=centroid_score,
             detail={
-                "metric": "low_tool_coherence",
-                "rank": rank,
-                "top_candidate": top_name,
-                "top_score": top_score,
+                "metric": "social_prompt",
+                "token_count": len(doc),
+                "centroid_score": centroid_score,
                 "actual_tool": span.tool_name,
-                "all_rankings": [{"name": n, "score": s} for n, s in tool_scores],
             },
         )]
 

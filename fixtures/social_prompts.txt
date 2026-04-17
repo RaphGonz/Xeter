@@ -1,0 +1,169 @@
+# Social / phatic prompts — one per line, blank lines and # comments ignored.
+Thanks!
+Thank you.
+Thank you so much.
+Thanks a lot.
+Many thanks.
+Much appreciated.
+I appreciate it.
+I appreciate your help.
+Thanks for the help.
+Cheers.
+Great.
+Great, thanks.
+Got it.
+Got it, thanks.
+Understood.
+Understood, thank you.
+Makes sense.
+Makes sense, thanks.
+That makes sense.
+Perfect.
+Perfect, thank you.
+Sounds good.
+Sounds good to me.
+Looks good.
+Looks good to me.
+That looks good.
+That's great.
+That's helpful.
+That's very helpful.
+That's exactly what I needed.
+That's perfect.
+That's clear.
+That's clear, thank you.
+Noted.
+Noted, thanks.
+Acknowledged.
+OK.
+Ok, got it.
+Okay.
+Okay, thanks.
+Alright.
+Alright, thanks.
+Alright, understood.
+Sure.
+Sure, thanks.
+Cool.
+Cool, thanks.
+Awesome.
+Awesome, thanks.
+Wonderful.
+Wonderful, thank you.
+Excellent.
+Excellent, thank you.
+Brilliant.
+Brilliant, thanks.
+Nice.
+Nice, thank you.
+Good.
+Good, thanks.
+Good to know.
+Good to know, thanks.
+Fair enough.
+Fair enough, thanks.
+I see.
+I see, thanks.
+I see, thank you.
+I understand.
+I understand now.
+I understand, thank you.
+I get it.
+I get it now.
+I get it, thanks.
+Now I understand.
+Now I get it.
+That clears things up.
+That clears things up, thanks.
+That helps a lot.
+That helped, thanks.
+Very helpful, thank you.
+Very clear, thank you.
+Super helpful.
+Super clear.
+Hi.
+Hello.
+Hey.
+Hi there.
+Hello there.
+Hey there.
+Good morning.
+Good afternoon.
+Good evening.
+How are you?
+How's it going?
+How are you doing?
+Hope you're doing well.
+Nice to meet you.
+Pleased to meet you.
+Hello again.
+Hey again.
+Hi again.
+Welcome back.
+Good to see you.
+Bye.
+Goodbye.
+See you.
+See you later.
+Talk to you later.
+Take care.
+Have a good one.
+Have a great day.
+Good night.
+Thanks again.
+Once again, thank you.
+Thank you once more.
+Thanks for everything.
+Thank you for your time.
+Thank you for your patience.
+Thanks for being so thorough.
+I appreciate your thoroughness.
+I appreciate your detailed explanation.
+I appreciate your thorough explanation of the codebase.
+Thanks for walking me through that.
+Thanks for the clarification.
+Thanks for clarifying.
+Thanks for explaining.
+That was very clear.
+That was a great explanation.
+That was helpful.
+That was well explained.
+Well explained.
+Well said.
+You explained that well.
+You explained that very clearly.
+Great explanation.
+Great answer.
+Great response.
+Good answer.
+Good explanation.
+Impressive.
+Impressive explanation.
+I'm impressed.
+That's impressive.
+Wow.
+Wow, thanks.
+Amazing.
+Amazing, thank you.
+Fantastic.
+Fantastic, thank you.
+You're welcome.
+No problem.
+No worries.
+Of course.
+Sure thing.
+Absolutely.
+Definitely.
+Right.
+Exactly.
+Precisely.
+Indeed.
+Yes.
+Yes, exactly.
+Yes, that's right.
+Yep.
+Yep, got it.
+Correct.
+Correct, thanks.
+# Populate this list, then run:
+#   python xeter/scripts/build_social_centroid.py

@@ -25,6 +25,7 @@ import json
 import re
 from datetime import datetime
 from difflib import SequenceMatcher
+from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -108,9 +109,10 @@ _NER_ENTITY_TYPES = frozenset({
     "MONEY", "QUANTITY", "ORDINAL", "PRODUCT", "EVENT",
 })
 
-# Mean embedding vector for social prompts (e.g. "thanks!", "great job").
-# Placeholder — replace with the actual centroid once the corpus is built.
-_SOCIAL_CENTROID: np.ndarray | None = None
+_SOCIAL_CENTROID_PATH = Path(__file__).parent.parent.parent.parent / "fixtures" / "social_centroid.npy"
+_SOCIAL_CENTROID: np.ndarray | None = (
+    np.load(_SOCIAL_CENTROID_PATH) if _SOCIAL_CENTROID_PATH.exists() else None
+)
 
 _ACTION_VERBS: frozenset[str] = frozenset({
     "find", "search", "get", "fetch", "query", "calculate", "send", "create",

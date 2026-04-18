@@ -43,10 +43,11 @@ EMBEDDER_URL = "http://localhost:8002"
 
 # Flag types to calibrate independently via hill climbing
 FLAG_TYPES = [
-    "wrong_tool_called",
+    "tool_not_available",
+    "wrong_tool_choice",
+    "unnecessary_tool_call",
     "wrong_tool_args",
     "no_tool",
-    "excessive_tool",
     "parsing_error",
     "response_anomaly",
 ]
@@ -54,21 +55,18 @@ FLAG_TYPES = [
 # Maps threshold key → actual emitted flag_type (and fixture anomaly_type).
 # Needed when threshold key differs from the emitted flag type (e.g. after a
 # threshold-key rename that preserved the public flag_type string).
-FLAG_TYPE_ALIAS: dict[str, str] = {
-    "wrong_tool_called": "wrong_tool",
-}
+FLAG_TYPE_ALIAS: dict[str, str] = {}
 
-# Binary detectors — skip numeric threshold sweep; detected by logic, not cosine
-# (empty for now; "tool_use_violation" is added in Phase 9)
-BINARY_FLAG_TYPES: set[str] = set()
+# Binary detectors — no threshold sweep; detected by rank/logic, not cosine threshold.
+# P/R is still measured via a single evaluation pass.
+BINARY_FLAG_TYPES: set[str] = {"tool_not_available", "wrong_tool_choice", "parsing_error"}
 
 # Default starting thresholds (used as baseline when calibrating other flags)
 DEFAULT_THRESHOLDS: dict[str, float] = {
-    "wrong_tool_called": 0.5,
+    "tool_coherence_threshold": 0.15,
+    "unnecessary_tool_call": 0.15,
     "wrong_tool_args": 0.4,
     "no_tool": 0.6,
-    "excessive_tool": 0.3,
-    "parsing_error": 0.5,
     "response_anomaly": 0.4,
 }
 
@@ -129,6 +127,7 @@ def evaluate_flag_type(
     spans: list[dict],
     embedder,
     current_thresholds: dict[str, float],
+    verbose: bool = False,
 ) -> tuple[float, float]:
     """Precision and recall for one flag_type at the given threshold.
 
@@ -136,8 +135,11 @@ def evaluate_flag_type(
     Counts only spans whose anomaly_type matches flag_type as actual positives.
 
     FLAG_TYPE_ALIAS is applied so that threshold keys that differ from the
-    emitted flag_type (e.g. "wrong_tool_called" vs "wrong_tool") are resolved
+    emitted flag_type (via FLAG_TYPE_ALIAS if the key differs) are resolved
     correctly when matching fixture labels and analyzer outputs.
+
+    If verbose=True, prints each false positive and false negative with span
+    details to help diagnose algorithm failures.
     """
     from xeter.services.worker.tool_call_analyzer import ToolCallAnalyzer
 
@@ -149,24 +151,82 @@ def evaluate_flag_type(
     analyzer = ToolCallAnalyzer(embedder, thresholds)
 
     tp = fp = fn = 0
+    false_positives: list[dict] = []
+    false_negatives: list[dict] = []
+
     for row in spans:
-        actual = row.get("anomaly_type") == emitted_flag_type
+        labels = row.get("anomaly_types") or [row.get("anomaly_type")]
+        actual = emitted_flag_type in labels
         span = build_span_data(row)
         flags = analyzer.analyze(span)
-        analyzer.flush_scores()
+        scores = analyzer.flush_scores()
 
         predicted = any(f.flag_type == emitted_flag_type for f in flags)
+        matched_flags = [f for f in flags if f.flag_type == emitted_flag_type]
 
         if predicted and actual:
             tp += 1
         elif predicted and not actual:
             fp += 1
+            if verbose:
+                false_positives.append({
+                    "span_id": row.get("span_id"),
+                    "prompt": (row.get("prompt") or "")[:120],
+                    "tool_name": row.get("tool_name"),
+                    "available_tools": [t.get("name") for t in (row.get("available_tools") or [])],
+                    "flag_detail": matched_flags[0].detail if matched_flags else {},
+                    "scores": [(m, round(s, 3)) for _, m, s in scores],
+                })
         elif not predicted and actual:
             fn += 1
+            if verbose:
+                false_negatives.append({
+                    "span_id": row.get("span_id"),
+                    "prompt": (row.get("prompt") or "")[:120],
+                    "tool_name": row.get("tool_name"),
+                    "available_tools": [t.get("name") for t in (row.get("available_tools") or [])],
+                    "scores": [(m, round(s, 3)) for _, m, s in scores],
+                })
 
     precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
     recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+
+    if verbose:
+        _print_failures(flag_type, false_positives, false_negatives)
+
     return precision, recall
+
+
+def _print_failures(
+    flag_type: str,
+    false_positives: list[dict],
+    false_negatives: list[dict],
+) -> None:
+    """Print FP and FN details for diagnosis."""
+    sep = "-" * 60
+
+    if false_positives:
+        print(f"\n  FALSE POSITIVES ({len(false_positives)}) — clean spans incorrectly flagged:")
+        for i, fp in enumerate(false_positives, 1):
+            tools_str = ", ".join(fp["available_tools"])
+            detail = fp["flag_detail"]
+            rank = detail.get("rank", "?")
+            top = detail.get("top_candidate", "?")
+            scores_str = "  ".join(f"{m}={s}" for m, s in fp["scores"] if "tool" in m or "containment" in m or "embedding" in m or "coherence" in m)
+            print(f"    [{i}] {fp['span_id']}")
+            print(f"        prompt:  {fp['prompt']}")
+            print(f"        called:  {fp['tool_name']}  |  available: [{tools_str}]")
+            print(f"        rank={rank}  top={top}  {scores_str}")
+
+    if false_negatives:
+        print(f"\n  FALSE NEGATIVES ({len(false_negatives)}) — {flag_type} spans missed:")
+        for i, fn in enumerate(false_negatives, 1):
+            tools_str = ", ".join(fn["available_tools"])
+            scores_str = "  ".join(f"{m}={s}" for m, s in fn["scores"] if "tool" in m or "containment" in m or "embedding" in m or "coherence" in m)
+            print(f"    [{i}] {fn['span_id']}")
+            print(f"        prompt:  {fn['prompt']}")
+            print(f"        called:  {fn['tool_name']}  |  available: [{tools_str}]")
+            print(f"        {scores_str or '(no relevant scores)'}")
 
 
 # ---------------------------------------------------------------------------
@@ -278,18 +338,20 @@ def patch_docker_compose(calibrated: dict[str, float]) -> None:
         return
 
     key_to_env = {
-        "wrong_tool_called": "WORKER_THRESHOLD_WRONG_TOOL_CALLED",
-        "wrong_tool_args": "WORKER_THRESHOLD_WRONG_ARGS",
+        "tool_not_available": "WORKER_THRESHOLD_TOOL_NOT_AVAILABLE",
+        "wrong_tool_choice": "WORKER_THRESHOLD_WRONG_TOOL_CHOICE",
+        "unnecessary_tool_call": "WORKER_THRESHOLD_UNNECESSARY_TOOL_CALL",
+        "wrong_tool_args": "WORKER_THRESHOLD_WRONG_TOOL_ARGS",
         "no_tool": "WORKER_THRESHOLD_NO_TOOL",
-        "excessive_tool": "WORKER_THRESHOLD_EXCESSIVE_TOOL",
-        "parsing_error": "WORKER_THRESHOLD_PARSING_ERROR",
         "response_anomaly": "WORKER_THRESHOLD_RESPONSE_ANOMALY",
     }
 
     content = DOCKER_COMPOSE_PATH.read_text(encoding="utf-8")
     patched = content
     for key, env_var in key_to_env.items():
-        value = calibrated[key]
+        value = calibrated.get(key)
+        if value is None:
+            continue  # binary flag type — no threshold to patch
         pattern = rf'({re.escape(env_var)}:\s*)"[^"]*"'
         replacement = rf'\g<1>"{value}"'
         new_content, n_subs = re.subn(pattern, replacement, patched)
@@ -316,6 +378,18 @@ def parse_args():
         dest="flag_type",
         default=None,
         help="Calibrate only this flag type in isolation (e.g. wrong_tool_args)",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        default=False,
+        help="Print false positives and false negatives for binary (rank-based) flag types",
+    )
+    parser.add_argument(
+        "--eval-only",
+        action="store_true",
+        default=False,
+        help="Single-pass P/R evaluation using current thresholds — no hill climbing",
     )
     return parser.parse_args()
 
@@ -368,16 +442,23 @@ def main() -> dict:
     results: dict[str, dict] = {}
 
     for flag_type in active_flag_types:
-        if flag_type in active_binary:
-            print(f"\n  [{flag_type}] binary flag — skipping numeric sweep")
+        if flag_type in active_binary or cli_args.eval_only:
+            label = "binary" if flag_type in active_binary else f"threshold={calibrated.get(flag_type, 'N/A')}"
+            print(f"\n  [{flag_type}] {label} — single evaluation pass")
+            threshold = calibrated.get(flag_type, 1.0)
+            precision, recall = evaluate_flag_type(
+                flag_type, threshold, spans, embedder, calibrated,
+                verbose=cli_args.verbose,
+            )
             results[flag_type] = {
-                "best_threshold": 1.0,
-                "best_precision": None,
-                "best_recall": None,
+                "best_threshold": None if flag_type in active_binary else threshold,
+                "best_precision": precision,
+                "best_recall": recall,
                 "history": [],
-                "steps": 0,
-                "binary": True,
+                "steps": 1,
+                "binary": flag_type in active_binary,
             }
+            print(f"    P={precision:.3f}  R={recall:.3f}")
             continue
         best_threshold, best_precision, best_recall, history = hill_climb(
             flag_type, spans, embedder, calibrated
@@ -398,7 +479,14 @@ def main() -> dict:
     all_pass = True
     for flag_type, res in results.items():
         if res.get("binary"):
-            print(f"  {flag_type:<25s}  binary detection — no P/R sweep")
+            met = res["best_precision"] >= 0.80
+            if not met:
+                all_pass = False
+            status = "OK" if met else "WARN (<80% precision)"
+            print(
+                f"  {flag_type:<25s}  rank-based  "
+                f"P={res['best_precision']:.3f}  R={res['best_recall']:.3f}  [{status}]"
+            )
             continue
         met = res["best_precision"] >= 0.80
         if not met:

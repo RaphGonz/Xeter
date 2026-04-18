@@ -2,16 +2,48 @@
   "thresholds": {
     "tool_coherence_threshold": 0.15,
     "unnecessary_tool_call": 0.25,
-    "wrong_tool_args": 0.4,
-    "no_tool": 0.6,
-    "response_anomaly": 0.4
+    "wrong_tool_args": 0.1,
+    "no_tool": 0.15,
+    "response_anomaly": 0.1
   },
   "per_flag_type": {
-    "unnecessary_tool_call": {
-      "threshold": 0.4,
+    "tool_not_available": {
+      "type": "rank-based",
       "precision": 1.0,
-      "recall": 0.1667,
-      "steps": 8
+      "recall": 1.0
+    },
+    "wrong_tool_choice": {
+      "type": "rank-based",
+      "precision": 1.0,
+      "recall": 0.5
+    },
+    "unnecessary_tool_call": {
+      "threshold": 0.25,
+      "precision": 1.0,
+      "recall": 0.667
+    },
+    "wrong_tool_args": {
+      "threshold": 0.1,
+      "precision": 0.882,
+      "recall": 0.484,
+      "steps": 2
+    },
+    "parsing_error": {
+      "type": "rank-based",
+      "precision": 1.0,
+      "recall": 0.8
+    },
+    "no_tool": {
+      "threshold": 0.15,
+      "precision": 1.0,
+      "recall": 0.333,
+      "steps": 3
+    },
+    "response_anomaly": {
+      "threshold": 0.1,
+      "precision": 0.818,
+      "recall": 0.8,
+      "steps": 2
     }
   }
 }

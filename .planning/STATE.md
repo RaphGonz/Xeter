@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Analyser Accuracy
 status: unknown
-last_updated: "2026-04-07T21:30:30.230Z"
+last_updated: "2026-04-18T20:30:09.991Z"
 progress:
-  total_phases: 8
-  completed_phases: 7
+  total_phases: 10
+  completed_phases: 8
   total_plans: 29
-  completed_plans: 28
+  completed_plans: 31
 ---
 
 # Project State
@@ -77,6 +77,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-07
-Stopped at: Completed 08-02-PLAN.md (algorithm review checkpoint — awaiting user approval before calibration)
-Resume file: None
+Last session: 2026-04-11
+Stopped at: 08-03 calibration — second run completed (P=0.607, R=0.548). Still below target.
+Two open concerns: (1) wrong_tool_args FPs need verbose output to diagnose (--verbose broken);
+(2) unnecessary_tool_call P=0.286 at threshold floor — signal needs redesign, not calibration.
+Resume file: .planning/phases/08-wrong-tool-rewrite/.continue-here.md

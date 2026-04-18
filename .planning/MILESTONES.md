@@ -20,3 +20,13 @@
 - Requirements: `.planning/milestones/v1.0-REQUIREMENTS.md`
 
 ---
+
+## v1.1 Analyser Accuracy (Shipped: 2026-04-18)
+
+**Phases completed:** 10 phases, 29 plans, 8 tasks
+
+**Key accomplishments:**
+- (none recorded)
+
+---
+

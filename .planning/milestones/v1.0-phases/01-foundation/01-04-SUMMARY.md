@@ -141,6 +141,10 @@ make reset
 - `reset.py` enables clean-slate dev environment in a single command
 - Phase 1 foundation is complete — all 4 plans done
 
+## Self-Check: PASSED
+
+All created files exist on disk. Both task commits (65c7dec, 202b944) confirmed in git log.
+
 ---
 *Phase: 01-foundation*
 *Completed: 2026-03-27*

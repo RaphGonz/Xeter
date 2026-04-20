@@ -1,486 +1,452 @@
 # Architecture Research
 
-**Domain:** AI agent observability and debugging platform
-**Researched:** 2026-03-27
-**Confidence:** HIGH (project architecture fully specified in arc42; research validates and expands patterns)
+**Domain:** LLM Diagnosticer integration into Xeter observability platform
+**Researched:** 2026-04-20
+**Confidence:** HIGH — based on direct codebase inspection, no external sources required
 
 ---
 
-## Standard Architecture
+## System Overview
 
-### System Overview
+### Current Architecture (v1.1)
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         INGESTION LAYER                              │
-│  ┌──────────────┐   OTLP/HTTP or gRPC   ┌───────────────────────┐  │
-│  │  Python SDK  │ ─────────────────────► │  Analyser (FastAPI)   │  │
-│  │  (OTel wrap) │                        │  - auth check         │  │
-│  └──────────────┘                        │  - protobuf decode    │  │
-│                                          │  - ClickHouse INSERT  │  │
-│                                          │  - Redis LPUSH        │  │
-│                                          └───────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────┘
-                                 │
-                         Redis queue (span_id refs)
-                                 │
-                                 ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                         ANALYSIS LAYER                               │
-│  ┌───────────────────────────────────────────────────────────────┐  │
-│  │  Embedding Worker (Python process, polling Redis queue)        │  │
-│  │  - BRPOP span_id from queue                                   │  │
-│  │  - fetch span fields from ClickHouse                          │  │
-│  │  - embed: prompt, tool_name, tool_description, response       │  │
-│  │  - embed prompt vs each tool in available_tools (from S3)     │  │
-│  │  - embed prompt vs tool_arguments values (inline JSON)        │  │
-│  │  - cosine similarity comparisons                              │  │
-│  │  - classify: wrong_tool / wrong_tool_args / no_tool /         │  │
-│  │              excessive_tool / parsing_error                   │  │
-│  │  - INSERT flag rows into PostgreSQL                           │  │
-│  └───────────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────┘
-                                 │
-                    flags written to PostgreSQL
-                                 │
-                                 ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                         STORAGE LAYER                                │
-│  ┌──────────────┐   ┌──────────────────────┐   ┌────────────────┐  │
-│  │  ClickHouse  │   │     PostgreSQL         │   │    S3 / MinIO  │  │
-│  │  spans table │   │  flags, diagnostics    │   │  prompt,       │  │
-│  │  (immutable) │   │  tenants, users,       │   │  response,     │  │
-│  │  OLAP, fast  │   │  api_keys (mutable)    │   │  raw_response  │  │
-│  │  scan        │   │                        │   │  (large text)  │  │
-│  └──────────────┘   └──────────────────────┘   └────────────────┘  │
-└─────────────────────────────────────────────────────────────────────┘
-                                 │
-                    Presenter queries both stores
-                                 │
-                                 ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                         API LAYER                                    │
-│  ┌───────────────────────────────────────────────────────────────┐  │
-│  │  Presenter (FastAPI)                                           │  │
-│  │  - REST: span list, span detail, trace tree                   │  │
-│  │  - merges ClickHouse spans + PostgreSQL flags/diagnostics     │  │
-│  │  - lazy-fetches S3 payload refs on detail view                │  │
-│  │  - SSE: flag-update events, diagnostic-completion events      │  │
-│  │  - routes /diagnose → Diagnosticer                            │  │
-│  └───────────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────┘
-                                 │
-                         ┌───────┴──────────┐
-                         │                  │
-                         ▼                  ▼
-┌───────────────────┐         ┌─────────────────────────────────────┐
-│  View (SvelteKit  │         │  Diagnosticer (separate service)     │
-│  or React SPA)    │         │  - called on user request only       │
-│  no business      │◄────────│  - reads full trace from storage     │
-│  logic            │         │  - calls LLM (configurable backend)  │
-└───────────────────┘         │  - INSERT INTO diagnostics           │
-                              └─────────────────────────────────────┘
+SDK (Python)
+    |
+    | POST /ingest (OTel spans)
+    v
+┌─────────────────────────────────────────────────────────────┐
+│                      Analyser  :4318                         │
+│  batch.py (5s flush to ClickHouse)                           │
+│  s3.py    (large payloads → MinIO)                           │
+│  queue.py (enqueue span_id → Redis)                          │
+└────────────────────────┬────────────────────────────────────┘
+                         |
+                   Redis LPUSH/BRPOP
+                         |
+                         v
+┌─────────────────────────────────────────────────────────────┐
+│                  Worker (Python daemon)                       │
+│  span_fetcher.py  (ClickHouse + S3 resolution)               │
+│  tool_call_analyzer.py (5 heuristic checks)                  │
+│  flag_writer.py   (INSERT INTO flags)                        │
+│  score_writer.py  (INSERT INTO span_scores)                  │
+└─────────────────────────────────────────────────────────────┘
+
+                  ┌──────────────┐
+                  │  PostgreSQL  │  flags, span_scores,
+                  │              │  diagnostics, tenants,
+                  │   (RLS on)   │  users, api_keys
+                  └──────────────┘
+
+                  ┌──────────────┐
+                  │  ClickHouse  │  spans (OLAP, append-only)
+                  └──────────────┘
+
+                  ┌──────────────┐
+                  │    MinIO     │  large payloads (prompt,
+                  │    (S3)      │  response, available_tools)
+                  └──────────────┘
+
+Browser (Next.js 15 View :3000)
+    |
+    | /api/* (Next.js route handlers proxy)
+    v
+┌─────────────────────────────────────────────────────────────┐
+│                    Presenter  :8000                           │
+│  GET  /spans            (ClickHouse + PG + S3)               │
+│  GET  /spans/{span_id}  (ClickHouse + PG + S3)               │
+│  POST /diagnose         (PROXY → Diagnosticer :8001)         │
+│  POST /login            (JWT session)                        │
+└─────────────────────────┬────────────────────────────────────┘
+                          |
+                    HTTP proxy (httpx.AsyncClient,
+                    30s timeout, base_url=DIAGNOSTICER_URL)
+                          |
+                          v
+┌─────────────────────────────────────────────────────────────┐
+│               Diagnosticer  :8001  (scaffold → v1.2)         │
+│  POST /diagnose  — currently returns 501                     │
+│  has: DATABASE_URL, CLICKHOUSE_HOST, S3_ENDPOINT_URL         │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### Component Responsibilities
+### Target Architecture (v1.2)
 
-| Component | Responsibility | Key Constraint |
-|-----------|----------------|----------------|
-| SDK | Wrap OTel, emit OTLP spans to Analyser | Zero overhead on agent code; Python primary |
-| Analyser | Accept spans, store immediately, enqueue for async flagging | Must not block on embedding; ingestion latency is SLA |
-| Embedding Worker | Consume queue, compute similarities, write flag rows | Async from ingestion; failure leaves span unflagged (not lost) |
-| ClickHouse | Store all spans, immutable, OLAP scan for list/filter queries | Append-only; no mutations; `tenant_id` partition key |
-| PostgreSQL | Store flags, diagnostics, auth, tenants — all mutable relational data | Append-only rows for flags/diagnostics; FK to ClickHouse span_id |
-| S3 / MinIO | Store large text payloads (prompt, response, raw_response, available_tools) | Referenced by key in ClickHouse; fetched lazily by Presenter; tool_arguments stored inline in ClickHouse (small) |
-| Redis | Decouple ingestion from embedding worker via queue; optional: event cache | BRPOP queue; no durability requirement (span already in ClickHouse) |
-| Presenter | Backend API; merge ClickHouse + PostgreSQL results per request | REST + SSE; parallelises two store queries; lazy S3 fetch |
-| Diagnosticer | On-demand LLM diagnostic service; called by Presenter | Separate process; slow calls isolated; configurable LLM backend |
-| View | Frontend dashboard | No logic; pure display; consumes Presenter REST + SSE |
+```
+Browser
+    |
+    | POST /api/diagnose        GET /api/diagnose/{span_id}
+    v
+┌──────────────── Presenter :8000 ──────────────────────────┐
+│  POST /diagnose  → proxy to Diagnosticer (unchanged)       │
+│  GET  /diagnose/{span_id} → NEW: reads from PG diagnostics │
+└────────────────────────────────────────────────────────────┘
+                    |
+            HTTP POST /diagnose
+                    |
+                    v
+┌──────────────── Diagnosticer :8001 ───────────────────────┐
+│  1. Validate request (span_id + tenant_id from JWT)        │
+│  2. Fetch span from ClickHouse (reuse span_fetcher logic)  │
+│  3. Fetch flags from PostgreSQL (RLS-scoped)               │
+│  4. S3 payloads already resolved in step 2                 │
+│  5. Assemble LLM context                                   │
+│  6. Call LLM provider (anthropic / openai / configurable)  │
+│  7. Parse structured response                              │
+│  8. INSERT INTO diagnostics (PostgreSQL, RLS-scoped)       │
+│  9. Return diagnosis to Presenter                          │
+└────────────────────────────────────────────────────────────┘
+         |              |              |
+    ClickHouse      PostgreSQL       MinIO
+    (span data)     (flags +        (payloads)
+                    diagnostics)
+```
 
 ---
 
-## Recommended Project Structure
+## Component Responsibilities
+
+| Component | Responsibility | Status |
+|-----------|----------------|--------|
+| Diagnosticer | Accept POST /diagnose, fetch all context, call LLM, store result, return structured diagnosis | MODIFY (from 501 scaffold to real implementation) |
+| Presenter /diagnose router | Proxy POST /diagnose to Diagnosticer; add GET /diagnose/{span_id} to retrieve stored results | MODIFY (add GET endpoint) |
+| diagnostics table (PostgreSQL) | Store structured LLM diagnosis per span per tenant with RLS | ALREADY EXISTS (migration 001 created it; no schema migration needed) |
+| DiagnosticRepository (DAL) | CRUD for diagnostics table, following existing DAL pattern | NEW |
+| LLM provider abstraction | Provider-agnostic calling layer (Anthropic/OpenAI/stub); configured via DIAGNOSTICER_LLM_PROVIDER + DIAGNOSTICER_LLM_MODEL env vars | NEW |
+| SpanDetailPanel (View) | Render stored diagnosis after "Request Diagnostic" button; replace raw status/message display | MODIFY |
+| View /api/diagnose/[span_id] route handler | Proxy GET to Presenter for stored diagnosis retrieval | NEW |
+
+---
+
+## Data Flow Decision: Where Should PostgreSQL Write Happen?
+
+### Option A — Diagnosticer writes directly to PostgreSQL (RECOMMENDED)
+
+```
+View → Presenter (proxy) → Diagnosticer → [LLM] → PostgreSQL (diagnostics)
+                                        ↓
+                               returns diagnosis in response body
+Presenter returns response to View (diagnosis already stored)
+```
+
+**Rationale:**
+- Diagnosticer already has DATABASE_URL, CLICKHOUSE_HOST, S3_ENDPOINT_URL in docker-compose.yml — the infra wiring was done in v1.0 anticipating exactly this
+- The `diagnostics` table has RLS with `tenant_isolation` policy; Diagnosticer writing directly means the RLS guarantee lives in one place
+- Consistent with Worker pattern: Worker also writes directly to PostgreSQL (flags, span_scores) without routing through Presenter
+- Keeps Presenter as a pure read/auth/proxy layer (AD-02: Diagnosticer isolation for independent scaling)
+- Simpler failure modes: if the LLM call fails, nothing is written; if the write fails, the response to Presenter fails cleanly
+
+**Tradeoff:** Diagnosticer needs its own PostgreSQL async session wiring. This is low cost — `get_session` and `tenant_session` are already in `xeter/shared/db/` and importable.
+
+### Option B — Diagnosticer returns result; Presenter stores it
+
+```
+View → Presenter (proxy) → Diagnosticer → [LLM]
+                         ← returns diagnosis JSON
+Presenter → PostgreSQL (diagnostics INSERT)
+Presenter → View
+```
+
+**Why not:** Presenter becomes stateful and acquires business logic, violating AD-04. The Presenter router would need to know the DiagnosticRepository interface. Adds a second failure point (LLM call succeeds but PG write in Presenter fails). Presenter's httpx proxy is already a pass-through — adding write logic after pass-through creates an asymmetry with every other Presenter route.
+
+**Decision: Option A.** Diagnosticer writes directly to PostgreSQL.
+
+---
+
+## New Components Required
+
+### 1. DiagnosticRepository (DAL)
+
+Location: `xeter/shared/dal/diagnostics.py`
+
+Follows the existing DAL pattern exactly (see `api_keys.py`, `tenants.py`):
+- `require_tenant(tenant_id)` guard as first line of every method
+- `AsyncSession` dependency injection
+- Methods needed: `create(tenant_id, span_id, trace_id, llm_backend, result)` → Diagnostic, `get_by_span(span_id, tenant_id)` → Diagnostic | None
+
+The `Diagnostic` ORM model already exists in `xeter/shared/models.py`. No new model class needed.
+
+### 2. LLM Provider Abstraction
+
+Location: `xeter/services/diagnosticer/llm.py`
+
+**Design: thin adapter protocol, not a framework.**
+
+```python
+class LLMProvider(Protocol):
+    async def complete(self, system: str, user: str) -> str: ...
+
+class AnthropicProvider:
+    """Uses anthropic Python SDK. Model configurable via LLM_MODEL env var."""
+
+class OpenAIProvider:
+    """Uses openai Python SDK. Model configurable via LLM_MODEL env var."""
+
+class StubProvider:
+    """Returns a canned diagnosis. Used in tests and when LLM_PROVIDER=stub."""
+
+def get_provider() -> LLMProvider:
+    """Factory: reads DIAGNOSTICER_LLM_PROVIDER env var (anthropic|openai|stub)."""
+```
+
+Why a Protocol instead of ABC: Python Protocols are structurally typed — stub/test providers don't need to import from `llm.py`. Keeps test setup clean.
+
+Environment variables (added to docker-compose.yml diagnosticer service):
+- `DIAGNOSTICER_LLM_PROVIDER` — `anthropic` | `openai` | `stub`
+- `DIAGNOSTICER_LLM_MODEL` — model string (e.g. `claude-3-5-haiku-20241022`, `gpt-4o-mini`)
+- `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` — provider credential
+
+### 3. Context Assembler
+
+Location: `xeter/services/diagnosticer/context.py`
+
+Builds the structured LLM prompt from a SpanData + list of Flag records. Returns `(system_prompt: str, user_prompt: str)`.
+
+The context assembler is pure Python (no I/O) — easy to unit-test in isolation. The system prompt encodes the diagnosis schema: verdict (model_error | architecture_error | prompt_error), severity (low | medium | high), affected_field, recommended_fix.
+
+### 4. Diagnosis Schema (Pydantic)
+
+Location: `xeter/services/diagnosticer/schemas.py`
+
+```python
+class DiagnosisResult(BaseModel):
+    verdict: Literal["model_error", "architecture_error", "prompt_error"]
+    severity: Literal["low", "medium", "high"]
+    affected_field: str
+    recommended_fix: str
+    raw_llm_response: str  # stored for debugging; not shown in UI
+```
+
+The LLM response is parsed from JSON. The structured output is stored as `result` JSON in the `diagnostics` table.
+
+### 5. Revised DiagnoseRequest Schema
+
+The current scaffold `DiagnoseRequest` takes `span_id: str, flags: list`. This needs revision:
+
+```python
+class DiagnoseRequest(BaseModel):
+    span_id: str
+    tenant_id: str  # injected from JWT by Presenter before proxying
+```
+
+The Presenter's existing proxy router in `routers/diagnose.py` currently passes `body.model_dump()` verbatim to the Diagnosticer. Two options:
+
+**Option A — Presenter injects tenant_id before proxying (RECOMMENDED):**
+```python
+# In Presenter diagnose router:
+payload = {"span_id": body.span_id, "tenant_id": tenant_id}
+resp = await http_client.post("/diagnose", json=payload)
+```
+This keeps tenant_id verified by JWT in Presenter (where the JWT verification lives) and avoids Diagnosticer needing its own auth layer.
+
+**Option B — Diagnosticer re-verifies JWT:**
+Requires Diagnosticer to share SECRET_KEY and JWT verification logic. Adds coupling and a second source of truth for auth. Do not do this.
+
+**Decision: Option A.** Presenter injects tenant_id from the verified JWT before proxying.
+
+### 6. New Presenter GET Endpoint
+
+Location: `xeter/services/presenter/routers/diagnose.py` (extend existing file)
+
+```
+GET /diagnose/{span_id}
+```
+
+Queries `diagnostics` table via DiagnosticRepository, returns stored result or 404. View calls this after a diagnosis is stored to display the structured result persistently (page reload survives).
+
+---
+
+## Reuse Opportunities (Not New)
+
+| Existing Component | Reused By Diagnosticer How |
+|--------------------|-----------------------------|
+| `xeter/services/worker/span_fetcher.py` — `fetch_span()` | Import directly. Diagnosticer uses the same ClickHouse + S3 fetch pattern. `fetch_span()` returns `SpanData` — the same contract Diagnosticer needs. The function is sync (boto3); wrap in `asyncio.to_thread` inside the async Diagnosticer handler. |
+| `xeter/shared/db/session.py` — `get_session`, `tenant_session` | Import directly. Same pattern as Presenter and Worker for PostgreSQL session management with RLS. |
+| `xeter/shared/models.py` — `Diagnostic` ORM model | Already defined. No schema migration needed; table exists from migration 001. |
+| `xeter/shared/dal/base.py` — `require_tenant` | Import in DiagnosticRepository, same guard pattern. |
+
+**Important:** `fetch_span()` in `span_fetcher.py` currently imports from `xeter.services.analyser.batch` (for `get_clickhouse_client`). This creates an indirect dependency on the analyser service for the diagnosticer. The cleaner option is to import `get_clickhouse_client` from `xeter/shared/db/clickhouse.py` directly — both modules expose the same function. The shared version should be used instead of the analyser module to avoid cross-service coupling.
+
+---
+
+## Data Flow: Diagnosis Request End-to-End
+
+```
+1. User clicks "Request Diagnostic" in SpanDetailPanel
+   |
+2. View calls POST /api/diagnose with {span_id, flags}
+   (Next.js route handler proxies to Presenter)
+   |
+3. Presenter POST /diagnose:
+   - verify_session_token → tenant_id
+   - build payload: {span_id, tenant_id}  (flags dropped; Diagnosticer fetches its own)
+   - httpx.post(DIAGNOSTICER_URL + "/diagnose", json=payload, timeout=30s)
+   |
+4. Diagnosticer POST /diagnose:
+   a. Validate request body (span_id, tenant_id non-empty)
+   b. fetch_span(span_id) → SpanData  [ClickHouse + S3, sync via asyncio.to_thread]
+   c. tenant_session(session, tenant_id) → query flags WHERE tenant_id + span_id
+   d. context.assemble(span_data, flags) → (system_prompt, user_prompt)
+   e. provider.complete(system_prompt, user_prompt) → raw_llm_text  [LLM API call]
+   f. parse DiagnosisResult from raw_llm_text (JSON extraction)
+   g. repo.create(tenant_id, span_id, trace_id, llm_backend, result)  [PG INSERT]
+   h. return DiagnosisResponse (verdict, severity, affected_field, recommended_fix)
+   |
+5. Presenter returns Diagnosticer response body verbatim (existing proxy logic unchanged)
+   |
+6. View renders DiagnosisResult in SpanDetailPanel
+   - replace raw "status: message" display with structured verdict/severity/fix fields
+   |
+7. On subsequent panel opens: View calls GET /api/diagnose/{span_id}
+   → Presenter GET /diagnose/{span_id}
+   → DiagnosticRepository.get_by_span()
+   → returns stored result (or 404 if not yet diagnosed)
+```
+
+---
+
+## Recommended Project Structure Changes
 
 ```
 xeter/
-├── sdk/                        # Python SDK (shipped as package)
-│   ├── xeter/
-│   │   ├── __init__.py
-│   │   ├── tracer.py           # OTel span wrapping
-│   │   ├── exporter.py         # OTLP exporter config to Analyser
-│   │   └── models.py           # Span field definitions (shared with Analyser)
-│   └── pyproject.toml
-│
+├── shared/
+│   └── dal/
+│       └── diagnostics.py          NEW — DiagnosticRepository
 ├── services/
-│   ├── analyser/               # Span ingestion + Redis enqueue
-│   │   ├── main.py             # FastAPI app, OTLP /v1/traces endpoint
-│   │   ├── otlp.py             # Protobuf decode, field extraction
-│   │   ├── storage/
-│   │   │   ├── clickhouse.py   # Span INSERT
-│   │   │   └── s3.py           # Payload upload, key generation
-│   │   └── queue.py            # Redis LPUSH
-│   │
-│   ├── worker/                 # Embedding + flag computation
-│   │   ├── main.py             # Poll Redis, process spans
-│   │   ├── embedder.py         # sentence-transformers encode()
-│   │   ├── similarity.py       # Cosine similarity, threshold logic
-│   │   ├── classifier.py       # wrong_tool / no_tool / etc.
-│   │   └── storage/
-│   │       └── postgres.py     # INSERT INTO flags
-│   │
-│   ├── presenter/              # REST API + SSE
-│   │   ├── main.py             # FastAPI app
-│   │   ├── routers/
-│   │   │   ├── spans.py        # GET /spans, GET /spans/{id}
-│   │   │   ├── traces.py       # GET /traces/{trace_id}
-│   │   │   └── diagnostics.py  # POST /diagnose, GET /diagnostics/{id}
-│   │   ├── merging.py          # Combine ClickHouse + PostgreSQL results
-│   │   ├── storage/
-│   │   │   ├── clickhouse.py   # Span queries
-│   │   │   ├── postgres.py     # Flags/diagnostics queries
-│   │   │   └── s3.py           # Lazy payload fetch
-│   │   └── sse.py              # Server-Sent Events emitter
-│   │
-│   └── diagnosticer/           # On-demand LLM analysis
-│       ├── main.py             # FastAPI app (or simple HTTP service)
-│       ├── llm.py              # Configurable LLM client (OpenAI-compatible)
-│       ├── prompt_builder.py   # Build trace context prompt
-│       └── storage/
-│           └── postgres.py     # INSERT INTO diagnostics
-│
-├── shared/                     # Shared Python code
-│   ├── models.py               # Pydantic models for span fields, flags, etc.
-│   ├── db/
-│   │   ├── clickhouse.py       # ClickHouse client setup
-│   │   ├── postgres.py         # asyncpg / SQLAlchemy setup
-│   │   ├── redis.py            # Redis client setup
-│   │   └── s3.py               # boto3 / aiobotocore setup
-│   └── auth.py                 # API key validation, JWT helpers
-│
-├── view/                       # Frontend (SvelteKit or React)
-│   ├── src/
-│   │   ├── routes/             # Pages: span list, span detail, trace view
-│   │   ├── components/         # SpanRow, FlagBadge, DiagnosticPanel
-│   │   └── api.ts              # Typed Presenter API client
-│   └── package.json
-│
-├── migrations/                 # PostgreSQL schema (alembic or raw SQL)
-│   └── 001_initial.sql         # tenants, users, api_keys, flags, diagnostics
-│
-├── deploy/
-│   └── docker-compose.yml      # ClickHouse, PostgreSQL, Redis, MinIO, all services
-│
+│   └── diagnosticer/
+│       ├── main.py                 MODIFY — wire real handler; remove 501
+│       ├── schemas.py              NEW — DiagnoseRequest, DiagnosisResponse, DiagnosisResult
+│       ├── llm.py                  NEW — LLMProvider Protocol + AnthropicProvider + OpenAIProvider + StubProvider + get_provider()
+│       └── context.py              NEW — assemble_context(span_data, flags) → (system, user)
+│   └── presenter/
+│       └── routers/
+│           └── diagnose.py         MODIFY — inject tenant_id into proxy; add GET /diagnose/{span_id}
 └── tests/
-    ├── sdk/                    # SDK unit tests
-    ├── analyser/               # Ingestion endpoint tests
-    ├── worker/                 # Flagging logic unit tests
-    └── e2e/                    # Span in → flag out integration tests
+    └── diagnosticer/               NEW directory
+        ├── test_context.py         unit tests for context assembler (pure Python, no I/O)
+        ├── test_llm.py             unit tests for StubProvider; integration tests for real providers
+        └── test_diagnose.py        integration test for full POST /diagnose flow
 ```
 
-### Structure Rationale
-
-- **services/ split by process boundary:** Each service maps to one deployable unit. Worker and Analyser are separate processes even if initially on the same host — this is the right separation for independent scaling later.
-- **shared/ for cross-service models:** Pydantic span models are authoritative. All services import from `shared.models` — never duplicate field definitions.
-- **storage/ per service:** Each service gets its own storage wrappers. Do not share DB connection objects across services.
-- **migrations/ at root:** Schema lives outside services. Avoids the question of "which service owns the schema?"
+`deploy/docker-compose.yml` — add `DIAGNOSTICER_LLM_PROVIDER`, `DIAGNOSTICER_LLM_MODEL`, and provider API key env vars to `diagnosticer` service.
 
 ---
 
 ## Architectural Patterns
 
-### Pattern 1: Ingest-First, Analyze-Async
+### Pattern 1: Proxy-then-Store (existing, maintained)
 
-**What:** The Analyser writes the span to ClickHouse synchronously in the HTTP request path, then pushes the span_id to a Redis list. A separate worker process (BRPOP loop) handles all embedding computation and flag writes asynchronously after the HTTP response has returned.
+**What:** Presenter passes requests to Diagnosticer; Diagnosticer owns both the LLM call and the PostgreSQL write. Presenter is stateless — it neither knows nor cares what the Diagnosticer does internally.
 
-**When to use:** Any time downstream computation (embedding, LLM calls, scoring) is expensive relative to storage write latency. This is the standard pattern for high-throughput observability pipelines — confirmed by Langfuse's v3 architecture (Redis + async worker) and the OpenTelemetry Collector's batch processing model.
-
-**Trade-offs:**
-- Pro: Ingestion latency is bounded by ClickHouse INSERT only (~low ms)
-- Pro: Embedding worker failure never loses a span
-- Con: Flag appears with a small lag after span write (~seconds under normal load)
-- Con: If Redis goes down between span write and flag computation, span exists but may never be flagged (acceptable — span is not lost)
-
-**Example:**
-```python
-# analyser/main.py — synchronous path
-@app.post("/v1/traces")
-async def ingest_traces(request: Request):
-    body = await request.body()
-    spans = decode_otlp_protobuf(body)           # parse protobuf
-    await clickhouse.insert_spans(spans)          # sync: store immediately
-    await s3.upload_payloads(spans)               # sync: upload large fields
-    for span in spans:
-        await redis.lpush("flagging_queue", span.span_id)  # enqueue for async
-    return Response(status_code=200)
-
-# worker/main.py — async analysis loop
-async def run():
-    while True:
-        span_id = await redis.brpop("flagging_queue", timeout=5)
-        if span_id:
-            span = await clickhouse.fetch_span(span_id)
-            flags = await compute_flags(span)
-            if flags:
-                await postgres.insert_flags(flags)
-```
-
-### Pattern 2: Multi-Store Application-Level Merge
-
-**What:** The Presenter issues two parallel queries — one to ClickHouse for span data, one to PostgreSQL for flags and diagnostics — and merges the results in application code before sending the response to View.
-
-**When to use:** When the spans store (ClickHouse) and the relational store (PostgreSQL) have different access patterns and you want to avoid coupling them with cross-database joins or CDC replication. This is explicitly validated by Langfuse, Dash0, and the ClickHouse/PostgreSQL integration blog ("PostgreSQL as transactional source of truth; ClickHouse for analytical queries").
+**When to use:** When the downstream service has sufficient context to make the decision (tenant_id is now injected by Presenter, giving Diagnosticer everything it needs).
 
 **Trade-offs:**
-- Pro: Each store is optimised for its access pattern
-- Pro: No foreign-key coupling across DB engines
-- Con: Two round-trips per span detail view (mitigated by async parallel queries)
-- Con: Presenter must handle the case where flags/diagnostics arrive before span is queryable (rare but possible)
+- Pro: Clean separation; Diagnosticer can be scaled independently
+- Pro: No second failure mode (Presenter write-after-proxy)
+- Con: If Diagnosticer crashes mid-write, the client (Presenter) sees a 5xx and does not retry — acceptable for on-demand, non-critical diagnosis
 
-**Example:**
-```python
-# presenter/merging.py
-async def get_span_detail(span_id: str, tenant_id: str):
-    span_task = clickhouse.fetch_span(span_id, tenant_id)
-    flags_task = postgres.fetch_flags(span_id, tenant_id)
-    diagnostics_task = postgres.fetch_diagnostics(span_id, tenant_id)
+### Pattern 2: Shared SpanData Contract (reuse)
 
-    span, flags, diagnostics = await asyncio.gather(
-        span_task, flags_task, diagnostics_task
-    )
+**What:** `SpanData` dataclass defined in `worker/base.py` is the contract between span_fetcher and all analyzers. Diagnosticer should reuse this same contract rather than defining its own span representation.
 
-    # Lazy S3 fetch — only on detail view, never on list view
-    if span.prompt_ref:
-        span.prompt = await s3.fetch(span.prompt_ref)
-
-    return merge(span, flags, diagnostics)
-```
-
-### Pattern 3: Isolated On-Demand Service for Expensive Operations
-
-**What:** The Diagnosticer runs as a separate process. It is not invoked on every span. The Presenter calls it only when the user explicitly requests a diagnostic. It calls an external or local LLM, writes one row to PostgreSQL, and returns.
-
-**When to use:** When an operation (LLM call) is too slow (~1–30 seconds) to run in the ingestion path or even the background worker, and is only needed when a human explicitly asks for it. This pattern appears in Langfuse (evaluation workers are separate), Braintrust (data plane isolation), and LangWatch (async processing that doesn't block requests).
+**When to use:** Always — don't define two representations of the same data.
 
 **Trade-offs:**
-- Pro: Slow LLM calls don't affect ingestion or flag computation
-- Pro: Diagnosticer can be scaled independently or disabled entirely
-- Pro: Configurable LLM backend (external API or local model) is isolated to one service
-- Con: Adds a service boundary; requires HTTP call from Presenter to Diagnosticer
+- Pro: Consistent field names across worker and diagnosticer; S3 resolution already handled
+- Con: Diagnosticer imports from `worker/` package — minor cross-service coupling. Acceptable because `SpanData` is stable and the worker module is a peer within the same `xeter` package. If this becomes a problem later, move `SpanData` to `xeter/shared/`.
 
-### Pattern 4: S3 as Large-Payload Offload
+### Pattern 3: Protocol-based Provider Abstraction
 
-**What:** Large text fields (prompt, response, raw_response, available_tools) are uploaded to S3 at ingestion time. ClickHouse stores only the S3 object key (`prompt_ref`, `response_ref`, `raw_response_ref`, `available_tools_ref`). `tool_arguments` is small enough to store inline as JSON in ClickHouse. The Presenter fetches S3 content lazily — only when a user opens a span detail view, never during list queries.
+**What:** `LLMProvider` is a Python Protocol (structural typing). `StubProvider` is the default in tests — it returns a canned valid `DiagnosisResult` without any HTTP calls. Real providers (`AnthropicProvider`, `OpenAIProvider`) are selected by the `get_provider()` factory at startup based on `DIAGNOSTICER_LLM_PROVIDER` env var.
 
-**When to use:** Always in LLM observability platforms. Prompt and response fields regularly exceed 10KB–100KB. Storing them inline in ClickHouse causes row bloat, degrades scan performance, and inflates storage costs. This pattern is confirmed by Langfuse v3 ("raw ingestion events stored in S3") and the ClickHouse tiered storage playbook.
+**When to use:** When the provider set is known but small, and you don't want test code importing from the real provider modules.
 
 **Trade-offs:**
-- Pro: ClickHouse rows stay small; analytical queries remain fast
-- Pro: S3 is cheap; large payloads don't inflate OLAP storage costs
-- Con: Detail view latency includes an S3 GET call (~20–100ms)
-- Con: S3 objects must be co-deleted when spans are pruned
+- Pro: Tests run without LLM API credentials; no mock patching needed
+- Pro: Adding a new provider (e.g. `ollama`) is one new class + one branch in `get_provider()`
+- Con: Protocol structural typing means mypy won't catch incomplete implementations at import time — mitigated by StubProvider serving as a reference implementation
 
----
+### Pattern 4: Tenant Injection at Proxy Boundary
 
-## Data Flow
+**What:** JWT verification lives in Presenter. Presenter verifies the JWT, extracts tenant_id, and injects it into the payload before proxying to Diagnosticer. Diagnosticer trusts the tenant_id in the request body without re-verifying the JWT.
 
-### Flow 1: Span Ingestion and Flagging
+**When to use:** When downstream services are internal-only (not externally reachable) and the gateway (Presenter) is the trust boundary.
 
-```
-Agent code (instrumented with SDK)
-    │
-    │  OTLP/HTTP POST /v1/traces (protobuf encoded)
-    ▼
-Analyser
-    ├── [sync] decode protobuf → extract span fields
-    ├── [sync] upload large fields to S3 → store ref keys
-    ├── [sync] INSERT span row into ClickHouse (with _ref keys, no raw text)
-    │         → HTTP 200 returned to SDK here
-    │
-    └── [async] LPUSH span_id to Redis queue
-                    │
-                    ▼ (BRPOP, worker process)
-              Embedding Worker
-                    ├── fetch span from ClickHouse
-                    ├── fetch prompt from S3 (needed for embedding)
-                    ├── fetch available_tools from S3 (via available_tools_ref)
-                    ├── sentence-transformers encode():
-                    │     embed(prompt) → p_vec
-                    │     embed(tool_name) → tn_vec
-                    │     embed(tool_description) → td_vec
-                    │     embed(response) → r_vec
-                    │     embed(model_name + prompt) → mp_vec
-                    │     embed(each tool in available_tools) → at_vecs[]
-                    │     embed(each tool_arguments value) → ta_vecs[]
-                    ├── cosine_similarity(p_vec, tn_vec) → score_1
-                    ├── cosine_similarity(p_vec, td_vec) → score_2
-                    ├── cosine_similarity(p_vec, r_vec)  → score_3
-                    ├── rank at_vecs[] by similarity to p_vec → ranked_tools
-                    ├── cosine_similarity(p_vec, each ta_vec) → arg_scores[]
-                    ├── classify based on scores + thresholds
-                    │     wrong_tool:      called tool not top-ranked in ranked_tools (A1)
-                    │                      or score_1 < threshold_A (coarse signal)
-                    │     wrong_tool_args: min(arg_scores) < threshold_B (low-confidence, A7)
-                    │     no_tool:         tool_name is null + p_vec suggests tool expected
-                    │     excessive_tool:  count of tool spans in trace > expected
-                    │     parsing_error:   mp_vec pattern match
-                    └── INSERT flag rows into PostgreSQL (one row per detected flag)
-```
-
-### Flow 2: Span List View
-
-```
-View → GET /spans?tenant_id=&limit=&offset=&flagged=true
-    ▼
-Presenter
-    ├── ClickHouse: SELECT span_id, trace_id, agent_name, time_begin, time_end, tool_name
-    │              WHERE tenant_id = ? ORDER BY time_begin DESC LIMIT ? OFFSET ?
-    │
-    └── PostgreSQL: SELECT span_id, flag_type, score
-                   WHERE tenant_id = ? AND span_id IN (list from ClickHouse result)
-
-Merge: attach flag indicators to span rows
-Return: paginated span list with flag badges (no S3 fetches)
-```
-
-### Flow 3: Span Detail View (with Lazy S3 Fetch)
-
-```
-View → GET /spans/{span_id}
-    ▼
-Presenter
-    ├── [parallel] ClickHouse: SELECT * FROM spans WHERE span_id = ? AND tenant_id = ?
-    ├── [parallel] PostgreSQL: SELECT * FROM flags WHERE span_id = ? AND tenant_id = ?
-    └── [parallel] PostgreSQL: SELECT * FROM diagnostics WHERE span_id = ? AND tenant_id = ?
-
-    ├── [then] S3: GET prompt at span.prompt_ref
-    ├── [then] S3: GET response at span.response_ref
-    └── [then] S3: GET raw_response at span.raw_response_ref
-
-Merge: span + flags + diagnostics + payload text
-Return: full span detail
-```
-
-### Flow 4: User-Triggered Diagnostics
-
-```
-View → POST /diagnose { span_id, tenant_id }
-    ▼
-Presenter
-    ├── ClickHouse: fetch all spans for trace_id (tree context)
-    ├── PostgreSQL: fetch all flags for trace_id
-    │
-    └── HTTP POST → Diagnosticer { trace_spans, flags }
-                        ▼
-                  Diagnosticer
-                        ├── build LLM prompt: trace context + flags + instructions
-                        ├── HTTP POST → LLM Backend (OpenAI-compatible)
-                        │             (configurable: external API or local model)
-                        ├── receive LLM response
-                        └── PostgreSQL: INSERT INTO diagnostics (span_id, result, llm_backend)
-
-Presenter → return diagnostic_id to View
-View → SSE subscription receives diagnostic-completion event
-View → re-fetch span detail to display new diagnostic
-```
-
----
-
-## Build Order (Component Dependencies)
-
-The architecture has clear dependency tiers. Build in this order:
-
-**Tier 1 — Foundation (no dependencies)**
-- PostgreSQL schema migrations (`tenants`, `users`, `api_keys`, `flags`, `diagnostics`)
-- ClickHouse schema (`spans` table)
-- S3 bucket setup (MinIO for local dev)
-- Redis setup
-- Shared models and DB client wrappers
-
-**Tier 2 — Ingestion path (depends on Tier 1)**
-- SDK: OTel wrapping, OTLP exporter config
-- Analyser: OTLP endpoint, protobuf decode, ClickHouse INSERT, S3 upload, Redis enqueue
-- These two components can be built and tested together end-to-end (SDK → Analyser)
-
-**Tier 3 — Analysis path (depends on Tier 2: spans must exist to flag)**
-- Embedding Worker: Redis consumer, sentence-transformers, cosine similarity, flag classifier, PostgreSQL INSERT
-- Unit-testable independently with mock span data; integration test requires Tier 2
-
-**Tier 4 — Read path (depends on Tiers 1–3: data must exist to read)**
-- Presenter: span list, span detail, trace tree endpoints; merge logic; lazy S3 fetch; auth middleware
-- These routes can be built incrementally (span list before detail before diagnostics)
-
-**Tier 5 — Presentation (depends on Tier 4)**
-- View: dashboard, span list page, span detail page, flag indicators
-- Consumes Presenter REST API; built against a running backend
-
-**Tier 6 — Diagnostic path (depends on Tiers 4–5: scaffolded in Milestone 1, functional in Milestone 2)**
-- Diagnosticer: scaffolded in v1 (wired but returns placeholder); LLM integration deferred
-- SSE emitter in Presenter for flag-update and diagnostic-completion events
-
----
-
-## Scaling Considerations
-
-| Concern | At 100 spans/day | At 100K spans/day | At 10M spans/day |
-|---------|-----------------|-------------------|-----------------|
-| Ingestion throughput | Single Analyser process sufficient | Add async insert batching in ClickHouse; tune Redis queue | Multiple Analyser replicas; consider OTel Collector as front-door buffer |
-| Embedding worker | Single worker; no batching needed | Batch embeddings per `model.encode(batch)` call; tune batch_size | Multiple worker replicas consuming same Redis queue |
-| ClickHouse storage | Default MergeTree sufficient | Enable ClickHouse async inserts; tune `async_insert_busy_timeout_ms` | ClickHouse Cloud or sharded self-hosted; tiered storage (hot SSD → S3) |
-| PostgreSQL (flags) | No concern | No concern (flags are sparse vs spans) | Partition `flags` table by `created_at`; archive old rows |
-| S3 cost | Negligible | Implement retention policy | Lifecycle rules to Glacier for old traces |
-| Presenter | Single FastAPI instance | Enable async parallel store queries (already pattern) | Add read replicas for ClickHouse; cache hot spans in Redis |
-
-### First Bottleneck
-
-The embedding worker is the first component to saturate. `sentence-transformers` CPU inference at ~50ms per span limits a single worker to ~1,200 spans/minute. Mitigation: batch multiple spans from the Redis queue into one `model.encode()` call. Effective batch_size of 32 reduces per-span time to ~5ms on CPU, ~0.5ms on GPU.
-
-### Second Bottleneck
-
-ClickHouse INSERT rate under single-row inserts. Mitigation: Analyser should batch spans within a request (multiple spans per OTLP export call) and use ClickHouse async inserts if single-span inserts become a concern. Langfuse found this to be the primary ClickHouse scaling concern and introduced explicit batching before flushing.
+**Trade-offs:**
+- Pro: Single source of truth for auth logic (Presenter's `verify_session_token`)
+- Pro: Diagnosticer has no SECRET_KEY dependency
+- Con: Diagnosticer trusts Presenter unconditionally — acceptable because Diagnosticer is not exposed outside the Docker network. If Diagnosticer becomes publicly reachable in future, this must be revisited.
 
 ---
 
 ## Anti-Patterns
 
-### Anti-Pattern 1: Blocking Ingestion on Embedding
+### Anti-Pattern 1: Diagnosticer Returning Raw LLM Text
 
-**What people do:** Compute embeddings and write flags synchronously inside the OTLP endpoint handler before returning HTTP 200 to the SDK.
+**What people do:** Have the LLM return free-text and pass it straight through to the UI.
 
-**Why it's wrong:** sentence-transformers inference takes 50–500ms depending on model and hardware. At 100 spans/second, this creates a queue of blocked HTTP connections. The SDK's agent code waits, adding latency to the agent being observed. If the embedding model loads slowly (cold start), the first request times out.
+**Why it's wrong:** View has no logic (AD-04). Parsing, error handling, and field extraction must happen in the backend. Unstructured text can't be rendered as verdict/severity/fix fields.
 
-**Do this instead:** Write span to ClickHouse, push span_id to Redis, return 200. Worker picks it up independently.
+**Do this instead:** Prompt the LLM to return a JSON object matching `DiagnosisResult`. If JSON parsing fails, return a structured error response — not raw text.
 
-### Anti-Pattern 2: Storing Large Payloads in ClickHouse Rows
+### Anti-Pattern 2: Diagnosticer Importing from Analyser Service Module
 
-**What people do:** Store `prompt`, `response`, and `raw_response` as ClickHouse String columns directly in the spans table.
+**What people do:** `span_fetcher.py` imports `get_clickhouse_client` from `xeter.services.analyser.batch`. Following this import chain means the Diagnosticer depends on the Analyser's internal module.
 
-**Why it's wrong:** A prompt to GPT-4 may be 8KB; a long conversation context may be 50KB+. ClickHouse scans full column data for list queries. Storing large strings inline degrades scan performance, inflates compressed block sizes, and makes ClickHouse storage expensive. Langfuse v3 migration explicitly moved large payloads to S3 for this reason.
+**Why it's wrong:** Creates cross-service coupling — the Analyser's batch module is not a shared contract. If the Analyser is refactored, the Diagnosticer breaks unexpectedly.
 
-**Do this instead:** Upload payloads to S3 at ingestion time; store only the object key in ClickHouse. Fetch S3 content lazily in the Presenter on detail view only.
+**Do this instead:** Import `get_clickhouse_client` from `xeter/shared/db/clickhouse.py` directly. The same function is available there. The span_fetcher.py itself should be considered a reusable utility but should ideally be moved to `xeter/shared/` in a future cleanup.
 
-### Anti-Pattern 3: Eager S3 Fetch on List View
+### Anti-Pattern 3: Storing the Full LLM Conversation in the `result` JSON
 
-**What people do:** Fetch S3 payload content for every span returned in a list query (e.g., page of 50 spans).
+**What people do:** Store everything (system prompt, user prompt, full completion text, parsed fields) in the `result` JSON column.
 
-**Why it's wrong:** Each S3 GET adds ~20–100ms network latency. For a 50-span page, that is 1–5 seconds of serial S3 requests, or ~200–500ms parallelised. The list view only needs span metadata and flag indicators — it doesn't need prompt/response text.
+**Why it's wrong:** The `result` column will grow to KB per row. PostgreSQL JSONB handles this fine, but it creates unintended surface area in future queries and makes the column semantically ambiguous.
 
-**Do this instead:** Fetch S3 content only when the user opens a single span's detail view. Referenced in the arc42 as "lazy strongly preferred" for this reason (R-06).
+**Do this instead:** Store only `DiagnosisResult` fields (verdict, severity, affected_field, recommended_fix) plus `raw_llm_response` as a debugging field. Keep `llm_backend` in its own column (already designed this way in the schema). If detailed prompt logging becomes valuable later, add a separate `diagnosis_prompts` table.
 
-### Anti-Pattern 4: Cross-Database JOINs via Foreign Data Wrappers
+### Anti-Pattern 4: Blocking the Presenter on LLM Latency with a Short Timeout
 
-**What people do:** Install `pg_clickhouse` or similar FDW to JOIN PostgreSQL flags rows with ClickHouse spans rows in a single SQL query.
+**What people do:** Shorten the Presenter → Diagnosticer httpx client timeout, not realising LLM calls are slow.
 
-**Why it's wrong:** FDW-based cross-engine joins stream data from ClickHouse into PostgreSQL's memory for the duration of the query. This removes ClickHouse's columnar scan advantage, creates unpredictable memory pressure on PostgreSQL, and couples the two databases operationally.
+**Why it's wrong:** LLM API calls routinely take 5-20 seconds. The existing 30-second timeout in `presenter/main.py` (`httpx.AsyncClient(timeout=30.0)`) is correct. Shortening it causes spurious 502s from the Presenter even when the Diagnosticer succeeds.
 
-**Do this instead:** Run two parallel queries from the Presenter and merge in application code. The latency cost is one extra round-trip (~1–5ms); the operational simplicity gain is significant.
+**Do this instead:** Keep 30s timeout. The View already shows a loading state via `diagLoading` in SpanDetailPanel. If LLM calls consistently exceed 30s, switch to async fire-and-poll (POST → 202 Accepted → GET /diagnose/{span_id} polls for result). For v1.2 synchronous is fine.
 
-### Anti-Pattern 5: Running Diagnosticer in the Ingestion Path
+---
 
-**What people do:** Auto-trigger LLM diagnostic analysis for every flagged span immediately after the flag is written.
+## Build Order (Phase Dependencies)
 
-**Why it's wrong:** LLM API calls take 2–30 seconds. Even asynchronously, running one per flagged span creates a secondary queue that grows unboundedly under high ingestion rates. LLM API costs at scale are significant.
+The dependency graph is:
 
-**Do this instead:** Diagnosticer is on-demand only, triggered by explicit user action. Flags (heuristic) are cheap and always run. Diagnostics (LLM) are expensive and optional.
+```
+[DiagnosticRepository (DAL)] ─────────────────────────────────────┐
+                                                                   ↓
+[LLM provider abstraction]  ──────────────────────────────────┐   │
+                                                              ↓   ↓
+[Context assembler + DiagnosisResult schema]  ────────────► [Diagnosticer main.py wired]
+                                                              ↓
+                                                   [Presenter GET /diagnose/{span_id}]
+                                                              ↓
+                                                   [View SpanDetailPanel updated]
+```
+
+**Recommended phase order:**
+
+1. **DAL + Schema** — Add `DiagnosticRepository` and `DiagnosisResult`/`DiagnoseRequest` Pydantic models. No external dependencies. Verifiable immediately with unit tests. The `diagnostics` table already exists so no migration is needed.
+
+2. **LLM Provider Abstraction** — `llm.py` with `StubProvider` first, then `AnthropicProvider`/`OpenAIProvider`. StubProvider enables all downstream tests to run without credentials.
+
+3. **Context Assembler** — `context.py` is pure Python. Unit-testable in isolation with mocked `SpanData` and `Flag` objects. Pin the prompt template here.
+
+4. **Diagnosticer main.py wired** — Wire together: span_fetcher + context assembler + LLM provider + DiagnosticRepository. Replace 501 with real handler. Integration test with StubProvider against real ClickHouse/PG/MinIO (Docker Compose).
+
+5. **Presenter modifications** — Inject `tenant_id` into proxy payload; add `GET /diagnose/{span_id}`. Presenter tests already exist in `tests/presenter/`; extend them.
+
+6. **View SpanDetailPanel** — Replace `diagResult: string | null` state with `diagResult: DiagnosisResult | null`; render verdict/severity/affected_field/recommended_fix. Add GET fetch on panel open if diagnosis already exists.
+
+Each step is independently deployable. Steps 1-3 add no new service endpoints and carry zero risk to the existing pipeline.
 
 ---
 
@@ -488,63 +454,46 @@ ClickHouse INSERT rate under single-row inserts. Mitigation: Analyser should bat
 
 ### External Services
 
-| Service | Integration Pattern | Protocol | Notes |
-|---------|---------------------|----------|-------|
-| LLM Backend | HTTP POST, OpenAI-compatible `/v1/chat/completions` | REST/HTTPS | Configurable per tenant; supports external API (OpenAI, Anthropic) or local model (Ollama, vLLM) |
-| S3 / MinIO | PUT on ingestion, GET on detail view | AWS SDK (boto3 / aiobotocore) | MinIO in local Docker Compose; real S3 in production |
-| ClickHouse | INSERT on ingestion, SELECT on read | `clickhouse-driver` or `clickhouse-connect` Python client | Use connection pooling; async client preferred in FastAPI |
-| PostgreSQL | INSERT flags/diagnostics, SELECT for reads, auth queries | `asyncpg` (FastAPI async) or `psycopg3` | Use asyncpg for non-blocking queries in Presenter |
-| Redis | LPUSH on ingestion, BRPOP in worker | `redis-py` (async) | Simple list queue; no BullMQ equivalent needed in Python at this scale |
+| Service | Integration Pattern | Notes |
+|---------|---------------------|-------|
+| Anthropic API | `anthropic` Python SDK; async via `AsyncAnthropic`; model via env var | Install `anthropic>=0.25.0`; key via `ANTHROPIC_API_KEY` env var |
+| OpenAI API | `openai` Python SDK; async via `AsyncOpenAI`; model via env var | Install `openai>=1.0.0`; key via `OPENAI_API_KEY` env var |
+| Stub/Test provider | No external call; returns canned `DiagnosisResult` | Default when `DIAGNOSTICER_LLM_PROVIDER=stub` |
 
 ### Internal Boundaries
 
-| Boundary | Communication | Direction | Notes |
-|----------|---------------|-----------|-------|
-| SDK → Analyser | OTLP/HTTP protobuf POST to `/v1/traces` | Outbound from SDK | Port 4318 (standard OTLP HTTP). Consider gRPC for higher throughput later |
-| Analyser → Redis | LPUSH span_id | Write | Fire-and-forget after span is stored |
-| Worker → Redis | BRPOP (blocking read) | Read | Worker blocks until work arrives; single queue, multiple workers possible |
-| Worker → PostgreSQL | INSERT flag rows | Write | After embedding computation succeeds |
-| Worker → ClickHouse | SELECT span fields | Read | Worker re-reads span to get fields for embedding (avoids passing large data through Redis) |
-| Worker → S3 | GET prompt payload | Read | Worker needs prompt text to embed it |
-| Presenter → ClickHouse | SELECT spans | Read | List and detail queries |
-| Presenter → PostgreSQL | SELECT flags, diagnostics; auth validation | Read | Parallel with ClickHouse query |
-| Presenter → S3 | GET payload content | Read | Lazy; only on detail view |
-| Presenter → Diagnosticer | HTTP POST with trace context | Outbound | Synchronous from Presenter's perspective; Diagnosticer may respond async via SSE |
-| Diagnosticer → PostgreSQL | INSERT diagnostic row | Write | After LLM response received |
+| Boundary | Communication | Notes |
+|----------|---------------|-------|
+| View → Presenter | Next.js route handlers proxy to Presenter over HTTP; existing `/api/diagnose` route handler already exists | Add `/api/diagnose/[span_id]` route handler for GET |
+| Presenter → Diagnosticer | httpx.AsyncClient POST /diagnose; Presenter injects tenant_id from JWT into body | Timeout already 30s in presenter/main.py lifespan |
+| Diagnosticer → ClickHouse | Synchronous `clickhouse_connect` client via `get_clickhouse_client()` from shared/db; wrap in `asyncio.to_thread` | Same client used by Presenter and Worker |
+| Diagnosticer → PostgreSQL | Async SQLAlchemy via `get_session` + `tenant_session` from shared/db/session.py | RLS enforced by `SET LOCAL app.current_tenant_id` inside transaction |
+| Diagnosticer → MinIO (S3) | boto3 sync client via `get_s3_client()` from span_fetcher.py; called inside `asyncio.to_thread` | Same MinIO instance used by Analyser and Worker |
+| Diagnosticer → LLM API | HTTP via provider-specific SDK (anthropic/openai); async | Keys from env vars; never committed |
 
 ---
 
-## Architecture Validation Against Confirmed Decisions
+## Scaling Considerations
 
-The Xeter arc42 architecture decisions are well-aligned with industry-validated patterns:
-
-| Decision | Industry Validation | Confidence |
-|----------|---------------------|------------|
-| ClickHouse for spans | Langfuse, LangSmith, Dash0, ClickStack all use ClickHouse for trace/span storage. Langfuse migrated from PostgreSQL to ClickHouse specifically because PostgreSQL couldn't handle high-throughput ingestion + analytical reads. | HIGH |
-| Redis queue (not Kafka) | Langfuse explicitly chose Redis over Kafka: "easily self-hostable and can scale to meet our requirements." Kafka adds operational complexity not justified at this scale. | HIGH |
-| S3 for large payloads | Langfuse v3 stores raw ingestion events in S3. Confirmed pattern for observability platforms with LLM prompts/responses. | HIGH |
-| Async embedding worker | Universal pattern in observability pipelines. OTel Collector uses batch processors. Langfuse uses dedicated worker container. LangWatch documents "async processing that doesn't block requests." | HIGH |
-| Separate Diagnosticer service | Braintrust data plane isolation, LangWatch async isolation. LLM calls are slow and on-demand — always isolated from ingestion path. | HIGH |
-| Application-level merge (ClickHouse + PostgreSQL) | Confirmed by ClickHouse/PostgreSQL integration documentation: PostgreSQL as transactional source of truth, ClickHouse for analytical reads, merged at application layer. | HIGH |
-| OTLP HTTP/protobuf transport | Standard. OTel spec mandates port 4318 for HTTP, 4317 for gRPC. HTTP is preferred for compatibility; gRPC for throughput-critical scenarios. | HIGH |
+| Scale | Architecture Adjustments |
+|-------|--------------------------|
+| 0-100 tenants | Current synchronous diagnosis (POST → wait → response) is fine. LLM latency is the bottleneck, not infrastructure. |
+| 100-1k tenants | Diagnosis requests may queue behind each other in a single Diagnosticer process. Add a second Diagnosticer replica in docker-compose (stateless service). |
+| 1k+ tenants | Switch POST /diagnose to async job pattern: 202 Accepted + job_id, poll GET /diagnose/{span_id}. Add a Redis-backed job queue. This is explicitly out of scope for v1.2 but the synchronous design does not block it — adding async is additive, not a rewrite. |
 
 ---
 
 ## Sources
 
-- [Langfuse Architecture Handbook](https://langfuse.com/handbook/product-engineering/architecture) — polyglot persistence: PostgreSQL + ClickHouse + Redis + S3 pattern
-- [Langfuse V3 Infrastructure Evolution](https://langfuse.com/blog/2024-12-langfuse-v3-infrastructure-evolution) — Redis queue, async worker, S3 event storage, ClickHouse write pattern
-- [Langfuse and ClickHouse: A new data stack](https://clickhouse.com/blog/langfuse-and-clickhouse-a-new-data-stack-for-modern-llm-applications) — migration rationale from PostgreSQL to ClickHouse for trace data
-- [ClickStack: AI Agent Observability Architecture](https://clickhouse.com/blog/tracing-openai-agents-clickstack) — ClickHouse for agent span storage
-- [OpenTelemetry Collector Architecture](https://opentelemetry.io/docs/collector/architecture/) — receiver/processor/exporter pipeline model
-- [OTLP Specification 1.10.0](https://opentelemetry.io/docs/specs/otlp/) — gRPC port 4317, HTTP port 4318, protobuf encoding
-- [Building Observability with ClickHouse at Dash0](https://clickhouse.com/blog/building-an-observability-solution-with-clickhouse-at-dash0) — ClickHouse + PostgreSQL split: ClickHouse for OTel data, PostgreSQL for customer settings
-- [PostgreSQL + ClickHouse for Agentic AI Scale](https://thenewstack.io/postgres-clickhouse-the-oss-stack-to-handle-agentic-ai-scale/) — validated ClickHouse + PostgreSQL dual-store pattern
-- [Redis for AI/ML Pipelines](https://redis.io/blog/how-to-build-a-language-processing-pipeline-using-ai-with-redis/) — Redis queue for embedding pipeline
-- [Sentence Transformers Batch Processing](https://milvus.io/ai-quick-reference/how-can-you-do-batch-processing-of-sentences-for-embedding-to-improve-throughput-when-using-sentence-transformers) — batch_size tuning for embedding throughput
-- [Braintrust Data Plane Isolation](https://www.braintrust.dev/articles/best-ai-observability-platforms-2025) — on-demand diagnostic service isolation pattern
-- [ClickHouse Cost Optimization Playbook 2026](https://clickhouse.com/resources/engineering/observability-cost-optimization-playbook) — async inserts, tiered S3 storage for hot/cold data
+- Direct inspection of `xeter/services/diagnosticer/main.py` (scaffold state)
+- Direct inspection of `xeter/services/presenter/routers/diagnose.py` (proxy implementation)
+- Direct inspection of `xeter/shared/models.py` (Diagnostic ORM model, table schema)
+- Direct inspection of `xeter/migrations/versions/001_initial.py` (confirmed `diagnostics` table + RLS already migrated)
+- Direct inspection of `deploy/docker-compose.yml` (confirmed Diagnosticer has DATABASE_URL, CLICKHOUSE_HOST, S3 env vars)
+- Direct inspection of `xeter/services/worker/span_fetcher.py` (SpanData resolution pattern to reuse)
+- Direct inspection of `services/view/src/components/SpanDetailPanel.tsx` (existing "Request Diagnostic" UI state)
+- Direct inspection of `services/view/src/lib/api.ts` (DiagnoseResponse interface, existing diagnose() function)
 
 ---
-*Architecture research for: AI agent observability and debugging platform (Xeter)*
-*Researched: 2026-03-27*
+*Architecture research for: Xeter v1.2 — LLM Diagnosticer integration*
+*Researched: 2026-04-20*

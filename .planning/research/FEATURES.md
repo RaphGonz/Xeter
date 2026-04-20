@@ -1,8 +1,20 @@
 # Feature Research
 
-**Domain:** AI agent observability and debugging platform (tool-call failure diagnosis)
-**Researched:** 2026-03-27
-**Confidence:** MEDIUM-HIGH (competitor product pages verified; some differentiator claims from aggregator articles cross-checked against official docs)
+**Domain:** LLM-powered root-cause diagnosis for AI agent tool-call observability
+**Milestone:** v1.2 Diagnosticer — on-demand LLM diagnosis per span
+**Researched:** 2026-04-20
+**Confidence:** MEDIUM (no competitor implements this exact feature; derived from competitor analysis, LLM-as-judge literature, and Google Auto-Diagnose production system)
+
+---
+
+## Context
+
+v1.0 and v1.1 are shipped. This file is scoped to the **Diagnosticer feature** being added in v1.2:
+on-demand LLM root-cause analysis per span that returns a structured verdict
+(model | architecture | prompt), severity, affected_field, and recommended_fix.
+
+Previously shipped features (span ingestion, heuristic flags, presenter, dashboard) are
+treated as **existing dependencies** in the dependency graph, not features to design.
 
 ---
 
@@ -10,143 +22,130 @@
 
 ### Table Stakes (Users Expect These)
 
-Features users assume exist. Missing these = product feels incomplete or untrustworthy.
+These are the minimum for the diagnosis feature to feel credible and complete.
+Missing any of these makes the feature feel like a prototype.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| Span/trace ingestion via SDK | Every competitor offers an instrumentation SDK; without one there is no product | MEDIUM | Xeter uses Python SDK emitting OTel spans — already scoped |
-| Span list view with filtering | Users need to find specific traces fast; a raw data dump is useless | MEDIUM | Filter by time, status, flag type, tenant; Langfuse and LangSmith both do this as baseline |
-| Span detail view | Users must see the full context of a single execution: inputs, outputs, tool arguments, response | MEDIUM | Include prompt, tool_name, tool_args, raw_response, latency, model; Langfuse/LangSmith both show this |
-| Tool call capture (name, args, result) | Tool calls are the primary unit of failure for agent workflows; any tool that misses them is useless for agent debugging | LOW | OTel GenAI semantic conventions standardize the schema; this is Xeter's core data |
-| Token and latency metadata | Users expect to see how long things took and how many tokens were consumed per call | LOW | Standard OTel attributes; low effort to capture and store in ClickHouse |
-| Error/exception capture | Users need to see when a tool returned an error or threw an exception; silent failures are invisible otherwise | LOW | HTTP errors, JSON parse failures, tool return errors — all must be captured |
-| Multi-tenancy with API key auth | B2B SaaS users assume their data is isolated; any shared-tenant leak is a trust-destroying incident | HIGH | Row-level isolation via tenant_id; API key per tenant for SDK ingestion — already scoped |
-| Dashboard login / auth | Users need a protected interface; unauthenticated dashboards are a non-starter for any real deployment | MEDIUM | Email/password first (Path A); already scoped |
-| Retention and data persistence | Traces must persist long enough to be useful; ephemeral storage breaks debugging workflows | MEDIUM | ClickHouse for spans, PostgreSQL for flags — already scoped; retention policy TBD |
-| OpenTelemetry compatibility | By 2026, OTel is the industry standard for instrumentation; tools that don't accept OTel spans require custom SDKs that developers won't adopt | MEDIUM | Xeter ingests OTel spans — already decided |
+| Structured diagnosis output (verdict + severity + fix) | A diagnosis that returns free text is unactionable; users expect a machine-readable result they can triage, filter, and act on immediately | MEDIUM | Minimum schema: `verdict` (model\|architecture\|prompt), `severity` (low\|medium\|high), `affected_field`, `recommended_fix`. This matches the output contract already defined in PROJECT.md |
+| "Diagnose" button in SpanDetailPanel | Users expect to trigger diagnosis from the span they are already inspecting; a separate workflow or page breaks the debugging flow | LOW | Single button, single request. Spinner while LLM runs. Render result inline in SpanDetailPanel below flags |
+| Diagnosis stored in PostgreSQL | If the result disappears on page reload, users will distrust the feature and stop using it. Persistence is baseline for any analysis result | LOW | `diagnoses` table with span_id, tenant_id, verdict, severity, affected_field, recommended_fix, raw_llm_output, created_at. RLS required |
+| Return cached result if diagnosis already exists | Running an LLM call every time the panel loads is expensive and slow. Users expect the result to persist after first run | LOW | Check `diagnoses` table before calling LLM; return existing row if present. No UI toggle needed in v1 |
+| Context-aware prompt assembly | If the LLM only sees the verdict "wrong_tool_called" without the actual flag scores, span fields, and S3 payload, the diagnosis will be generic and useless | MEDIUM | Assemble: flags+scores, span metadata (tool_name, tool_args, agent_name, model), S3 payload (prompt text, response text). All three sources required for a non-trivial diagnosis |
+| Configurable LLM provider via env vars | No practitioner will accept a hard-coded provider dependency. Provider lock-in is a dealbreaker. env-var config is the industry baseline | LOW | `DIAGNOSTICER_PROVIDER` (anthropic\|openai), `DIAGNOSTICER_MODEL`, `DIAGNOSTICER_API_KEY`. Provider-switching must not require code changes |
+| Graceful failure handling | LLM calls fail (rate limits, timeouts, provider outages). If the button breaks the UI or returns an unhandled 500, users lose trust in the whole platform | LOW | Return structured error response: `{"status": "diagnosis_failed", "reason": "llm_error\|timeout\|context_too_large"}`. UI renders a dismissible error state, not a broken panel |
+| Tenant isolation on diagnoses | Diagnoses contain full span context including prompt text and response text. A tenant data leak here is a critical trust failure | LOW | `tenant_id` on `diagnoses` table + PostgreSQL RLS. Presenter must validate tenant_id from JWT matches span's tenant before calling Diagnosticer |
 
 ### Differentiators (Competitive Advantage)
 
-Features that set the product apart. Not required for entry, but create switching costs and justify adoption over Langfuse.
+These features make the Xeter Diagnosticer meaningfully better than a generic LLM chat with pasted trace data.
+No competitor implements any of these as an integrated product feature.
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| Automated tool-call flag types (wrong_tool, no_tool, excessive_tool, parsing_error) | No competitor automatically categorizes *why* a tool call failed — they show the trace, you infer the cause; Xeter names the failure type explicitly | HIGH | Vector similarity between prompt and tool fields; requires embedding worker + ClickHouse flag storage — core Xeter differentiator |
-| Root-cause attribution (model / architecture / prompt) | The market gap identified in positioning: every existing tool shows *that* something failed, none say *why*; developers spend hours manually correlating | HIGH | LLM-powered Diagnosticer service (Milestone 2); v1 scaffolds it; this is Xeter's stated core value |
-| Heuristic flag scoring with confidence score | A flag without a confidence score forces the developer to decide if it's noise; a scored flag lets them triage instantly | MEDIUM | Cosine similarity score stored with each flag; threshold calibration is a correctness risk (R-03) |
-| Flag detail view showing which field triggered the flag | Knowing *which* mismatch caused the flag (prompt vs tool_description vs response) is actionable; just saying "wrong tool" is not | MEDIUM | Requires storing flag.detail as a structured object — already scoped |
-| Lazy-loaded large payload display | Prompt and response text can be hundreds of KB; loading it all at page load bloats the UI and slows the dashboard; lazy retrieval from S3 makes the span detail snappy | MEDIUM | S3 reference keys in ClickHouse; retrieve on demand — already scoped |
-| Single-framework-agnostic SDK (works with any agent) | Langfuse and Phoenix are framework-agnostic but don't diagnose; LangSmith diagnoses but only for LangChain; Xeter diagnoses for any stack | MEDIUM | OTel-native SDK; minimal instrumentation surface — already scoped |
-| Append-only immutable span storage | Defenders of data integrity: once a span is written, it can never be edited or deleted, making audit trails trustworthy | LOW | ClickHouse append-only model — already scoped; a trust signal worth communicating |
-| Session/conversation grouping | Multi-turn agent workflows need trace grouping to see a full session, not just isolated spans | MEDIUM | Langfuse does this well; Xeter should support trace_id / session_id correlation — not yet scoped |
+| Three-category verdict (model / architecture / prompt) | The only structured root-cause taxonomy built specifically for tool-call failures. Langfuse, Phoenix, LangSmith — none of them do this. Developers currently guess which to fix first | MEDIUM | This is Xeter's stated core value per PROJECT.md. The taxonomy maps directly to actionable fixes: model → upgrade or swap model; architecture → change tool routing logic; prompt → rewrite instructions. Must be the primary output |
+| Flag-informed context assembly | The LLM diagnosis is seeded with Xeter's heuristic flag scores (cosine similarity values per dimension). This gives the LLM signal that a human-annotator would otherwise have to construct manually | MEDIUM | Pass `flag_type`, `score`, `detail` for every flag on the span. The LLM uses these as structured evidence rather than doing unguided pattern-matching on raw text |
+| `affected_field` granularity | Naming the specific span field that caused the failure (e.g., `tool_description`, `system_prompt`, `tool_args`) turns a categorical verdict into an actionable edit target | LOW | Enumerate the set: `system_prompt`, `user_prompt`, `tool_name`, `tool_description`, `tool_args`, `model_output`, `agent_logic`. Prompt the LLM to choose one. Store as string for extensibility |
+| Hard negative constraint in prompt | Instructing the LLM to return `verdict: "inconclusive"` when evidence is insufficient prevents hallucinated diagnoses that erode trust. Google Auto-Diagnose validated this pattern in production (52k executions) | LOW | Add explicit instruction: "If the flags and span data do not provide sufficient evidence to identify a root cause, return verdict: inconclusive and explain what additional context would be needed." |
+| `raw_llm_output` stored alongside structured fields | Storing the full LLM response text lets developers see the LLM's reasoning, not just the structured fields. This builds trust and enables future improvement of the diagnosis prompt | LOW | Single JSONB or TEXT column. Not displayed by default; available for developer inspection. Enables prompt iteration without losing history |
+| Low-temperature structured output (JSON mode) | At temperature=0.1 with JSON mode enforced, the LLM reliably returns parseable output rather than prose. Google Auto-Diagnose uses temperature=0.1 validated at scale | LOW | Use provider JSON mode (OpenAI: `response_format={"type": "json_object"}`; Anthropic: explicit JSON instructions in prompt + system prompt). Parse with Pydantic model. Fallback to `inconclusive` on parse failure |
 
 ### Anti-Features (Commonly Requested, Often Problematic)
 
-Features that seem good but create problems for a solo developer or for the product's focus.
+Features that sound like natural extensions of diagnosis but add scope without proportional value in v1.2.
 
 | Feature | Why Requested | Why Problematic | Alternative |
 |---------|---------------|-----------------|-------------|
-| LLM-as-a-judge evaluation (v1) | Developers want automated quality scores; competitors offer it | Requires significant infrastructure (eval dataset, judge model, scoring pipeline); adds scope before core diagnosis is validated; risks becoming a worse version of Langfuse's eval suite | Defer to v2; v1 heuristic flags are the differentiator; LLM Diagnosticer (Milestone 2) delivers this more surgically |
-| Real-time SSE push for flag updates | Feels more "live" and reactive | Adds persistent connection management, reconnection logic, and server complexity; polling or manual refresh is adequate for debugging workflows which are not time-critical at sub-second granularity | Polling or manual refresh for v1; SSE deferred per PROJECT.md |
-| Trace tree visualization (full agent graph) | Arize Phoenix's agent graph is compelling; LangSmith's hierarchical trace tree is the industry reference | Building a robust tree renderer for arbitrary nested spans is a significant frontend effort; v1 can deliver value with a flat span list + flags; premature tree view competes with Phoenix on their strength | Ship flat span list + flag indicators first; add trace tree in v1.x after validating the flag diagnosis loop |
-| Prompt playground | Developers want to iterate prompts without leaving the tool | Requires prompt version management, diff views, execution against a live model, and response comparison — scope of a separate product category; Langfuse and LangSmith do this well; duplicating it without their scale is a trap | Link out to the user's existing prompt tooling; don't build it |
-| Built-in LLM cost attribution | Teams want per-user or per-feature cost breakdowns | Requires per-model pricing tables that go stale, token count attribution logic, and billing integrations; high maintenance burden; Helicone and dedicated cost tools do this better | Capture token counts in span metadata so users can build cost queries; don't own the cost analytics layer |
-| Alerting and notification system (v1) | Users will immediately ask for Slack/PagerDuty alerts when flag rates spike | Requires threshold configuration UI, alert rule storage, notification delivery infrastructure (email/Slack webhooks), and false-positive management — significant scope; Langfuse doesn't have this yet and users are requesting it | Defer; v1 is for debugging not monitoring; design flag schema so alerting can be layered on top later |
-| TypeScript SDK | Many web developers and Next.js users want TS support | Python SDK must be stable and battle-tested first; TS SDK doubles SDK maintenance burden; splitting focus before Python SDK is proven is a risk | Python SDK first; TS SDK as v1.1 per AD-18 |
-| Multi-model comparison / A-B testing | Sophisticated users want to compare GPT-4o vs Claude on same inputs | Requires experiment management, dataset storage, side-by-side diff UI — a separate product surface; Braintrust and LangSmith own this | Out of scope; stay focused on diagnosis of individual failures |
+| Re-diagnose / force-refresh button | Users may want to re-run diagnosis after editing their prompt or updating tools | Adds UI state, a "stale" indicator, and mutation logic to a table that should be append-only. In v1.2, a span's diagnosis won't change because the span data is immutable. Re-diagnosis is only meaningful when the LLM model or prompt template changes — which is a config change, not a user action | In v1.2: diagnose once, serve cached. If the diagnosis prompt template changes in a future version, introduce `diagnosis_version` column and re-diagnose automatically. Don't build a UI toggle for this now |
+| Multiple diagnoses per span (history) | Power users want to compare diagnosis quality across LLM providers | Requires version tracking, diff UI, and provider-comparison logic. This is a future research feature, not a debugging workflow | Store one diagnosis per span per `(span_id, tenant_id)`. If provider changes, the new diagnosis overwrites the old one in v1.2. Add versioning later when there is user evidence of need |
+| User feedback on diagnosis (thumbs up/down) | RLHF-style feedback loop would improve diagnosis quality over time | Requires feedback storage, aggregation, and a retraining or prompt-refinement pipeline that doesn't exist. Collecting feedback without acting on it is worse than not collecting it (users feel ignored) | Defer. Build feedback collection only when there is a concrete plan to use it. "Log it for now" feedback stores are graveyard data |
+| Batch diagnosis (diagnose all flagged spans) | Users want to run diagnosis across all flags at once | LLM costs scale linearly with span count. At $0.003/call and 10k flagged spans, a single batch run costs $30. Without cost controls, rate limit management, and background job UX, batch diagnosis is a support ticket waiting to happen | On-demand only in v1.2. Document that batch diagnosis is a future feature requiring background job infrastructure |
+| Streaming LLM response (SSE) | Makes the diagnosis feel more "alive" while waiting 5-30 seconds | Streaming requires SSE infrastructure end-to-end (LLM provider → Diagnosticer → Presenter → View). The spinner-then-reveal pattern is acceptable for a 10-30s one-time operation. Streaming is a UX polish feature, not a correctness feature | Spinner + full response on completion. Streaming is a v1.3+ polish item |
+| Explanation of the explanation (chain-of-thought display) | Some users want to see why the LLM chose a verdict | The LLM's reasoning chain is often inconsistent between runs and may confuse users more than inform them. Storing `raw_llm_output` (differentiator above) is a better middle ground | Store `raw_llm_output` and expose it as a "view reasoning" collapsible for developers who want it. Don't surface it as primary UI |
+| LLM cost tracking per diagnosis | Developers want to know how much each diagnosis costs | Requires per-model pricing tables, token counting, and cost storage. High maintenance burden as model pricing changes frequently | Capture `prompt_tokens` and `completion_tokens` in the `diagnoses` table. Let users multiply by provider rates themselves. Don't own the cost math |
+| Automatic diagnosis on every flagged span | Zero-click diagnosis sounds like a feature | Runs LLM on every span that gets flagged, including noise flags. At current flag precision ~95%, this is still 5% wasted LLM calls per run. More importantly, it removes developer agency — they can't batch their own review workflow | On-demand only. Developer clicks "Diagnose" when they want it. Auto-diagnosis can be a webhook/trigger feature in v2 for high-value customers |
 
 ---
 
 ## Feature Dependencies
 
 ```
-[OTel Span Ingestion (SDK)]
-    └──requires──> [API Key Auth + Multi-tenancy]
-    └──requires──> [ClickHouse span storage]
-                       └──requires──> [S3 large payload storage]
-                       └──requires──> [Redis ingestion queue]
+[Diagnoses PostgreSQL table + DAL]
+    └──required by──> [Diagnosticer: cache check]
+    └──required by──> [Presenter: GET /diagnose result]
+    └──required by──> [SpanDetailPanel: diagnosis display]
 
-[Span List View]
-    └──requires──> [OTel Span Ingestion]
-    └──requires──> [Dashboard Auth (login)]
+[LLM context assembly]
+    └──requires──> [Flags from PostgreSQL] (already exists)
+    └──requires──> [Span metadata from ClickHouse] (already exists)
+    └──requires──> [S3 payload retrieval] (already exists)
 
-[Span Detail View]
-    └──requires──> [Span List View]
-    └──requires──> [S3 lazy payload retrieval]
+[Diagnosticer LLM call]
+    └──requires──> [LLM context assembly]
+    └──requires──> [Configurable provider (env vars)]
+    └──requires──> [Structured output parsing (Pydantic)]
 
-[Heuristic Flag Types (wrong_tool, no_tool, etc.)]
-    └──requires──> [OTel Span Ingestion]
-    └──requires──> [Embedding worker + vector similarity]
-    └──requires──> [PostgreSQL flag storage]
+[Presenter POST /diagnose — trigger]
+    └──requires──> [Diagnoses table cache check]
+    └──requires──> [Diagnosticer LLM call (if not cached)]
+    └──requires──> [Tenant isolation check] (JWT → tenant_id)
 
-[Flag Detail in Span View]
-    └──requires──> [Heuristic Flag Types]
-    └──requires──> [Span Detail View]
+[Presenter GET /diagnose/:span_id — retrieve]
+    └──requires──> [Diagnoses table]
 
-[Root Cause Attribution (model/arch/prompt)]
-    └──requires──> [Heuristic Flag Types]
-    └──requires──> [LLM Diagnosticer service (Milestone 2)]
+[SpanDetailPanel "Diagnose" button]
+    └──requires──> [Presenter POST /diagnose endpoint]
+    └──requires──> [Span detail already loaded] (already exists)
 
-[Alerting]
-    └──requires──> [Heuristic Flag Types]
-    └──requires──> [Flag rate aggregation (not yet designed)]
-
-[Trace Tree Visualization]
-    └──requires──> [Span Ingestion with parent_span_id]
-    └──requires──> [Frontend tree renderer (significant effort)]
-    └──enhances──> [Span List View]
-
-[Session/Conversation Grouping]
-    └──requires──> [session_id on spans]
-    └──enhances──> [Span List View]
+[SpanDetailPanel diagnosis display]
+    └──requires──> [Presenter GET /diagnose/:span_id]
+    └──enhances──> [SpanDetailPanel flag display] (already exists)
 ```
 
 ### Dependency Notes
 
-- **Heuristic flag types require embedding worker:** Flags are computed asynchronously from ingestion; the Redis queue decouples these so ingestion latency stays low (AD-01).
-- **Root cause attribution requires Diagnosticer (Milestone 2):** The LLM-powered explanation of *why* a flag happened is the highest-value differentiator but depends on stable flag data from Milestone 1.
-- **Alerting requires flag rate aggregation:** Flag-rate alerts need time-windowed aggregation queries over ClickHouse; this is a non-trivial query design problem best deferred until flag quality is validated.
-- **Trace tree conflicts with v1 scope:** The parent_span_id field should be captured in v1 spans so tree view can be added later without schema migration — but the renderer itself is deferred.
-- **Session grouping is not in v1 scope but session_id should be captured:** Same as trace tree — capture the field, render later.
+- **Context assembly requires all three data sources:** Flags alone produce shallow diagnoses ("you had a wrong_tool flag"). Span metadata alone produces generic diagnoses. S3 payload alone produces analysis without structure. All three together let the LLM reason with evidence.
+
+- **Cache check must happen in Presenter before proxying:** The Presenter (not the Diagnosticer) should check the `diagnoses` table first and short-circuit the proxy call. This keeps the Diagnosticer stateless (it never reads from PostgreSQL) and matches the existing architecture where Presenter owns PostgreSQL reads.
+
+- **Diagnosticer remains stateless:** Diagnosticer receives assembled context (flags, span fields, payload text), calls the LLM, returns structured JSON. It does not read from ClickHouse or PostgreSQL. Context assembly is the Presenter's responsibility via DAL calls before proxying.
+
+- **SpanDetailPanel display requires a GET endpoint, not just POST:** The POST trigger returns the diagnosis result, but a GET endpoint is needed for re-loading the panel after navigation. Both are required.
 
 ---
 
 ## MVP Definition
 
-### Launch With (v1 — Milestone 1)
+### Launch With (v1.2 — Diagnosticer milestone)
 
-Minimum viable product — what's needed to validate the core hypothesis that heuristic flagging delivers diagnostic value.
+Minimum set for the diagnosis feature to deliver value and be trusted.
 
-- [ ] Python SDK that instruments agent code and emits OTel spans — without this there is no product
-- [ ] Span ingestion API with API key auth and multi-tenancy — required for any real usage
-- [ ] ClickHouse span storage + S3 large payload storage — required for span list and detail views
-- [ ] Redis queue + async embedding worker — required for flag computation without blocking ingestion
-- [ ] Heuristic flag types: wrong_tool, no_tool, excessive_tool, parsing_error with cosine similarity scores — the core differentiator
-- [ ] PostgreSQL flag storage (append-only, with score and detail fields) — required for flag rendering
-- [ ] Span list view with flag indicators and filtering — required for users to find failures
-- [ ] Span detail view with flag details and lazy-loaded S3 payloads — required to understand a failure
-- [ ] Dashboard login (email/password) — required for any real deployment
-- [ ] Diagnosticer service scaffolded (wired but not functional) — required so Milestone 2 doesn't require rearchitecting
+- [ ] `diagnoses` PostgreSQL table with RLS — required for persistence and tenant isolation
+- [ ] Diagnoses DAL — insert and fetch by (span_id, tenant_id)
+- [ ] LLM context assembly in Presenter — fetch flags, span metadata, S3 payload; build structured prompt
+- [ ] Configurable LLM provider via env vars — Anthropic and OpenAI at minimum
+- [ ] Diagnosticer: receive assembled context, call LLM, parse structured output, return result
+- [ ] Hard negative constraint in LLM prompt — return `verdict: inconclusive` when evidence is insufficient
+- [ ] Presenter cache check before LLM call — return stored result if diagnosis already exists
+- [ ] Presenter POST /diagnose endpoint (full, not scaffold) — triggers or returns cached diagnosis
+- [ ] Presenter GET /diagnose/:span_id endpoint — retrieve stored diagnosis
+- [ ] SpanDetailPanel "Diagnose" button — triggers POST /diagnose
+- [ ] SpanDetailPanel diagnosis display — shows verdict, severity, affected_field, recommended_fix inline
+- [ ] Graceful error states in UI — spinner while running, error message on failure, no broken panel states
 
-### Add After Validation (v1.x)
+### Add After Validation (v1.3+)
 
-Features to add once the core flag-diagnosis loop is working and trusted.
-
-- [ ] Session/conversation grouping — add when users report difficulty tracking multi-turn agent workflows
-- [ ] Trace tree visualization — add when span list + flags is validated and users ask for deeper visual navigation
-- [ ] TypeScript SDK — add when Python SDK is stable and TS demand is confirmed (AD-18)
-- [ ] Alerting / Slack notifications — add when users move from debugging to monitoring (flag rate stabilizes)
-- [ ] Flag threshold calibration UI — add when false positive rate becomes a reported pain point
+- [ ] `raw_llm_output` "view reasoning" collapsible — add when users ask why the LLM chose a verdict
+- [ ] `prompt_tokens` + `completion_tokens` capture — add when token cost visibility is requested
+- [ ] Streaming LLM response (SSE) — add if 10-30s wait is reported as a UX problem in user feedback
+- [ ] `diagnosis_version` column for prompt template versioning — add when the diagnosis prompt template is iterated for the first time
 
 ### Future Consideration (v2+)
 
-Features to defer until product-market fit is established.
-
-- [ ] LLM-powered Diagnosticer active (Milestone 2) — the model/arch/prompt attribution layer; highest strategic value but depends on stable Milestone 1 data
-- [ ] Prompt management and versioning — defer; Langfuse does this; don't compete until diagnosis is proven
-- [ ] LLM-as-a-judge evaluation pipeline — defer; requires dataset infrastructure; not the diagnosis differentiator
-- [ ] LLM cost attribution and reporting — defer; high maintenance; not Xeter's moat
-- [ ] Multi-model A-B experiment comparison — defer; separate product surface
+- [ ] User feedback (thumbs up/down) on diagnosis — defer until there is a prompt improvement pipeline to consume it
+- [ ] Batch diagnosis via background job — defer until cost controls and job queue infrastructure exist
+- [ ] Multiple diagnoses per span (history/comparison) — defer until users demonstrate multi-provider comparison need
+- [ ] Auto-diagnosis on flag creation webhook — defer until high-value customers request zero-click workflow
 
 ---
 
@@ -154,74 +153,68 @@ Features to defer until product-market fit is established.
 
 | Feature | User Value | Implementation Cost | Priority |
 |---------|------------|---------------------|----------|
-| Python SDK (OTel spans) | HIGH | MEDIUM | P1 |
-| API key auth + multi-tenancy | HIGH | MEDIUM | P1 |
-| Span ingestion + ClickHouse storage | HIGH | MEDIUM | P1 |
-| Heuristic flag types (wrong_tool, etc.) | HIGH | HIGH | P1 |
-| Span list view + flag indicators | HIGH | MEDIUM | P1 |
-| Span detail view + S3 lazy load | HIGH | MEDIUM | P1 |
-| Dashboard login | HIGH | LOW | P1 |
-| Flag detail (which field triggered) | HIGH | LOW | P1 |
-| Token + latency metadata capture | MEDIUM | LOW | P1 |
-| Redis queue + async embedding worker | HIGH | MEDIUM | P1 |
-| Diagnosticer scaffold (wired, inactive) | MEDIUM | LOW | P1 |
-| Session/conversation grouping | MEDIUM | MEDIUM | P2 |
-| Trace tree visualization | MEDIUM | HIGH | P2 |
-| TypeScript SDK | MEDIUM | MEDIUM | P2 |
-| Alerting / notifications | MEDIUM | HIGH | P2 |
-| Flag threshold calibration UI | MEDIUM | MEDIUM | P2 |
-| LLM Diagnosticer active (root cause) | HIGH | HIGH | P2 |
-| Prompt playground | LOW | HIGH | P3 |
-| LLM cost attribution | LOW | MEDIUM | P3 |
-| LLM-as-a-judge eval pipeline | LOW | HIGH | P3 |
-| Multi-model A-B experiment comparison | LOW | HIGH | P3 |
+| Structured diagnosis output (verdict/severity/fix) | HIGH | MEDIUM | P1 |
+| `diagnoses` PostgreSQL table + RLS | HIGH | LOW | P1 |
+| Diagnoses DAL (insert + fetch) | HIGH | LOW | P1 |
+| LLM context assembly (flags + span + S3) | HIGH | MEDIUM | P1 |
+| Configurable provider via env vars | HIGH | LOW | P1 |
+| Diagnosticer LLM call + JSON parsing | HIGH | MEDIUM | P1 |
+| Hard negative constraint (inconclusive verdict) | HIGH | LOW | P1 |
+| Presenter cache check before LLM call | HIGH | LOW | P1 |
+| Presenter POST /diagnose (full) | HIGH | LOW | P1 |
+| Presenter GET /diagnose/:span_id | HIGH | LOW | P1 |
+| SpanDetailPanel "Diagnose" button + spinner | HIGH | LOW | P1 |
+| SpanDetailPanel diagnosis display | HIGH | LOW | P1 |
+| Graceful error handling (UI + backend) | HIGH | LOW | P1 |
+| Tenant isolation check (JWT → tenant_id) | HIGH | LOW | P1 |
+| `raw_llm_output` stored (not displayed) | MEDIUM | LOW | P1 |
+| `raw_llm_output` "view reasoning" collapsible | MEDIUM | LOW | P2 |
+| `prompt_tokens` + `completion_tokens` capture | LOW | LOW | P2 |
+| Streaming LLM response (SSE) | LOW | HIGH | P3 |
+| User feedback on diagnosis | LOW | MEDIUM | P3 |
+| Batch diagnosis (background job) | MEDIUM | HIGH | P3 |
 
 **Priority key:**
-- P1: Must have for v1 launch
-- P2: Should have, add in v1.x or Milestone 2
+- P1: Must have for v1.2 launch
+- P2: Should have, add in v1.3 when validated
 - P3: Nice to have, future consideration
 
 ---
 
 ## Competitor Feature Analysis
 
-| Feature | Langfuse | LangSmith | Arize Phoenix | HoneyHive | Xeter (our approach) |
-|---------|----------|-----------|---------------|-----------|---------------------|
-| Span/trace ingestion | Yes (OTel + own SDK) | Yes (own SDK, 13+ frameworks) | Yes (OTel) | Yes (OTel) | Yes (OTel via Python SDK) |
-| Tool call capture | Yes (named observation type) | Yes (automatic per run) | Yes (span attributes) | Yes (tool step monitoring) | Yes (OTel semantic conventions) |
-| Span list view | Yes | Yes | Yes | Yes | Yes (v1) |
-| Span detail view | Yes | Yes | Yes | Yes | Yes (v1) |
-| Trace tree / agent graph | Partial (nested observations) | Yes (hierarchical runs) | Yes (Agent Graph viz) | Yes | Deferred to v1.x |
-| Session grouping | Yes | Yes (threads) | Yes | Yes | Deferred to v1.x |
-| Token + cost tracking | Yes | Yes | Yes | Yes | Token metadata only (no cost) |
-| Automated flag types for tool failures | No | No | No | Partial (Tool Use Accuracy evaluator, not automatic) | Yes — core differentiator |
-| Root cause attribution (model/arch/prompt) | No | No | No | No | Milestone 2 (LLM Diagnosticer) |
-| Heuristic similarity score per flag | No | No | No | No | Yes (cosine similarity, confidence score) |
-| LLM-as-a-judge evaluation | Yes | Yes | Yes | Yes | Deferred to v2 |
-| Prompt management | Yes | Yes | No (basic) | No | Not planned |
-| Alerting | Roadmap only (as of March 2026) | Yes | Partial | No native | Deferred to v1.x |
-| Multi-tenancy | Yes (self-hosted; cloud plans) | Yes (cloud; BYOC at enterprise) | Yes (cloud plans) | Yes (enterprise) | Yes (row-level isolation, v1) |
-| Open-source / self-hostable | Yes (fully open-source) | Enterprise only | Yes (fully open-source) | Enterprise only | SaaS only (v1) |
-| Framework-agnostic | Yes | LangChain-native (others via SDK) | Yes | Yes | Yes |
+No competitor currently implements on-demand structured root-cause diagnosis for agent tool-call failures.
+The closest analogues are summarized below.
+
+| Feature | Langfuse | LangSmith (Polly) | Arize Phoenix | HoneyHive | Google Auto-Diagnose | Xeter Diagnosticer |
+|---------|----------|-------------------|---------------|-----------|---------------------|-------------------|
+| On-demand LLM root cause per span | No | Partial (Polly AI assistant, not structured) | No | No | Yes (integration tests, not agents) | Yes — v1.2 |
+| Structured output (verdict + severity + fix) | No | No | No | No | Partial (Conclusion + Steps + Log Lines) | Yes — model\|arch\|prompt taxonomy |
+| Three-category root cause taxonomy | No | No | No | No | No | Yes — unique |
+| Seeded with heuristic flag scores | N/A | N/A | N/A | N/A | N/A | Yes — flags as evidence |
+| `affected_field` granularity | No | No | No | No | No | Yes |
+| Hard negative / inconclusive verdict | No | No | No | No | Yes (validated at 52k executions) | Yes (adopting Google pattern) |
+| Cached result (no redundant LLM calls) | N/A | N/A | N/A | N/A | Not documented | Yes |
+| Configurable provider | N/A | No (OpenAI) | N/A | N/A | Gemini-only | Yes — env var config |
+
+**Key insight:** No existing tool combines heuristic flag scores with LLM-powered structured diagnosis.
+The closest production validation is Google's Auto-Diagnose, which confirms the "hard negative constraint"
+and low-temperature JSON output patterns work at scale. Xeter's taxonomy (model\|architecture\|prompt)
+is not derived from any competitor — it is the novel differentiator.
 
 ---
 
 ## Sources
 
-- Langfuse official docs: https://langfuse.com/docs/observability/overview (HIGH confidence — official documentation)
-- Langfuse observation types: https://langfuse.com/docs/observability/features/observation-types (HIGH confidence — official documentation)
-- Langfuse roadmap (alerting status): https://github.com/orgs/langfuse/discussions/3997 and https://github.com/orgs/langfuse/discussions/10147 (MEDIUM confidence — GitHub discussions, reflects current product state)
-- LangSmith agent observability: https://www.langchain.com/langsmith/observability (MEDIUM confidence — official marketing page)
-- LangSmith agent debugging blog: https://blog.langchain.com/debugging-deep-agents-with-langsmith/ (MEDIUM confidence — official blog)
-- Arize Phoenix GitHub: https://github.com/Arize-ai/phoenix (HIGH confidence — official source)
-- Arize blog on common agent failures: https://arize.com/blog/common-ai-agent-failures/ (MEDIUM confidence — vendor blog, field analysis)
-- HoneyHive observability: https://www.honeyhive.ai/observability (MEDIUM confidence — official product page)
-- HoneyHive evaluators: https://docs.honeyhive.ai/evaluators/introduction (MEDIUM confidence — official docs)
-- Braintrust buyer's guide 2026: https://www.braintrust.dev/articles/best-ai-observability-tools-2026 (MEDIUM confidence — vendor-authored but cross-referenced)
-- Galileo root cause analysis tools: https://galileo.ai/blog/best-ai-agent-debugging-root-cause-analysis-tools (MEDIUM confidence — vendor blog, cross-referenced)
-- Maxim AI top 5 platforms 2026: https://www.getmaxim.ai/articles/top-5-ai-agent-observability-platforms-in-2026/ (LOW confidence — vendor aggregator)
-- OTel AI agent observability standards: https://opentelemetry.io/blog/2025/ai-agent-observability/ (HIGH confidence — official OTel blog)
+- Google Auto-Diagnose production report (52,635 tests, Gemini 2.5 Flash, temperature=0.1): https://www.marktechpost.com/2026/04/17/google-ai-releases-auto-diagnose-an-large-language-model-llm-based-system-to-diagnose-integration-test-failures-at-scale/ (MEDIUM confidence — secondary report; validates temperature + hard negative pattern)
+- Langfuse error analysis guide (2025) — two-phase categorization, custom Score configurations: https://langfuse.com/blog/2025-08-29-error-analysis-to-evaluate-llm-applications (HIGH confidence — official Langfuse blog)
+- HoneyHive LLM evaluators — boolean/numeric/string return types, custom passing ranges: https://docs.honeyhive.ai/evaluators/llm (MEDIUM confidence — official docs, no structured diagnosis output)
+- LangSmith Polly AI assistant for agent debugging (2025): https://blog.langchain.com/debugging-deep-agents-with-langsmith/ (MEDIUM confidence — official LangChain blog)
+- Latitude AI agent failure detection framework — tool selection errors, argument errors, chained corruption: https://latitude.so/blog/ai-agent-failure-detection-guide (MEDIUM confidence — vendor blog, cross-referenced with Arize taxonomy)
+- LLM-as-a-Judge structured output patterns — JSON mode, temperature sensitivity: https://wandb.ai/site/articles/exploring-llm-as-a-judge/ (MEDIUM confidence — W&B official article)
+- Multi-agent system failure taxonomy (MAST research): https://openreview.net/pdf?id=fAjbYBmonr (HIGH confidence — peer-reviewed; validates that system design failures dominate over model failures)
+- LLM Observability complete guide 2026: https://portkey.ai/blog/the-complete-guide-to-llm-observability/ (LOW confidence — vendor aggregator; used only for baseline feature inventory)
 
 ---
-*Feature research for: AI agent observability / tool-call debugging platform (Xeter)*
-*Researched: 2026-03-27*
+*Feature research for: LLM-powered root-cause Diagnosticer (Xeter v1.2)*
+*Researched: 2026-04-20*

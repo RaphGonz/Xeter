@@ -1,12 +1,235 @@
 # Stack Research
 
 **Domain:** AI agent observability and debugging SaaS platform
-**Researched:** 2026-03-27
+**Researched:** 2026-03-27 (base platform); 2026-04-20 (v1.2 Diagnosticer additions)
 **Confidence:** HIGH (all versions verified against PyPI and official docs)
 
 ---
 
-## Recommended Stack
+## v1.2 Diagnosticer Additions
+
+This section covers only the new libraries needed for the LLM-powered Diagnosticer service.
+All other stack decisions are unchanged — see the base platform sections below.
+
+### What Already Exists (Do Not Re-add)
+
+The following are already in `xeter/pyproject.toml` and cover the Diagnosticer's data-access needs:
+
+- `fastapi==0.135.2` — HTTP framework, Diagnosticer is already a FastAPI app
+- `pydantic==2.12.5` — Used for structured output schemas
+- `asyncpg==0.31.0` + `sqlalchemy==2.0.48` — PostgreSQL reads/writes; `Diagnostic` model already in `shared/models.py`
+- `aioboto3==15.5.0` — S3 payload retrieval (large prompts/responses)
+- `clickhouse-connect==0.15.0` — Span field reads
+- `httpx` — Already present; no additional async HTTP client needed for LLM SDKs (both Anthropic and OpenAI SDKs use `httpx` internally)
+- `python-dotenv` — Env var loading already covered
+
+### New Dependencies Required
+
+| Library | Version | Purpose | Why |
+|---------|---------|---------|-----|
+| `anthropic` | `>=0.96.0` | Anthropic Claude API client | Official SDK; async via `AsyncAnthropic`; `client.messages.parse()` for structured output with Pydantic; uses `httpx` internally (no new transitive dep) |
+| `openai` | `>=2.32.0` | OpenAI GPT API client | Official SDK; async via `AsyncOpenAI`; `client.beta.chat.completions.parse()` for structured output with Pydantic; same `httpx` backend |
+
+Both libraries are all that's needed. No additional abstraction library, no LiteLLM.
+
+---
+
+### Core Technology: LLM Client Libraries
+
+#### Anthropic SDK (`anthropic>=0.96.0`)
+
+The official Python client for Claude models. **HIGH confidence** — verified on PyPI 2026-04-20 at version 0.96.0.
+
+Async pattern for FastAPI:
+
+```python
+from anthropic import AsyncAnthropic
+
+client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+
+response = await client.messages.create(
+    model=settings.LLM_MODEL,          # e.g. "claude-sonnet-4-5-20250929"
+    max_tokens=1024,
+    messages=[{"role": "user", "content": prompt}],
+)
+```
+
+Structured output (current pattern — no beta header required as of v1.2 timeframe):
+
+```python
+from pydantic import BaseModel
+
+class DiagnosisResult(BaseModel):
+    verdict: str          # "model" | "architecture" | "prompt"
+    severity: str         # "low" | "medium" | "high"
+    affected_field: str
+    recommended_fix: str
+
+response = await client.messages.parse(
+    model=settings.LLM_MODEL,
+    max_tokens=1024,
+    messages=[{"role": "user", "content": prompt}],
+    output_format=DiagnosisResult,
+)
+result: DiagnosisResult = response.parsed_output
+```
+
+`client.messages.parse()` handles schema transformation, constrained decoding, and validation.
+Returns a typed `DiagnosisResult` instance directly — no manual JSON parsing.
+
+#### OpenAI SDK (`openai>=2.32.0`)
+
+The official Python client for GPT models. **HIGH confidence** — verified on PyPI 2026-04-20 at version 2.32.0.
+
+Async pattern for FastAPI:
+
+```python
+from openai import AsyncOpenAI
+
+client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+```
+
+Structured output:
+
+```python
+completion = await client.beta.chat.completions.parse(
+    model=settings.LLM_MODEL,          # e.g. "gpt-4o-2024-08-06"
+    messages=[{"role": "user", "content": prompt}],
+    response_format=DiagnosisResult,   # same Pydantic model as above
+)
+result: DiagnosisResult = completion.choices[0].message.parsed
+```
+
+Note: `client.beta.chat.completions.parse()` with Pydantic requires GPT-4o (gpt-4o-2024-08-06 or later).
+Older models (gpt-3.5-turbo, gpt-4-turbo) only support JSON mode, which does not guarantee schema conformance.
+
+---
+
+### Provider-Agnostic Adapter Pattern
+
+**Recommendation:** Hand-roll a minimal adapter (Protocol + two concrete classes). Do NOT use LiteLLM.
+
+**Why not LiteLLM:** ~200MB memory footprint, 1.2s import time, 300+ transitive dependencies. For a solo-dev service with two providers and a single operation (diagnose), this is an unacceptable weight. The abstraction cost of LiteLLM exceeds the abstraction benefit when the interface is one `diagnose()` call.
+
+**Why not `instructor`:** The `instructor` library (v1.15.1 on PyPI 2026-04-20) wraps both SDKs behind a unified retry+validation interface and is legitimate for teams using 5+ providers. For Xeter at v1.2, both native SDKs already provide `parse()` methods with Pydantic schemas — `instructor` adds a dependency without adding capability beyond what the SDKs already ship.
+
+**Recommended pattern — Protocol + factory:**
+
+```python
+# xeter/services/diagnosticer/llm/base.py
+from typing import Protocol
+from xeter.services.diagnosticer.schemas import DiagnosisResult
+
+class LLMProvider(Protocol):
+    async def diagnose(self, prompt: str) -> DiagnosisResult: ...
+
+# xeter/services/diagnosticer/llm/anthropic_provider.py
+class AnthropicProvider:
+    def __init__(self, api_key: str, model: str): ...
+    async def diagnose(self, prompt: str) -> DiagnosisResult: ...
+
+# xeter/services/diagnosticer/llm/openai_provider.py
+class OpenAIProvider:
+    def __init__(self, api_key: str, model: str): ...
+    async def diagnose(self, prompt: str) -> DiagnosisResult: ...
+
+# xeter/services/diagnosticer/llm/factory.py
+def get_provider(settings: DiagnosticerSettings) -> LLMProvider:
+    if settings.LLM_PROVIDER == "anthropic":
+        return AnthropicProvider(settings.ANTHROPIC_API_KEY, settings.LLM_MODEL)
+    elif settings.LLM_PROVIDER == "openai":
+        return OpenAIProvider(settings.OPENAI_API_KEY, settings.LLM_MODEL)
+    raise ValueError(f"Unknown LLM provider: {settings.LLM_PROVIDER}")
+```
+
+This gives full provider-agnosticism in ~80 lines with zero new dependencies beyond the two SDKs.
+
+---
+
+### Environment Configuration
+
+Use Pydantic `BaseSettings` (already available via `pydantic-settings`, installed transitively with FastAPI):
+
+```python
+from pydantic_settings import BaseSettings
+
+class DiagnosticerSettings(BaseSettings):
+    LLM_PROVIDER: str = "anthropic"           # "anthropic" | "openai"
+    LLM_MODEL: str = "claude-sonnet-4-5-20250929"
+    ANTHROPIC_API_KEY: str = ""
+    OPENAI_API_KEY: str = ""
+    LLM_MAX_TOKENS: int = 1024
+    LLM_TIMEOUT_SECONDS: float = 30.0
+
+    class Config:
+        env_file = ".env"
+```
+
+**Why pydantic-settings and not raw `os.getenv`:** Type coercion, defaults, and `.env` file support in one place. Already available — `pydantic-settings` is installed alongside `pydantic>=2.0`.
+
+---
+
+### Structured Output Schema
+
+The `Diagnostic` SQLAlchemy model (`shared/models.py`) already has:
+- `llm_backend: str` — store `f"{provider}/{model}"` (e.g. `"anthropic/claude-sonnet-4-5-20250929"`)
+- `result: dict` (JSON column) — store the serialized `DiagnosisResult`
+
+The Pydantic `DiagnosisResult` model lives in `xeter/services/diagnosticer/schemas.py` (new file) and is shared between the LLM provider and the DAL write path. No new PostgreSQL columns needed.
+
+---
+
+### What NOT to Add
+
+| Avoid | Why | Use Instead |
+|-------|-----|-------------|
+| `litellm` | 200MB / 300+ deps for a 2-provider service; import time ~1.2s | Direct `anthropic` + `openai` SDKs with hand-rolled adapter |
+| `instructor` | Adds dependency whose value (retry+parse) is already provided by native SDK `.parse()` methods | `client.messages.parse()` (Anthropic) / `client.beta.chat.completions.parse()` (OpenAI) |
+| `langchain` | 500MB+ ecosystem; brings its own abstractions that conflict with Xeter's minimal service pattern | Direct SDK calls |
+| `aiohttp` separately | `httpx` is already in pyproject.toml; both Anthropic and OpenAI SDKs use `httpx` internally | Nothing extra needed |
+| `tenacity` for retry | Both SDKs have built-in retry with exponential backoff (`max_retries` param on client construction) | `AsyncAnthropic(max_retries=3)` / `AsyncOpenAI(max_retries=3)` |
+
+---
+
+### Installation Delta (pyproject.toml additions only)
+
+```toml
+# Add to [project] dependencies in xeter/pyproject.toml:
+"anthropic>=0.96.0",
+"openai>=2.32.0",
+```
+
+No other changes to pyproject.toml needed.
+
+---
+
+### Version Compatibility
+
+| Package | Compatible With | Notes |
+|---------|-----------------|-------|
+| `anthropic>=0.96.0` | Python 3.9–3.14; `httpx>=0.25` | `httpx` already in pyproject.toml; no conflict |
+| `openai>=2.32.0` | Python 3.9–3.14; `httpx>=0.25` | Same `httpx` dep; no conflict |
+| `anthropic>=0.96.0` | `pydantic>=2.0` | `.parse()` requires Pydantic v2 BaseModel |
+| `openai>=2.32.0` | `pydantic>=2.0` | `.parse()` requires Pydantic v2 BaseModel; already at 2.12.5 |
+| Both SDKs | `fastapi==0.135.2` | No conflict; both are pure HTTP client libs |
+
+---
+
+### Sources (v1.2 Additions)
+
+- [PyPI: anthropic 0.96.0](https://pypi.org/project/anthropic/) — version verified 2026-04-20; HIGH confidence
+- [PyPI: openai 2.32.0](https://pypi.org/project/openai/) — version verified 2026-04-20; HIGH confidence
+- [PyPI: instructor 1.15.1](https://pypi.org/project/instructor/) — version verified 2026-04-20; considered and rejected
+- [Anthropic structured outputs docs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs) — `client.messages.parse()` pattern; HIGH confidence (official docs)
+- [Anthropic async client docs](https://github.com/anthropics/anthropic-sdk-python/blob/main/README.md) — `AsyncAnthropic` pattern; HIGH confidence (official GitHub)
+- [OpenAI structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs) — `client.beta.chat.completions.parse()` pattern; HIGH confidence (official docs)
+- [LiteLLM memory footprint](https://github.com/silvestrid/ullm) — 200MB / 1.2s import benchmarked vs ULLM; MEDIUM confidence (third-party benchmark)
+
+---
+
+## Base Platform Stack (Unchanged from v1.0/v1.1)
+
+---
 
 ### Python Runtime
 
@@ -152,7 +375,7 @@ The `opentelemetry-exporter-otlp` convenience meta-package installs both HTTP an
 | uvicorn[standard] | >=0.32 | ASGI server with uvloop | All FastAPI services |
 | python-jose[cryptography] | >=3.3 | JWT token generation/validation | Dashboard auth (Path A email/password) |
 | passlib[bcrypt] | >=1.7 | Password hashing | `api_keys.key_hash` and `users.password_hash` |
-| httpx | >=0.28 | Async HTTP client | Presenter → Diagnosticer calls; async test client for pytest |
+| httpx | >=0.28 | Async HTTP client | Presenter → Diagnosticer calls; async test client for pytest; also used internally by Anthropic and OpenAI SDKs |
 | pytest | >=8.3 | Test runner | All services |
 | pytest-asyncio | 1.3.0 | Async test support | Required for testing FastAPI async endpoints |
 | anyio | >=4.7 | Async test backend | Used by pytest-asyncio; pin to same version FastAPI depends on |
@@ -174,6 +397,8 @@ The `opentelemetry-exporter-otlp` convenience meta-package installs both HTTP an
 | aioboto3 | boto3 | Only in synchronous scripts (migrations, CLI tools) — never in async FastAPI handlers |
 | Vite + React | Next.js | Only if the dashboard needs public-facing pages, SSR for SEO, or server-side data fetching |
 | asyncpg + SQLAlchemy 2.0 | psycopg3 | Either works; asyncpg has a larger production track record in the FastAPI ecosystem |
+| Direct SDK adapter pattern | litellm | Only if adding 5+ providers and needing cost tracking, rate limiting, and observability built-in |
+| Direct SDK adapter pattern | instructor | Only if validation retry logic becomes complex across many providers |
 
 ---
 
@@ -191,6 +416,9 @@ The `opentelemetry-exporter-otlp` convenience meta-package installs both HTTP an
 | Next.js for the dashboard | SSR overhead with zero benefit for an authenticated SPA; couples frontend deployment to Node.js server | Vite + React |
 | Python 3.9 or 3.10 | clickhouse-connect deprecates 3.9; sentence-transformers 5.x requires >=3.10 but 3.12 avoids edge cases | Python 3.12 |
 | Python 3.13 in production | JIT is experimental; torch/embedding stack has patchy 3.13 support as of Q1 2026 | Python 3.12 |
+| litellm | 200MB memory footprint, 300+ transitive deps, 1.2s import — massive overhead for 2-provider service | Direct `anthropic` + `openai` SDKs |
+| langchain | 500MB+ ecosystem; own abstractions that conflict with Xeter's minimal DAL/service pattern | Direct SDK calls |
+| instructor | Duplicate of native SDK `.parse()` methods; adds dependency without capability | `client.messages.parse()` / `client.beta.chat.completions.parse()` |
 
 ---
 
@@ -217,7 +445,9 @@ pip install \
   python-jose[cryptography] \
   passlib[bcrypt] \
   python-dotenv \
-  structlog
+  structlog \
+  "anthropic>=0.96.0" \
+  "openai>=2.32.0"
 
 # Dev / test dependencies
 pip install \
@@ -252,6 +482,8 @@ npm install @tanstack/react-query tailwindcss
 | alembic==1.18.4 | sqlalchemy==2.0.48 | Alembic follows SQLAlchemy major version; both on 2.x is correct |
 | opentelemetry-sdk==1.40.0 | opentelemetry-exporter-otlp-proto-http==1.40.0 | Always pin sdk and exporter to the same release; mixed versions cause serialization errors |
 | Tailwind CSS v4 | shadcn/ui (latest) | shadcn/ui now supports Tailwind v4 natively; do not use Tailwind v3 with the latest shadcn install |
+| anthropic>=0.96.0 | pydantic==2.12.5, httpx | No conflict; uses httpx already in deps; `.parse()` requires Pydantic v2 |
+| openai>=2.32.0 | pydantic==2.12.5, httpx | No conflict; `.parse()` requires Pydantic v2; GPT-4o model required for structured outputs |
 
 ---
 
@@ -268,9 +500,12 @@ npm install @tanstack/react-query tailwindcss
 - Span detail: query ClickHouse span row + PostgreSQL flags + lazy-fetch S3 payloads via aioboto3
 - SSE endpoint: `StreamingResponse` with `text/event-stream` content type for flag-update and diagnostic-complete push events
 
-**Diagnosticer service (scaffolded, inactive in v1):**
-- Minimal FastAPI service; receives trace_id, returns 501 placeholder
-- Wire to Presenter now; activate in milestone 2
+**Diagnosticer service (v1.2 — LLM-powered):**
+- FastAPI service; `POST /diagnose` receives `span_id` + `tenant_id`
+- Context assembly: async-parallel fetch of span fields (ClickHouse), flags (PostgreSQL), S3 payloads (aioboto3)
+- LLM call: provider resolved from `LLM_PROVIDER` env var; `AsyncAnthropic` or `AsyncOpenAI` with structured output
+- Result persistence: write to `diagnostics` table (existing model) via SQLAlchemy async; `llm_backend = f"{provider}/{model}"`
+- Response: return `DiagnosisResult` JSON immediately (synchronous request-response; no background task needed given Diagnosticer is already isolated)
 
 **Python SDK:**
 - opentelemetry-sdk + opentelemetry-exporter-otlp-proto-http
@@ -282,29 +517,28 @@ npm install @tanstack/react-query tailwindcss
 
 ## Sources
 
+- [PyPI: anthropic 0.96.0](https://pypi.org/project/anthropic/) — version verified 2026-04-20; HIGH confidence
+- [PyPI: openai 2.32.0](https://pypi.org/project/openai/) — version verified 2026-04-20; HIGH confidence
+- [PyPI: instructor 1.15.1](https://pypi.org/project/instructor/) — version verified 2026-04-20; considered and rejected
+- [Anthropic structured outputs docs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs) — `client.messages.parse()` pattern; HIGH confidence (official docs, no beta header required)
+- [Anthropic async client (GitHub README)](https://github.com/anthropics/anthropic-sdk-python/blob/main/README.md) — `AsyncAnthropic` pattern; HIGH confidence
+- [OpenAI structured outputs guide](https://developers.openai.com/api/docs/guides/structured-outputs) — `client.beta.chat.completions.parse()` with Pydantic; HIGH confidence (official docs)
+- [LiteLLM memory vs ULLM benchmark](https://github.com/silvestrid/ullm) — 200MB / 1.2s import; MEDIUM confidence (third-party benchmark, consistent with community reports)
 - [PyPI: opentelemetry-sdk 1.40.0](https://pypi.org/project/opentelemetry-sdk/) — version verified March 2026
-- [PyPI: opentelemetry-exporter-otlp-proto-grpc](https://pypi.org/project/opentelemetry-exporter-otlp-proto-grpc/) — version 1.39.1 confirmed (1.40.0 aligned)
 - [PyPI: FastAPI 0.135.2](https://pypi.org/project/fastapi/) — verified March 2026
 - [PyPI: Pydantic 2.12.5](https://pypi.org/project/pydantic/) — verified
 - [PyPI: clickhouse-connect 0.15.0](https://pypi.org/project/clickhouse-connect/) — verified March 2026; deprecation notice on Python 3.9
 - [PyPI: sentence-transformers 5.3.0](https://pypi.org/project/sentence-transformers/) — verified March 2026; requires Python >=3.10
 - [PyPI: arq 0.27.0](https://pypi.org/project/arq/) — verified February 2026
-- [PyPI: redis 7.4.0](https://pypi.org/project/redis/) — verified March 2026
 - [PyPI: SQLAlchemy 2.0.48](https://pypi.org/project/sqlalchemy/) — verified March 2026
 - [PyPI: asyncpg 0.31.0](https://pypi.org/project/asyncpg/) — verified November 2025
 - [PyPI: Alembic 1.18.4](https://pypi.org/project/alembic/) — verified February 2026
 - [PyPI: aioboto3 15.5.0](https://pypi.org/project/aioboto3/) — verified October 2025
-- [ClickHouse Python integration docs](https://clickhouse.com/docs/integrations/python) — clickhouse-connect as official recommended driver — MEDIUM confidence (official source)
-- [Tinybird: clickhouse-connect vs clickhouse-driver](https://www.tinybird.co/blog/clickhouse-python-example) — MEDIUM confidence
-- [Leapcell: Celery vs ARQ](https://leapcell.io/blog/celery-versus-arq-choosing-the-right-task-queue-for-python-applications) — MEDIUM confidence
-- [BentoML: Best open-source embedding models 2026](https://www.bentoml.com/blog/a-guide-to-open-source-embedding-models) — MEDIUM confidence
-- [supermemory: embedding model benchmarks](https://supermemory.ai/blog/best-open-source-embedding-models-benchmarked-and-ranked/) — MEDIUM confidence (MiniLM-L6-v2 accuracy data)
-- [HackerNews: Don't use all-MiniLM-L6-v2](https://news.ycombinator.com/item?id=46081800) — MEDIUM confidence (community consensus)
-- [Leapcell: FastAPI + SQLAlchemy 2.0 + asyncpg](https://leapcell.io/blog/building-high-performance-async-apis-with-fastapi-sqlalchemy-2-0-and-asyncpg) — MEDIUM confidence
 - [shadcn/ui Vite installation](https://ui.shadcn.com/docs/installation/vite) — HIGH confidence (official docs)
 - [shadcn/ui Tailwind v4](https://ui.shadcn.com/docs/tailwind-v4) — HIGH confidence (official docs)
 - [OpenTelemetry Python docs](https://opentelemetry.io/docs/languages/python/) — HIGH confidence (official docs)
 
 ---
 *Stack research for: Xeter — AI agent observability SaaS*
-*Researched: 2026-03-27*
+*Base stack researched: 2026-03-27*
+*v1.2 Diagnosticer additions researched: 2026-04-20*

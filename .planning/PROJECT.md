@@ -37,14 +37,22 @@ When a tool call fails, tell the developer whether it was the model, the archite
 
 ### Active
 
-<!-- Next milestone scope -->
+<!-- Current milestone scope -->
 
-- [ ] LLM-powered Diagnosticer: root cause analysis reading full trace + flags, returning model/architecture/prompt diagnosis
-- [ ] TypeScript SDK
+- [ ] LLM-powered Diagnosticer: on-demand root cause analysis per span — verdict (model/architecture/prompt) + severity + affected field + recommended fix
+- [ ] Configurable LLM provider + model via env vars (provider-agnostic Diagnosticer)
+- [ ] Diagnosis results stored in PostgreSQL and rendered in SpanDetailPanel
 
-## Current Milestone: v1.2 (TBD)
+## Current Milestone: v1.2 Diagnosticer
 
-**Goal:** TBD — run `/gsd:new-milestone` to define.
+**Goal:** Wire the scaffolded Diagnosticer service to perform on-demand LLM root-cause analysis — reading flags, span fields, and S3 payloads — and surface structured diagnosis in the dashboard.
+
+**Target features:**
+- LLM context assembly: fetch flags, span fields, S3 payloads and build a structured prompt
+- Configurable LLM provider + model via env vars (Anthropic, OpenAI, or others)
+- PostgreSQL `diagnoses` table + DAL for storing structured results
+- Presenter endpoint to trigger diagnosis and retrieve results
+- SpanDetailPanel "Diagnose" button + diagnosis display (verdict, severity, affected field, fix)
 
 ### Out of Scope
 
@@ -100,4 +108,4 @@ When a tool call fails, tell the developer whether it was the model, the archite
 | Three-branch logic for `wrong_tool_called` | Old AND-gate suppressed high-score wrong-tool spans; three explicit branches cover all cases | ✓ Good — logic is explicit, tests cover all branches |
 
 ---
-*Last updated: 2026-04-20 after v1.1 milestone completion*
+*Last updated: 2026-04-20 after v1.2 milestone started*

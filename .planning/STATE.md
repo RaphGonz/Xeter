@@ -1,14 +1,14 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: Analyser Accuracy
-status: complete
+milestone: v1.2
+milestone_name: Diagnosticer
+status: defining_requirements
 last_updated: "2026-04-20"
 progress:
-  total_phases: 10
-  completed_phases: 10
-  total_plans: 31
-  completed_plans: 31
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
@@ -18,17 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-20)
 
 **Core value:** When a tool call fails, tell the developer whether it was the model, the architecture, or the prompt — and why.
-**Current focus:** Between milestones — v1.1 shipped 2026-04-18, ready for v1.2 planning
+**Current focus:** Defining requirements for v1.2 Diagnosticer
 
 ## Current Position
 
-v1.1 Analyser Accuracy: COMPLETE
-- Phase 7: wrong_args Rewrite — 5/5 plans ✓
-- Phase 8: wrong_tool Rewrite — 3/3 plans ✓
-- Phase 9: no_tool_used + wrong_tool_choice — 1/1 plan ✓
-- Phase 10: unnecessary_tool_call — 1/1 plan ✓
-
-Full-suite mean precision ≥ 95%. All 4 analyzer methods rewritten and calibrated.
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-04-20 — Milestone v1.2 started
 
 ## Accumulated Context
 
@@ -36,7 +33,7 @@ Full-suite mean precision ≥ 95%. All 4 analyzer methods rewritten and calibrat
 
 All decisions logged in PROJECT.md Key Decisions table.
 
-Key v1.1 decisions:
+Key v1.1 decisions carried forward:
 - Three-branch `_check_wrong_tool`: no_available_tools immediate flag, Case B better tool, Case C no appropriate tool
 - Threshold key `wrong_tool` renamed to `wrong_tool_called`
 - `tool_use_violation` windowed proximity deferred — `no_tool_used` covers the priority case
@@ -53,5 +50,5 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-20 — v1.1 milestone completed and archived.
-Next: `/gsd:new-milestone` to define v1.2.
+Last session: 2026-04-20 — v1.2 milestone started, scope confirmed (Diagnosticer only).
+Next: Define requirements → roadmap → `/gsd:plan-phase 11`

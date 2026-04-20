@@ -1,13 +1,13 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
+milestone: v1.1
 milestone_name: Analyser Accuracy
-status: unknown
-last_updated: "2026-04-18T20:30:09.991Z"
+status: complete
+last_updated: "2026-04-20"
 progress:
   total_phases: 10
-  completed_phases: 8
-  total_plans: 29
+  completed_phases: 10
+  total_plans: 31
   completed_plans: 31
 ---
 
@@ -15,37 +15,20 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-06)
+See: .planning/PROJECT.md (updated 2026-04-20)
 
 **Core value:** When a tool call fails, tell the developer whether it was the model, the architecture, or the prompt — and why.
-**Current focus:** v1.1 — Phase 8: wrong_tool Rewrite (Phase 7 complete)
+**Current focus:** Between milestones — v1.1 shipped 2026-04-18, ready for v1.2 planning
 
 ## Current Position
 
-Phase: 8 of 10 (wrong_tool Rewrite)
-Plan: 2 of 3 (08-02 complete — algorithm review gate presented, awaiting user approval)
-Status: Phase 8 in progress — checkpoint awaiting user approval
-Last activity: 2026-04-07 — Plan 08-02 complete: algorithm review checkpoint presented; three-branch logic verified in tool_call_analyzer.py and wrong_tool_called key confirmed in all 5 files
+v1.1 Analyser Accuracy: COMPLETE
+- Phase 7: wrong_args Rewrite — 5/5 plans ✓
+- Phase 8: wrong_tool Rewrite — 3/3 plans ✓
+- Phase 9: no_tool_used + wrong_tool_choice — 1/1 plan ✓
+- Phase 10: unnecessary_tool_call — 1/1 plan ✓
 
-Progress: [██░░░░░░░░] 20% (3/15 plans)
-
-## Performance Metrics
-
-**Velocity:**
-- Total plans completed: 0 (v1.1)
-- Average duration: —
-- Total execution time: —
-
-**By Phase:**
-
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| - | - | - | - |
-
-*Updated after each plan completion*
-| Phase 07-wrong-args-rewrite P01 | 14min | 1 tasks | 1 files |
-| Phase 07-wrong-args-rewrite P03 | 10min | 2 tasks | 2 files |
-| Phase 08-wrong-tool-rewrite P01 | 12min | 2 tasks | 6 files |
+Full-suite mean precision ≥ 95%. All 4 analyzer methods rewritten and calibrated.
 
 ## Accumulated Context
 
@@ -53,19 +36,12 @@ Progress: [██░░░░░░░░] 20% (3/15 plans)
 
 All decisions logged in PROJECT.md Key Decisions table.
 
-Recent decisions affecting current work:
-- v1.1 start: SBERT cannot encode negation polarity — `_check_tool_use_violation` must use keyword regex only (no cosine)
-- v1.1 start: wrong_tool AND gate was inverted — fix is surgical (invert threshold direction, report gap not top_score)
-- v1.1 start: wrong_tool_args excluded from P/R calibration removed — rewrite enables re-inclusion once low_confidence flag is gone
-- 07-02: HYBRID-01 utility functions placed module-level in base.py; stdlib set ops only, no new deps; default weight=0.5
-- 07-04: detection_patterns.yml uses hybrid detection — static tool_triggering_terms list (fallback) + dynamic tool-name BOW matching (tokenise on _, -, camelCase; set intersection with negation window); stages OR-combined; no embeddings needed
-- 07-01: Use set() not {} for BINARY_FLAG_TYPES (Python {} is always dict); guard None P/R for binary types in serialization
-- [Phase 07-wrong-args-rewrite]: detection_patterns.yml hybrid design: tool_triggering_terms is static fallback; Phase 9 also tokenises actual span tool name (split on _, -, camelCase) and checks BOW set intersection against negation window; stages OR-combined; no embeddings
-- [Phase 07-03]: ARGS-05: low_confidence removed from wrong_tool_args flag detail; enables re-inclusion in calibration
-- [Phase 07-03]: Two-path _check_wrong_args: error-regex priority (ARGS-01) fires score=1.0 without embedding; semantic path uses hybrid_score on flattened arg values (not raw JSON)
-- [Phase 07-05]: wrong_tool_args calibration: threshold=0.30, P=0.40, R=0.90 (6 hill-climb steps); P=0.40 is the ceiling for pure embedding approach — entity matching needed for higher precision; recall prioritised (false negatives worse than false positives); ARGS-06 satisfied
-- [Phase 08-wrong-tool-rewrite]: Three-branch _check_wrong_tool: no_available_tools immediate flag (WTOOL-03), Case B better tool, Case C no appropriate tool — replaces inverted AND gate
-- [Phase 08-wrong-tool-rewrite]: Threshold key wrong_tool renamed to wrong_tool_called; env var WORKER_THRESHOLD_WRONG_TOOL -> WORKER_THRESHOLD_WRONG_TOOL_CALLED
+Key v1.1 decisions:
+- Three-branch `_check_wrong_tool`: no_available_tools immediate flag, Case B better tool, Case C no appropriate tool
+- Threshold key `wrong_tool` renamed to `wrong_tool_called`
+- `tool_use_violation` windowed proximity deferred — `no_tool_used` covers the priority case
+- Social centroid chosen for `unnecessary_tool_call` over necessity-delta (simpler, P=1.0)
+- Hybrid scoring (50/50 cosine+BOW) as shared utility in `base.py`
 
 ### Pending Todos
 
@@ -77,8 +53,5 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-11
-Stopped at: 08-03 calibration — second run completed (P=0.607, R=0.548). Still below target.
-Two open concerns: (1) wrong_tool_args FPs need verbose output to diagnose (--verbose broken);
-(2) unnecessary_tool_call P=0.286 at threshold floor — signal needs redesign, not calibration.
-Resume file: .planning/phases/08-wrong-tool-rewrite/.continue-here.md
+Last session: 2026-04-20 — v1.1 milestone completed and archived.
+Next: `/gsd:new-milestone` to define v1.2.

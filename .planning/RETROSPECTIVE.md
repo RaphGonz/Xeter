@@ -55,8 +55,54 @@
 
 ---
 
+## Milestone: v1.1 — Analyser Accuracy
+
+**Shipped:** 2026-04-18
+**Phases:** 4 (Phases 7–10) | **Plans:** 10 | **Timeline:** 12 days (2026-04-06 → 2026-04-18)
+
+### What Was Built
+
+- Phase 7 (wrong_args): Error-regex priority path + hybrid cosine+BOW on flattened arg values; shared `bow_score`/`hybrid_score` utility; `calibrate.py` per-method isolation
+- Phase 8 (wrong_tool): Three-branch `_check_wrong_tool` (called+available, called+no-available, not-called); threshold renamed `wrong_tool_called`; calibrated P=1.0, R=0.5
+- Phase 9 (no_tool_used): Simplified rank-based `no_tool_used` (max hybrid score vs available tools); P=1.0, R=0.333 at threshold=0.15
+- Phase 10 (unnecessary_tool_call): Social centroid signal flags conversational/phatic prompts where tool call was unnecessary; P=1.0, R=0.667 at threshold=0.25; full-suite mean precision ≥ 95%
+
+### What Worked
+
+- **Error-regex priority path in wrong_args**: firing score=1.0 on obvious API errors without any embedding was the right call — simpler, faster, higher precision
+- **Hybrid scoring as shared utility**: `bow_score` + `hybrid_score` in `base.py` gave all four rewritten methods a consistent foundation without duplication
+- **Per-method calibration isolation (`--flag-type`)**: being able to calibrate a single flag type in isolation (rather than running the full suite) dramatically shortened the feedback loop
+- **Pivoting away from windowed proximity for tool_use_violation**: recognising that SBERT can't encode negation polarity early prevented building a fragile detector
+- **Social centroid for unnecessary_tool_call**: simpler conceptually than necessity delta, and calibrated cleanly to P=1.0
+
+### What Was Inefficient
+
+- **Requirements written before pivots were clear**: NOTOOL/EXTOOL requirements were detailed and specific before the approach was validated; the implementation pivoted significantly and the requirements never tracked it
+- **Phase 9 and 10 executed without formal plans**: both were handled in a single unplanned summary each; this worked but makes it harder to trace decisions to specific tasks
+- **calibrate.py `--verbose` flag was broken mid-milestone**: diagnosing FPs required workarounds; should be fixed before next calibration-heavy milestone
+
+### Patterns Established
+
+- `BINARY_FLAG_TYPES` set in `calibrate.py`: separates threshold-based from rank-based detectors; add future binary detectors here without code changes
+- Social centroid fixture (`social_centroid.npy`): precomputed centroid of phatic/conversational prompts; a reusable pattern for prompt-class classification
+- Three-branch explicit logic for detector methods: prefer explicit branch per case over combined conditions — tests map 1:1 to branches
+
+### Key Lessons
+
+- Validate the signal before writing detailed requirements — spike the approach first, then spec
+- Plans are valuable even for short single-plan phases: they force pre-thinking the approach before execution
+- Calibration-first ordering (implement → calibrate → next phase) works well; don't try to calibrate multiple methods at once
+
+### Cost Observations
+
+- Sessions: ~8 across 12 days
+- Notable: Phases 9 and 10 were collapsed into single-session executions without formal plans — saved overhead but reduced traceability
+
+---
+
 ## Cross-Milestone Trends
 
 | Milestone | Phases | Plans | Days | LOC | Key Pattern |
 |-----------|--------|-------|------|-----|-------------|
 | v1.0 MVP | 6 | 21 | 12 | ~12,660 | Bottom-up strict ordering |
+| v1.1 Analyser Accuracy | 4 | 10 | 12 | ~11,148 Py | One method at a time, calibrate before next |

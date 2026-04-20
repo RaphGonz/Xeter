@@ -18,7 +18,7 @@ When a tool call fails, tell the developer whether it was the model, the archite
 
 - ✓ Python SDK that instruments agent code and emits OTel spans to the Analyser — v1.0
 - ✓ Analyser receives spans, stores them in ClickHouse (batched), S3 (large payloads), and enqueues for async embedding analysis — v1.0
-- ✓ Heuristic flagging: vector similarity across 5 dimensions (prompt vs tool_name, tool_description, response, available_tools ranking, tool_arguments); flag types: wrong_tool, wrong_tool_args, no_tool, excessive_tool, parsing_error — v1.0
+- ✓ Heuristic flagging: vector similarity across 5 dimensions; flag types: wrong_tool, wrong_tool_args, no_tool, excessive_tool, parsing_error — v1.0
 - ✓ Flags stored as append-only rows in PostgreSQL with score and detail; flag_type is open string (no enum) — v1.0
 - ✓ Large text payloads stored in S3 with reference keys in ClickHouse; tool_arguments inline as JSON — v1.0
 - ✓ Redis queue decoupling ingestion from embedding workers — v1.0
@@ -28,25 +28,23 @@ When a tool call fails, tell the developer whether it was the model, the archite
 - ✓ Multi-tenancy: tenant_id on all tables, RLS in PostgreSQL, tenant guard in DAL — v1.0
 - ✓ Diagnosticer service scaffolded (501 placeholder, wired to Presenter) — v1.0
 - ✓ Docker Compose for local development (ClickHouse, PostgreSQL, Redis, MinIO, backend, frontend) — v1.0
+- ✓ `_check_wrong_args` rewritten with error-regex priority path + hybrid cosine+BOW on flattened arg values — v1.1
+- ✓ `_check_wrong_tool` rewritten with three-branch logic (called+available, called+no-available, not-called); threshold key `wrong_tool_called` — v1.1
+- ✓ `_check_no_tool` → `no_tool_used`: rank-based, flags when prompt overlaps with available tools and none called — v1.1
+- ✓ `_check_excessive_tool` → `unnecessary_tool_call`: social centroid signal flags tool calls on conversational/phatic prompts — v1.1
+- ✓ Shared hybrid scoring utility (`bow_score` + `hybrid_score`) in `base.py` (HYBRID-01) — v1.1
+- ✓ `calibrate.py` per-method isolation (`--flag-type`) and `BINARY_FLAG_TYPES` for non-threshold detectors — v1.1
 
 ### Active
 
-<!-- v1.1 scope — Analyser Accuracy -->
+<!-- Next milestone scope -->
 
-- [ ] Redesign `_check_wrong_tool` with correct conceptual signal
-- [ ] Redesign `_check_wrong_args` with correct conceptual signal
-- [ ] Split `_check_no_tool` into two methods: capability gap (tool needed, none called) + tool-use violation (prompt forbids tools, tool called anyway)
-- [ ] Redesign `_check_excessive_tool` with span-local multi-signal approach (prompt vs each called tool, per-span)
+- [ ] LLM-powered Diagnosticer: root cause analysis reading full trace + flags, returning model/architecture/prompt diagnosis
+- [ ] TypeScript SDK
 
-## Current Milestone: v1.1 Analyser Accuracy
+## Current Milestone: v1.2 (TBD)
 
-**Goal:** Replace the four conceptually-wrong heuristic check methods in ToolCallAnalyzer with research-backed, correctly-reasoned implementations — one method at a time, user-piloted.
-
-**Target features:**
-- Redesigned `_check_wrong_tool`
-- Redesigned `_check_wrong_args`
-- Split `_check_no_tool` → `_check_no_tool` + `_check_tool_use_violation`
-- Redesigned `_check_excessive_tool` (span-local signals only)
+**Goal:** TBD — run `/gsd:new-milestone` to define.
 
 ### Out of Scope
 
@@ -61,11 +59,11 @@ When a tool call fails, tell the developer whether it was the model, the archite
 
 ## Context
 
-- v1.0 shipped 2026-04-04: full pipeline operational locally via Docker Compose
-- ~12,660 LOC (10,400 Python + 2,255 TypeScript), 219 files
+- v1.0 shipped 2026-04-04, v1.1 shipped 2026-04-18: full pipeline operational locally via Docker Compose; all 4 analyzer methods rewritten
+- ~11,148 LOC Python + 2,255 TypeScript; flag types: `wrong_tool_called`, `wrong_tool_args`, `no_tool_used`, `unnecessary_tool_call`, `parsing_error`
 - Tech stack: Python 3.12, FastAPI, ClickHouse, PostgreSQL (RLS), Redis, MinIO (S3), Next.js 15, sentence-transformers (all-MiniLM-L6-v2)
-- Architecture: Analyser (ingestion) → Redis queue → Worker (embedding) → Presenter (read/auth) → View (Next.js); Diagnosticer scaffolded
-- Calibration: precision target 80%; wrong_tool_args excluded from P/R (low-confidence by design)
+- Architecture: Analyser (ingestion) → Redis queue → Worker (embedding+flagging) → Presenter (read/auth) → View (Next.js); Diagnosticer scaffolded
+- Calibration: precision target 80%; `wrong_tool_called` is binary (no threshold sweep); full-suite mean precision ≥ 95%
 - Main adversary: Langfuse — open-source, self-hostable, but doesn't diagnose root cause
 - Solo developer; Python primary language
 
@@ -97,6 +95,9 @@ When a tool call fails, tell the developer whether it was the model, the archite
 | Worker Dockerfile pre-bakes sentence-transformers model | Avoids 80MB runtime download on first span | ✓ Good — image startup fast |
 | wrong_tool_args excluded from P/R calibration | Low-confidence by design; terse JSON produces unreliable cosine similarity | ✓ Good — calibration more meaningful |
 | BRPOP with 5s retry backoff in worker | Race: Redis delivers span_id before ClickHouse batcher flush (5s interval) | ✓ Good — fixed silent "span not found" |
+| Skip `tool_use_violation` windowed proximity approach | `no_tool_used` covers the priority case cleanly; proximity detection adds complexity for marginal gain | ✓ Good — simpler and calibrated well |
+| Social centroid for `unnecessary_tool_call` | Necessity-delta approach was theoretically sound but hard to calibrate; social centroid is interpretable and P=1.0 | ✓ Good — R=0.667 at threshold=0.25 |
+| Three-branch logic for `wrong_tool_called` | Old AND-gate suppressed high-score wrong-tool spans; three explicit branches cover all cases | ✓ Good — logic is explicit, tests cover all branches |
 
 ---
-*Last updated: 2026-04-06 after v1.1 milestone start*
+*Last updated: 2026-04-20 after v1.1 milestone completion*

@@ -23,10 +23,26 @@
 
 ## v1.1 Analyser Accuracy (Shipped: 2026-04-18)
 
-**Phases completed:** 10 phases, 29 plans, 8 tasks
+**Phases completed:** 4 phases (Phases 7–10), 10 plans
+**Timeline:** 2026-04-06 → 2026-04-18 (12 days)
+**Code:** ~11,148 LOC Python (down from v1.0 due to analyzer rewrite; TypeScript unchanged)
 
 **Key accomplishments:**
-- (none recorded)
+- `_check_wrong_args` rewritten with two-path detection: error-regex priority (no embedding) + hybrid cosine+BOW on flattened arg values; `low_confidence` flag removed
+- Shared `bow_score` + `hybrid_score` utility functions added to `base.py` (HYBRID-01) — foundation for all v1.1 similarity rewrites
+- `calibrate.py` extended with `--flag-type` isolation CLI arg and `BINARY_FLAG_TYPES` set for non-threshold detectors
+- `_check_wrong_tool` rewritten with three-branch logic (tool called + tools available, tool called + no tools available, no tool called); threshold renamed `wrong_tool_called`
+- `_check_no_tool` simplified to `no_tool_used`: rank-based detector, P=1.000, R=0.333 at threshold=0.15
+- `_check_excessive_tool` replaced by `unnecessary_tool_call`: social centroid signal flags tool calls on conversational prompts; P=1.000, R=0.667 at threshold=0.25
+- Full calibration suite: all 4 methods calibrated with P/R benchmarks; full-suite mean precision ≥ 95%
+
+**Known scope changes (accepted pivots):**
+- `tool_use_violation` (windowed proximity detection) deferred — `no_tool_used` covers the priority case cleanly
+- `excessive_tool` necessity-delta approach replaced by social centroid — simpler, calibrated better
+
+**Archive:**
+- Roadmap: `.planning/milestones/v1.1-ROADMAP.md`
+- Requirements: `.planning/milestones/v1.1-REQUIREMENTS.md`
 
 ---
 

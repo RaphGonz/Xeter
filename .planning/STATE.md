@@ -54,5 +54,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-21 — v1.2 roadmap defined, Phases 11–13 added.
+Last session: 2026-04-21 — Phase 11 context gathered.
+Stopped at: Context complete, ready to plan Phase 11.
+Resume file: .planning/phases/11-diagnosticer-backend/11-CONTEXT.md
 Next: `/gsd:plan-phase 11`

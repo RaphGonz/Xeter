@@ -36,7 +36,7 @@ See `.planning/milestones/v1.1-ROADMAP.md` for full phase details.
 
 ### 📋 v1.2 Diagnosticer (Phases 11–13)
 
-- [ ] Phase 11: Diagnosticer Backend (0/? plans) — not started
+- [ ] Phase 11: Diagnosticer Backend (0/4 plans) — not started
 - [ ] Phase 12: Presenter Integration (0/? plans) — not started
 - [ ] Phase 13: Frontend Diagnosis UI (0/? plans) — not started
 
@@ -44,10 +44,13 @@ See `.planning/milestones/v1.1-ROADMAP.md` for full phase details.
 
 **Goal:** Implement core Diagnosticer service — `diagnoses` table + DAL, LLM context assembly, configurable provider/model via env vars, root-cause analysis logic
 **Depends on:** Phase 10
-**Plans:** 0 plans
+**Plans:** 4 plans
 
 Plans:
-- [ ] TBD (run `/gsd:plan-phase 11` to break down)
+- [ ] 11-01-PLAN.md — DB foundation: diagnoses table migration, Diagnosis ORM model, LLM SDK deps
+- [ ] 11-02-PLAN.md — LLM provider factory: AnthropicProvider, OpenAIProvider, OllamaProvider
+- [ ] 11-03-PLAN.md — DAL + context assembly: DiagnosisRepository, assemble_context()
+- [ ] 11-04-PLAN.md — Endpoint wire-up: real POST /diagnose + unit tests
 
 #### Phase 12: Presenter Integration
 
@@ -81,6 +84,6 @@ Plans:
 | 8. wrong_tool Rewrite | v1.1 | 3/3 | Complete | 2026-04-18 |
 | 9. no_tool_used + wrong_tool_choice | v1.1 | 1/1 | Complete | 2026-04-18 |
 | 10. unnecessary_tool_call | v1.1 | 1/1 | Complete | 2026-04-18 |
-| 11. Diagnosticer Backend | v1.2 | 0/? | Not started | — |
+| 11. Diagnosticer Backend | v1.2 | 0/4 | Not started | — |
 | 12. Presenter Integration | v1.2 | 0/? | Not started | — |
 | 13. Frontend Diagnosis UI | v1.2 | 0/? | Not started | — |

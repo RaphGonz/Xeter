@@ -4,7 +4,7 @@
 
 - ✅ **v1.0 MVP** — Phases 1–6 (shipped 2026-04-04)
 - ✅ **v1.1 Analyser Accuracy** — Phases 7–10 (shipped 2026-04-18)
-- 📋 **v1.2 TBD** — Phases 11+ (planned)
+- 📋 **v1.2 Diagnosticer** — Phases 11–13 (in progress)
 
 ## Phases
 
@@ -34,9 +34,38 @@ See `.planning/milestones/v1.1-ROADMAP.md` for full phase details.
 
 </details>
 
-### 📋 v1.2 TBD (Planned)
+### 📋 v1.2 Diagnosticer (Phases 11–13)
 
-Run `/gsd:new-milestone` to define the next milestone.
+- [ ] Phase 11: Diagnosticer Backend (0/? plans) — not started
+- [ ] Phase 12: Presenter Integration (0/? plans) — not started
+- [ ] Phase 13: Frontend Diagnosis UI (0/? plans) — not started
+
+#### Phase 11: Diagnosticer Backend
+
+**Goal:** Implement core Diagnosticer service — `diagnoses` table + DAL, LLM context assembly, configurable provider/model via env vars, root-cause analysis logic
+**Depends on:** Phase 10
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run `/gsd:plan-phase 11` to break down)
+
+#### Phase 12: Presenter Integration
+
+**Goal:** Wire Presenter to Diagnosticer — trigger endpoint, retrieve endpoint, inter-service communication
+**Depends on:** Phase 11
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run `/gsd:plan-phase 12` to break down)
+
+#### Phase 13: Frontend Diagnosis UI
+
+**Goal:** SpanDetailPanel "Diagnose" button + structured diagnosis display (verdict, severity, affected field, recommended fix)
+**Depends on:** Phase 12
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run `/gsd:plan-phase 13` to break down)
 
 ## Progress
 
@@ -52,3 +81,6 @@ Run `/gsd:new-milestone` to define the next milestone.
 | 8. wrong_tool Rewrite | v1.1 | 3/3 | Complete | 2026-04-18 |
 | 9. no_tool_used + wrong_tool_choice | v1.1 | 1/1 | Complete | 2026-04-18 |
 | 10. unnecessary_tool_call | v1.1 | 1/1 | Complete | 2026-04-18 |
+| 11. Diagnosticer Backend | v1.2 | 0/? | Not started | — |
+| 12. Presenter Integration | v1.2 | 0/? | Not started | — |
+| 13. Frontend Diagnosis UI | v1.2 | 0/? | Not started | — |

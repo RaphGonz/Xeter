@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Diagnosticer
-status: defining_requirements
-last_updated: "2026-04-20"
+status: ready_to_plan
+last_updated: "2026-04-21"
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -18,16 +18,20 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-20)
 
 **Core value:** When a tool call fails, tell the developer whether it was the model, the architecture, or the prompt — and why.
-**Current focus:** Defining requirements for v1.2 Diagnosticer
+**Current focus:** Phase 11 — Diagnosticer Backend
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-04-20 — Milestone v1.2 started
+Phase: 11 of 13 — Diagnosticer Backend
+Plan: — (not yet planned)
+Status: Ready to plan
+Last activity: 2026-04-21 — v1.2 roadmap defined (Phases 11–13)
 
 ## Accumulated Context
+
+### Roadmap Evolution
+
+- Phases 11–13 added: Diagnosticer Backend → Presenter Integration → Frontend Diagnosis UI
 
 ### Decisions
 
@@ -50,5 +54,5 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-20 — v1.2 milestone started, scope confirmed (Diagnosticer only).
-Next: Define requirements → roadmap → `/gsd:plan-phase 11`
+Last session: 2026-04-21 — v1.2 roadmap defined, Phases 11–13 added.
+Next: `/gsd:plan-phase 11`

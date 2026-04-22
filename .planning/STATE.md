@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Diagnosticer
 status: ready_to_plan
-last_updated: "2026-04-21"
+last_updated: "2026-04-22"
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 0
-  completed_plans: 0
+  completed_plans: 2
 ---
 
 # Project State
@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-04-20)
 ## Current Position
 
 Phase: 11 of 13 — Diagnosticer Backend
-Plan: — (not yet planned)
-Status: Ready to plan
-Last activity: 2026-04-21 — v1.2 roadmap defined (Phases 11–13)
+Plan: 02 complete (LLM provider factory)
+Status: In progress
+Last activity: 2026-04-22 — Plans 01 and 02 complete
 
 ## Accumulated Context
 
@@ -44,6 +44,12 @@ Key v1.1 decisions carried forward:
 - Social centroid chosen for `unnecessary_tool_call` over necessity-delta (simpler, P=1.0)
 - Hybrid scoring (50/50 cosine+BOW) as shared utility in `base.py`
 
+### Key Decisions (Phase 11)
+
+- Lazy imports in get_llm_client() — only selected provider SDK imported at runtime
+- OllamaProvider uses Pydantic _DiagnosisOutput for format= schema generation and validation
+- AnthropicProvider iterates all content blocks (not content[0]) to handle text blocks before tool_use
+
 ### Pending Todos
 
 None.
@@ -54,7 +60,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-21 — Phase 11 context gathered.
-Stopped at: Context complete, ready to plan Phase 11.
-Resume file: .planning/phases/11-diagnosticer-backend/11-CONTEXT.md
-Next: `/gsd:plan-phase 11`
+Last session: 2026-04-22 — Plans 11-01 and 11-02 executed.
+Stopped at: Completed 11-02-PLAN.md (LLM provider factory).
+Resume file: .planning/phases/11-diagnosticer-backend/11-02-SUMMARY.md
+Next: Plan 03 (context assembly) or continue with next wave plan.

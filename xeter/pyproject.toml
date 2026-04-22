@@ -27,6 +27,12 @@ dependencies = [
     "boto3>=1.35.0",
     "python-jose[cryptography]>=3.3",
     "matplotlib>=3.8",
+    "redis>=5.0",
+    "numpy>=1.26",
+    "spacy>=3.7",
+    "anthropic==0.86.0",
+    "openai==2.22.0",
+    "ollama",
 ]
 
 [tool.pytest.ini_options]

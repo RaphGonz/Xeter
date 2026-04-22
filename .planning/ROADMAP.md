@@ -44,7 +44,7 @@ See `.planning/milestones/v1.1-ROADMAP.md` for full phase details.
 
 **Goal:** Implement core Diagnosticer service — `diagnoses` table + DAL, LLM context assembly, configurable provider/model via env vars, root-cause analysis logic
 **Depends on:** Phase 10
-**Plans:** 1/4 plans executed
+**Plans:** 2/4 plans executed
 
 Plans:
 - [ ] 11-01-PLAN.md — DB foundation: diagnoses table migration, Diagnosis ORM model, LLM SDK deps
@@ -84,6 +84,6 @@ Plans:
 | 8. wrong_tool Rewrite | v1.1 | 3/3 | Complete | 2026-04-18 |
 | 9. no_tool_used + wrong_tool_choice | v1.1 | 1/1 | Complete | 2026-04-18 |
 | 10. unnecessary_tool_call | v1.1 | 1/1 | Complete | 2026-04-18 |
-| 11. Diagnosticer Backend | 1/4 | In Progress|  | — |
+| 11. Diagnosticer Backend | 2/4 | In Progress|  | — |
 | 12. Presenter Integration | v1.2 | 0/? | Not started | — |
 | 13. Frontend Diagnosis UI | v1.2 | 0/? | Not started | — |

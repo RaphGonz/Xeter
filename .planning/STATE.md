@@ -1,13 +1,13 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2
+milestone: v1.0
 milestone_name: Diagnosticer
-status: ready_to_plan
-last_updated: "2026-04-22"
+status: unknown
+last_updated: "2026-04-22T17:50:06.778Z"
 progress:
   total_phases: 3
   completed_phases: 0
-  total_plans: 0
+  total_plans: 4
   completed_plans: 2
 ---
 
@@ -43,6 +43,8 @@ Key v1.1 decisions carried forward:
 - `tool_use_violation` windowed proximity deferred — `no_tool_used` covers the priority case
 - Social centroid chosen for `unnecessary_tool_call` over necessity-delta (simpler, P=1.0)
 - Hybrid scoring (50/50 cosine+BOW) as shared utility in `base.py`
+- [Phase 11-diagnosticer-backend]: String (not PG enum) for verdict/severity — avoids migration pain, consistent with FLAG-03
+- [Phase 11-diagnosticer-backend]: diagnoses table distinct from legacy diagnostics — both coexist, neither modified
 
 ### Key Decisions (Phase 11)
 

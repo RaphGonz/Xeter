@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Diagnosticer
 status: unknown
-last_updated: "2026-04-22T18:08:14Z"
+last_updated: "2026-04-22T18:33:57Z"
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 4
-  completed_plans: 3
+  completed_plans: 4
 ---
 
 # Project State
@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-04-20)
 ## Current Position
 
 Phase: 11 of 13 — Diagnosticer Backend
-Plan: 03 complete (DAL and context assembly)
-Status: In progress
-Last activity: 2026-04-22 — Plans 01, 02, and 03 complete
+Plan: 04 complete (Diagnose endpoint + unit tests)
+Status: Phase 11 complete
+Last activity: 2026-04-22 — Plans 01, 02, 03, and 04 complete
 
 ## Accumulated Context
 
@@ -58,6 +58,12 @@ Key v1.1 decisions carried forward:
 - S3 timeout (5s) uses asyncio.wait_for covering both parallel fetches — substitutes '[S3 fetch timed out]' rather than raising
 - Flags and S3 fetches run in parallel via asyncio.gather to minimize latency
 
+### Key Decisions (Phase 11, Plan 04)
+
+- autouse pytest fixture patches get_async_engine and get_async_session_factory at module level so TestClient lifespan never hits real PostgreSQL
+- get_ch_client overridden via app.dependency_overrides (not module-level patch) — FastAPI resolves Depends at request dispatch time
+- verify_session_token defined inline in main.py to keep Diagnosticer self-contained; mirrors Presenter deps.py pattern
+
 ### Pending Todos
 
 None.
@@ -68,7 +74,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-22 — Plans 11-01, 11-02, and 11-03 executed.
-Stopped at: Completed 11-03-PLAN.md (DAL and context assembly).
-Resume file: .planning/phases/11-diagnosticer-backend/11-03-SUMMARY.md
-Next: Plan 04 (diagnose endpoint).
+Last session: 2026-04-22 — Plans 11-01, 11-02, 11-03, and 11-04 executed.
+Stopped at: Completed 11-04-PLAN.md (diagnose endpoint + unit tests).
+Resume file: .planning/phases/11-diagnosticer-backend/11-04-SUMMARY.md
+Next: Phase 12 (Presenter Integration).

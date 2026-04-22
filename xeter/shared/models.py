@@ -14,7 +14,7 @@ must be set at the start of each transaction by the data access layer.
 
 import uuid
 
-from sqlalchemy import UUID, DateTime, Float, ForeignKey, JSON, String, func
+from sqlalchemy import UUID, DateTime, Float, ForeignKey, JSON, String, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -129,6 +129,36 @@ class Diagnostic(Base):
     trace_id: Mapped[str] = mapped_column(String, nullable=False)
     llm_backend: Mapped[str | None] = mapped_column(String, nullable=True)
     result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class Diagnosis(Base):
+    """LLM root-cause diagnosis for a span. Added in Phase 11 (v1.2 Diagnosticer).
+
+    Distinct from the legacy `Diagnostic` / `diagnostics` placeholder table.
+    Columns use String (not PG enum) for verdict and severity — avoids migration
+    pain on value changes (same rationale as FLAG-03 for flag_type).
+    """
+
+    __tablename__ = "diagnoses"
+
+    diagnosis_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=func.gen_random_uuid(),
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    span_id: Mapped[str] = mapped_column(String, nullable=False)
+    trace_id: Mapped[str] = mapped_column(String, nullable=False)
+    verdict: Mapped[str] = mapped_column(String, nullable=False)
+    severity: Mapped[str] = mapped_column(String, nullable=False)
+    affected_field: Mapped[str | None] = mapped_column(String, nullable=True)
+    fix: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_llm_response: Mapped[str | None] = mapped_column(Text, nullable=True)
+    model_used: Mapped[str] = mapped_column(String, nullable=False)
+    provider_used: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

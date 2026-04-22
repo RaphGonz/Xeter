@@ -84,6 +84,6 @@ Plans:
 | 8. wrong_tool Rewrite | v1.1 | 3/3 | Complete | 2026-04-18 |
 | 9. no_tool_used + wrong_tool_choice | v1.1 | 1/1 | Complete | 2026-04-18 |
 | 10. unnecessary_tool_call | v1.1 | 1/1 | Complete | 2026-04-18 |
-| 11. Diagnosticer Backend | 4/4 | Complete   | 2026-04-22 | — |
+| 11. Diagnosticer Backend | 4/4 | Complete    | 2026-04-22 | — |
 | 12. Presenter Integration | v1.2 | 0/? | Not started | — |
 | 13. Frontend Diagnosis UI | v1.2 | 0/? | Not started | — |

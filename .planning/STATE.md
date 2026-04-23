@@ -74,7 +74,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-22 — Plans 11-01, 11-02, 11-03, and 11-04 executed.
-Stopped at: Completed 11-04-PLAN.md (diagnose endpoint + unit tests).
-Resume file: .planning/phases/11-diagnosticer-backend/11-04-SUMMARY.md
-Next: Phase 12 (Presenter Integration).
+Last session: 2026-04-23 — Phase 12 context gathered.
+Stopped at: Phase 12 context captured, ready for planning.
+Resume file: .planning/phases/12-presenter-integration/12-CONTEXT.md
+Next: /gsd:plan-phase 12

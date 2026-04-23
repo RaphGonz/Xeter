@@ -37,7 +37,7 @@ See `.planning/milestones/v1.1-ROADMAP.md` for full phase details.
 ### 📋 v1.2 Diagnosticer (Phases 11–13)
 
 - [x] Phase 11: Diagnosticer Backend (0/4 plans) — not started (completed 2026-04-22)
-- [ ] Phase 12: Presenter Integration (0/2 plans) — not started
+- [x] Phase 12: Presenter Integration (0/2 plans) — not started (completed 2026-04-23)
 - [ ] Phase 13: Frontend Diagnosis UI (0/? plans) — not started
 
 #### Phase 11: Diagnosticer Backend
@@ -56,7 +56,7 @@ Plans:
 
 **Goal:** Wire Presenter to Diagnosticer — trigger endpoint, retrieve endpoint, inter-service communication
 **Depends on:** Phase 11
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 12-01-PLAN.md — DiagnosisService layer + real POST /diagnose + GET /diagnose/{span_id} router
@@ -86,5 +86,5 @@ Plans:
 | 9. no_tool_used + wrong_tool_choice | v1.1 | 1/1 | Complete | 2026-04-18 |
 | 10. unnecessary_tool_call | v1.1 | 1/1 | Complete | 2026-04-18 |
 | 11. Diagnosticer Backend | 4/4 | Complete    | 2026-04-22 | — |
-| 12. Presenter Integration | 1/2 | In Progress|  | — |
+| 12. Presenter Integration | 2/2 | Complete   | 2026-04-23 | — |
 | 13. Frontend Diagnosis UI | v1.2 | 0/? | Not started | — |

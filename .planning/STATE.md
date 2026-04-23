@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Diagnosticer
 status: unknown
-last_updated: "2026-04-23T20:12:00Z"
+last_updated: "2026-04-23T20:41:20.747Z"
 progress:
   total_phases: 3
-  completed_phases: 1
-  total_plans: 5
-  completed_plans: 5
+  completed_phases: 2
+  total_plans: 6
+  completed_plans: 6
 ---
 
 # Project State
@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-04-20)
 ## Current Position
 
 Phase: 12 of 13 — Presenter Integration
-Plan: 01 complete (DiagnosisService and router rewrite)
-Status: Phase 12 in progress
-Last activity: 2026-04-23 — Plan 01 complete
+Plan: 02 complete (diagnose endpoint test suite — 10 tests pass)
+Status: Phase 12 complete
+Last activity: 2026-04-23 — Plan 02 complete
 
 ## Accumulated Context
 
@@ -45,6 +45,8 @@ Key v1.1 decisions carried forward:
 - Hybrid scoring (50/50 cosine+BOW) as shared utility in `base.py`
 - [Phase 11-diagnosticer-backend]: String (not PG enum) for verdict/severity — avoids migration pain, consistent with FLAG-03
 - [Phase 11-diagnosticer-backend]: diagnoses table distinct from legacy diagnostics — both coexist, neither modified
+- [Phase 12-presenter-integration]: Patch target for POST /diagnose tests is service module; for GET tests is router module
+- [Phase 12-presenter-integration]: Added 10th test (GET 401) beyond the 9 specified for coverage symmetry
 
 ### Key Decisions (Phase 11)
 
@@ -84,7 +86,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-23 — Phase 12, Plan 01 executed.
-Stopped at: Completed 12-01-PLAN.md (DiagnosisService + router rewrite)
-Resume file: .planning/phases/12-presenter-integration/12-01-SUMMARY.md
-Next: Phase 12 Plan 02 (integration tests for POST/GET /diagnose)
+Last session: 2026-04-23 — Phase 12, Plan 02 executed.
+Stopped at: Completed 12-02-PLAN.md (diagnose endpoint test suite)
+Resume file: .planning/phases/12-presenter-integration/12-02-SUMMARY.md
+Next: Phase 13 — Frontend Diagnosis UI

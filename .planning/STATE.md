@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Diagnosticer
 status: unknown
-last_updated: "2026-04-22T19:44:50.889Z"
+last_updated: "2026-04-23T20:12:00Z"
 progress:
   total_phases: 3
   completed_phases: 1
-  total_plans: 4
-  completed_plans: 4
+  total_plans: 5
+  completed_plans: 5
 ---
 
 # Project State
@@ -22,10 +22,10 @@ See: .planning/PROJECT.md (updated 2026-04-20)
 
 ## Current Position
 
-Phase: 11 of 13 — Diagnosticer Backend
-Plan: 04 complete (Diagnose endpoint + unit tests)
-Status: Phase 11 complete
-Last activity: 2026-04-22 — Plans 01, 02, 03, and 04 complete
+Phase: 12 of 13 — Presenter Integration
+Plan: 01 complete (DiagnosisService and router rewrite)
+Status: Phase 12 in progress
+Last activity: 2026-04-23 — Plan 01 complete
 
 ## Accumulated Context
 
@@ -64,6 +64,16 @@ Key v1.1 decisions carried forward:
 - get_ch_client overridden via app.dependency_overrides (not module-level patch) — FastAPI resolves Depends at request dispatch time
 - verify_session_token defined inline in main.py to keep Diagnosticer self-contained; mirrors Presenter deps.py pattern
 
+### Key Decisions (Phase 12, Plan 01)
+
+- DiagnosisResponse.recommended_fix maps from Diagnosis.fix — ORM field kept as "fix", API surface uses more descriptive name
+- Tenant guard returns 404 for both not-found and not-mine spans — prevents tenant enumeration attack
+- _sanitize_diagnosticer_error uses 120-char slice, no regex — simpler and sufficient
+- DiagnoseRequest.flags field removed — Diagnosticer only accepts {span_id: str}
+- Service layer pattern: DiagnosisService instantiated fresh per request, all deps injected via trigger()
+- Error classification: TimeoutException → 504, HTTPError → 503, non-2xx → 502
+- Step-5 re-read pattern: after successful Diagnosticer forward, re-read from DB (not parse HTTP response)
+
 ### Pending Todos
 
 None.
@@ -74,7 +84,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-23 — Phase 12 context gathered.
-Stopped at: Phase 12 context captured, ready for planning.
-Resume file: .planning/phases/12-presenter-integration/12-CONTEXT.md
-Next: /gsd:plan-phase 12
+Last session: 2026-04-23 — Phase 12, Plan 01 executed.
+Stopped at: Completed 12-01-PLAN.md (DiagnosisService + router rewrite)
+Resume file: .planning/phases/12-presenter-integration/12-01-SUMMARY.md
+Next: Phase 12 Plan 02 (integration tests for POST/GET /diagnose)

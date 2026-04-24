@@ -38,7 +38,7 @@ See `.planning/milestones/v1.1-ROADMAP.md` for full phase details.
 
 - [x] Phase 11: Diagnosticer Backend (0/4 plans) — not started (completed 2026-04-22)
 - [x] Phase 12: Presenter Integration (0/2 plans) — not started (completed 2026-04-23)
-- [ ] Phase 13: Frontend Diagnosis UI (0/? plans) — not started
+- [ ] Phase 13: Frontend Diagnosis UI (0/2 plans) — not started
 
 #### Phase 11: Diagnosticer Backend
 
@@ -66,10 +66,11 @@ Plans:
 
 **Goal:** SpanDetailPanel "Diagnose" button + structured diagnosis display (verdict, severity, affected field, recommended fix)
 **Depends on:** Phase 12
-**Plans:** 0 plans
+**Plans:** 2 plans
 
 Plans:
-- [ ] TBD (run `/gsd:plan-phase 13` to break down)
+- [ ] 13-01-PLAN.md — Update api.ts types + rewrite FlagSection with DiagnosisCard and auto-load
+- [ ] 13-02-PLAN.md — Visual verification of diagnosis UI end-to-end
 
 ## Progress
 
@@ -87,4 +88,4 @@ Plans:
 | 10. unnecessary_tool_call | v1.1 | 1/1 | Complete | 2026-04-18 |
 | 11. Diagnosticer Backend | 4/4 | Complete    | 2026-04-22 | — |
 | 12. Presenter Integration | 2/2 | Complete    | 2026-04-23 | — |
-| 13. Frontend Diagnosis UI | v1.2 | 0/? | Not started | — |
+| 13. Frontend Diagnosis UI | v1.2 | 0/2 | Not started | — |

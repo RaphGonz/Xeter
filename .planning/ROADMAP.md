@@ -66,7 +66,7 @@ Plans:
 
 **Goal:** SpanDetailPanel "Diagnose" button + structured diagnosis display (verdict, severity, affected field, recommended fix)
 **Depends on:** Phase 12
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 - [ ] 13-01-PLAN.md — Update api.ts types + rewrite FlagSection with DiagnosisCard and auto-load
@@ -88,4 +88,4 @@ Plans:
 | 10. unnecessary_tool_call | v1.1 | 1/1 | Complete | 2026-04-18 |
 | 11. Diagnosticer Backend | 4/4 | Complete    | 2026-04-22 | — |
 | 12. Presenter Integration | 2/2 | Complete    | 2026-04-23 | — |
-| 13. Frontend Diagnosis UI | v1.2 | 0/2 | Not started | — |
+| 13. Frontend Diagnosis UI | 1/2 | In Progress|  | — |

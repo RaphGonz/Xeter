@@ -22,10 +22,10 @@ See: .planning/PROJECT.md (updated 2026-04-20)
 
 ## Current Position
 
-Phase: 12 of 13 — Presenter Integration
-Plan: 02 complete (diagnose endpoint test suite — 10 tests pass)
-Status: Phase 12 complete
-Last activity: 2026-04-23 — Plan 02 complete
+Phase: 13 of 13 — Frontend Diagnosis UI
+Plan: 01 complete (diagnosis panel with auto-load, DiagnosisCard, always-enabled button)
+Status: Phase 13 Plan 01 complete
+Last activity: 2026-04-24 — Plan 01 complete
 
 ## Accumulated Context
 
@@ -76,6 +76,13 @@ Key v1.1 decisions carried forward:
 - Error classification: TimeoutException → 504, HTTPError → 503, non-2xx → 502
 - Step-5 re-read pattern: after successful Diagnosticer forward, re-read from DB (not parse HTTP response)
 
+### Key Decisions (Phase 13, Plan 01)
+
+- getDiagnosis 404 suppressed silently — no prior diagnosis is normal initial state
+- Diagnose button never disabled — always-enabled allows immediate retry without UX friction
+- key={spanId} on FlagSection forces remount and state reset when selected span changes
+- cancelled flag pattern prevents setState after unmount in auto-load useEffect
+
 ### Pending Todos
 
 None.
@@ -86,7 +93,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-23 — Phase 12, Plan 02 executed.
-Stopped at: Completed 12-02-PLAN.md (diagnose endpoint test suite)
-Resume file: .planning/phases/12-presenter-integration/12-02-SUMMARY.md
-Next: Phase 13 — Frontend Diagnosis UI
+Last session: 2026-04-24 — Phase 13, Plan 01 executed.
+Stopped at: Completed 13-01-PLAN.md (frontend diagnosis UI — DiagnosisCard + auto-load FlagSection)
+Resume file: .planning/phases/13-frontend-diagnosis-ui/13-01-SUMMARY.md
+Next: Phase 13 complete — v1.2 Diagnosticer milestone done

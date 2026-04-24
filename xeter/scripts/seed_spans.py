@@ -165,14 +165,22 @@ async def main() -> None:
 
     # 2. Upload payloads to S3, then insert spans into ClickHouse
     import os
-    s3 = S3Client(
-        session=aioboto3.Session(
-            aws_access_key_id=os.environ["MINIO_ACCESS_KEY"],
-            aws_secret_access_key=os.environ["MINIO_SECRET_KEY"],
-        ),
-        bucket=os.environ.get("MINIO_BUCKET", "xeter-spans"),
-        endpoint_url=os.environ["MINIO_ENDPOINT"],
+    bucket = os.environ.get("MINIO_BUCKET", "xeter-spans")
+    endpoint_url = os.environ["MINIO_ENDPOINT"]
+    boto_session = aioboto3.Session(
+        aws_access_key_id=os.environ["MINIO_ACCESS_KEY"],
+        aws_secret_access_key=os.environ["MINIO_SECRET_KEY"],
     )
+    async with boto_session.client("s3", endpoint_url=endpoint_url) as s3_client:
+        try:
+            await s3_client.create_bucket(Bucket=bucket)
+            print(f"Created bucket: {bucket}")
+        except s3_client.exceptions.BucketAlreadyOwnedByYou:
+            pass
+        except Exception:
+            pass  # bucket already exists under a different exception type (MinIO)
+
+    s3 = S3Client(session=boto_session, bucket=bucket, endpoint_url=endpoint_url)
     ch = get_clickhouse_client()
 
     ch_rows = []

@@ -22,7 +22,8 @@ from sqlalchemy import text
 from xeter.shared.db.postgres import get_async_session_factory
 from xeter.shared.db.clickhouse import get_clickhouse_client
 from xeter.shared.models import Flag
-from xeter.services.analyser.s3 import get_s3_client
+import aioboto3
+from xeter.services.analyser.s3 import S3Client
 
 _DEV_TENANT_NAME = "dev-tenant"
 NOW = datetime.now(timezone.utc)
@@ -163,7 +164,15 @@ async def main() -> None:
         print(f"Tenant: {tenant_id}")
 
     # 2. Upload payloads to S3, then insert spans into ClickHouse
-    s3 = get_s3_client()
+    import os
+    s3 = S3Client(
+        session=aioboto3.Session(
+            aws_access_key_id=os.environ["MINIO_ACCESS_KEY"],
+            aws_secret_access_key=os.environ["MINIO_SECRET_KEY"],
+        ),
+        bucket=os.environ.get("MINIO_BUCKET", "xeter-spans"),
+        endpoint_url=os.environ["MINIO_ENDPOINT"],
+    )
     ch = get_clickhouse_client()
 
     ch_rows = []

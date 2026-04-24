@@ -22,6 +22,7 @@ from sqlalchemy import text
 from xeter.shared.db.postgres import get_async_session_factory
 from xeter.shared.db.clickhouse import get_clickhouse_client
 from xeter.shared.models import Flag
+from xeter.services.analyser.s3 import get_s3_client
 
 _DEV_TENANT_NAME = "dev-tenant"
 NOW = datetime.now(timezone.utc)
@@ -43,6 +44,7 @@ _SPANS_FIXTURE = [
         "tool_output": "342 rows",
         "prompt": "Count the number of active user sessions in the database.",
         "response": "There are 342 active user sessions currently.",
+        "raw_response": json.dumps({"id": "chatcmpl-tc123", "object": "chat.completion", "model": "gpt-4o", "choices": [{"index": 0, "message": {"role": "assistant", "content": None, "tool_calls": [{"id": "call_abc", "type": "function", "function": {"name": "execute_sql", "arguments": "{\"query\":\"SELECT COUNT(*) FROM sessions WHERE status='active'\"}"}}]}, "finish_reason": "tool_calls"}]}),
         "available_tools": json.dumps([
             {"name": "execute_sql", "description": "Execute a SQL query against a relational database"},
             {"name": "read_file", "description": "Read the contents of a file from the filesystem"},
@@ -67,6 +69,7 @@ _SPANS_FIXTURE = [
         "tool_output": "0 rows",
         "prompt": "Look up documentation for the React useEffect hook online.",
         "response": "No rows found in the documentation table.",
+        "raw_response": json.dumps({"id": "chatcmpl-tc123", "object": "chat.completion", "model": "gpt-4o", "choices": [{"index": 0, "message": {"role": "assistant", "content": None, "tool_calls": [{"id": "call_abc", "type": "function", "function": {"name": "execute_sql", "arguments": "{\"query\":\"SELECT * FROM docs WHERE topic='useEffect'\"}"}}]}, "finish_reason": "tool_calls"}]}),
         "available_tools": json.dumps([
             {"name": "web_search", "description": "Search the internet for current information and web pages"},
             {"name": "execute_sql", "description": "Execute a SQL query against a relational database"},
@@ -95,6 +98,7 @@ _SPANS_FIXTURE = [
         "tool_output": "London: 10°C overcast",
         "prompt": "Get the current weather conditions in Tokyo, Japan on March 5th.",
         "response": "Weather in London on November 20: 10°C, overcast.",
+        "raw_response": json.dumps({"id": "chatcmpl-tc123", "object": "chat.completion", "model": "gpt-4o", "choices": [{"index": 0, "message": {"role": "assistant", "content": None, "tool_calls": [{"id": "call_abc", "type": "function", "function": {"name": "get_weather", "arguments": "{\"location\":\"London\",\"date\":\"2025-11-20\"}"}}]}, "finish_reason": "tool_calls"}]}),
         "available_tools": json.dumps([
             {"name": "get_weather", "description": "Get current weather conditions and forecasts for a location"},
             {"name": "web_search", "description": "Search the internet for current information and web pages"},
@@ -124,6 +128,7 @@ _SPANS_FIXTURE = [
         "tool_output": "",
         "prompt": "Use the web search tool to find examples of Python async generators.",
         "response": "Python async generators allow you to yield values asynchronously using 'async def' and 'yield'.",
+        "raw_response": json.dumps({"id": "chatcmpl-abc123", "object": "chat.completion", "model": "gpt-4o", "choices": [{"index": 0, "message": {"role": "assistant", "content": "Python async generators allow you to yield values asynchronously."}, "finish_reason": "stop"}]}),
         "available_tools": json.dumps([
             {"name": "web_search", "description": "Search the internet for current information and web pages"},
             {"name": "execute_code", "description": "Execute Python code in a sandboxed environment and return output"},
@@ -157,11 +162,20 @@ async def main() -> None:
         tenant_id = str(row[0])
         print(f"Tenant: {tenant_id}")
 
-    # 2. Insert spans into ClickHouse
+    # 2. Upload payloads to S3, then insert spans into ClickHouse
+    s3 = get_s3_client()
     ch = get_clickhouse_client()
 
     ch_rows = []
     for s in _SPANS_FIXTURE:
+        refs = await s3.upload_span_payloads(
+            tenant_id=tenant_id,
+            span_id=s["span_id"],
+            prompt=s["prompt"],
+            response=s["response"],
+            raw_response=s["raw_response"],
+            available_tools=s["available_tools"],
+        )
         t_begin = NOW - timedelta(minutes=s["offset_minutes"])
         ch_rows.append({
             "tenant_id": tenant_id,
@@ -178,16 +192,16 @@ async def main() -> None:
             "tool_description": s["tool_description"],
             "tool_arguments": s["tool_arguments"],
             "tool_output": s["tool_output"],
-            "available_tools_ref": "",
-            "prompt_ref": "",
-            "response_ref": "",
-            "raw_response_ref": "",
+            "available_tools_ref": refs["available_tools_ref"],
+            "prompt_ref": refs["prompt_ref"],
+            "response_ref": refs["response_ref"],
+            "raw_response_ref": refs["raw_response_ref"],
             "schema_version": "1.0",
         })
 
     columns = list(ch_rows[0].keys())
     ch.insert("spans", [[r[c] for c in columns] for r in ch_rows], column_names=columns)
-    print(f"Inserted {len(ch_rows)} spans into ClickHouse")
+    print(f"Uploaded payloads to S3 and inserted {len(ch_rows)} spans into ClickHouse")
 
     # 3. Insert flags and scores into PostgreSQL
     async with session_factory() as session:

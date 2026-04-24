@@ -12,8 +12,10 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PayloadTabs } from '@/components/PayloadTabs'
-import { getSpanDetail, diagnose } from '@/lib/api'
-import type { SpanDetail, SpanDetailFlag } from '@/lib/api'
+import { getSpanDetail, diagnose, getDiagnosis } from '@/lib/api'
+import type { SpanDetail, SpanDetailFlag, DiagnosisResponse } from '@/lib/api'
+import { cn } from '@/lib/utils'
+import { formatDistanceToNow } from 'date-fns'
 import { useAuthStore } from '@/lib/auth'
 
 interface SpanDetailPanelProps {
@@ -32,6 +34,44 @@ function MetaRow({ label, value }: { label: string; value: string | number | nul
   )
 }
 
+function DiagnosisCard({ result }: { result: DiagnosisResponse }) {
+  const verdictColors: Record<string, string> = {
+    model: 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:text-orange-400 dark:border-orange-800',
+    architecture: 'bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-950/40 dark:text-yellow-400 dark:border-yellow-800',
+    prompt: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-800',
+  }
+  const severityColors: Record<string, string> = {
+    critical: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-800',
+    high: 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:text-orange-400 dark:border-orange-800',
+    medium: 'bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-950/40 dark:text-yellow-400 dark:border-yellow-800',
+    low: 'bg-zinc-100 text-zinc-600 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700',
+  }
+
+  return (
+    <div className="rounded-md border border-zinc-200 bg-white p-3 dark:border-zinc-700 dark:bg-zinc-900">
+      <div className="mb-2 flex items-center gap-2">
+        <Badge className={cn('border', verdictColors[result.verdict] ?? '')}>
+          {result.verdict}
+        </Badge>
+        <Badge className={cn('border', severityColors[result.severity] ?? '')}>
+          {result.severity}
+        </Badge>
+      </div>
+      <dl>
+        {result.affected_field && (
+          <MetaRow label="Affected field" value={result.affected_field} />
+        )}
+        {result.recommended_fix && (
+          <MetaRow label="Fix" value={result.recommended_fix} />
+        )}
+      </dl>
+      <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
+        Diagnosed {formatDistanceToNow(new Date(result.diagnosed_at), { addSuffix: true })}
+      </p>
+    </div>
+  )
+}
+
 function FlagSection({
   flags,
   spanId,
@@ -42,16 +82,39 @@ function FlagSection({
   token: string
 }) {
   const [diagLoading, setDiagLoading] = useState(false)
-  const [diagResult, setDiagResult] = useState<string | null>(null)
+  const [diagResult, setDiagResult] = useState<DiagnosisResponse | null>(null)
   const [diagError, setDiagError] = useState<string | null>(null)
+
+  // Auto-load existing diagnosis when panel opens for this span
+  useEffect(() => {
+    let cancelled = false
+    async function loadExisting() {
+      setDiagLoading(true)
+      setDiagError(null)
+      try {
+        const result = await getDiagnosis(token, spanId)
+        if (!cancelled) setDiagResult(result)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : ''
+        // 404 = no prior diagnosis — expected state, not an error to surface
+        if (!cancelled && !msg.includes('404') && !msg.includes('HTTP 404')) {
+          setDiagError(msg)
+        }
+      } finally {
+        if (!cancelled) setDiagLoading(false)
+      }
+    }
+    loadExisting()
+    return () => { cancelled = true }
+  }, [spanId, token])
 
   async function handleDiagnose() {
     setDiagLoading(true)
     setDiagResult(null)
     setDiagError(null)
     try {
-      const result = await diagnose(token, spanId, flags)
-      setDiagResult(`${result.status}: ${result.message}`)
+      const result = await diagnose(token, spanId)
+      setDiagResult(result)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Diagnostic request failed'
       setDiagError(msg)
@@ -75,31 +138,37 @@ function FlagSection({
               </span>
             </div>
             {flag.detail && (
-              <pre className="overflow-auto rounded bg-white/50 p-2 font-mono text-xs text-zinc-700 dark:bg-black/20 dark:text-zinc-300 max-h-32 whitespace-pre-wrap">
+              <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded bg-white/50 p-2 font-mono text-xs text-zinc-700 dark:bg-black/20 dark:text-zinc-300">
                 {JSON.stringify(flag.detail, null, 2)}
               </pre>
             )}
           </div>
         ))}
       </div>
-      <div className="mt-3">
+      <div className="mt-3 space-y-2">
         <Button
           size="sm"
           variant="outline"
           onClick={handleDiagnose}
-          disabled={diagLoading}
         >
-          {diagLoading ? 'Requesting…' : 'Request Diagnostic'}
+          Diagnose
         </Button>
-        {diagResult && (
-          <div className="mt-2 rounded-md border border-zinc-200 bg-zinc-100 px-3 py-2 font-mono text-xs text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-            {diagResult}
-          </div>
-        )}
         {diagError && (
-          <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400">
+          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400">
             {diagError}
           </div>
+        )}
+        {diagLoading && (
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-4 w-3/4" />
+            <p className="text-xs text-zinc-400 dark:text-zinc-500">
+              Analyzing… (this may take a few seconds)
+            </p>
+          </div>
+        )}
+        {!diagLoading && diagResult && (
+          <DiagnosisCard result={diagResult} />
         )}
       </div>
     </section>
@@ -195,14 +264,14 @@ export function SpanDetailPanel({ spanId, open, onClose }: SpanDetailPanelProps)
 
             {/* Flag section — only for flagged spans */}
             {detail.status === 'flagged' && detail.flags.length > 0 && token && (
-              <FlagSection flags={detail.flags} spanId={detail.span_id} token={token} />
+              <FlagSection key={detail.span_id} flags={detail.flags} spanId={detail.span_id} token={token} />
             )}
 
             {/* Diagnostic button disabled for non-flagged */}
             {detail.status !== 'flagged' && (
               <div>
                 <Button size="sm" variant="outline" disabled className="opacity-50">
-                  Request Diagnostic
+                  Diagnose
                 </Button>
                 <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
                   Diagnostics are only available for flagged spans.

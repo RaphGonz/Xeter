@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: `${process.env.PRESENTER_URL ?? 'http://presenter:8000'}/:path*`,
+        destination: `${process.env.PRESENTER_URL ?? 'http://localhost:8000'}/:path*`,
       },
     ]
   },

@@ -124,9 +124,14 @@ export interface SpanDetail {
   raw_response: string | null
 }
 
-export interface DiagnoseResponse {
-  status: string
-  message: string
+export interface DiagnosisResponse {
+  diagnosis_id: string
+  span_id: string
+  verdict: string
+  severity: string
+  affected_field: string | null
+  recommended_fix: string | null
+  diagnosed_at: string
 }
 
 export async function getSpanDetail(token: string, spanId: string): Promise<SpanDetail> {
@@ -138,14 +143,22 @@ export async function getSpanDetail(token: string, spanId: string): Promise<Span
 export async function diagnose(
   token: string,
   spanId: string,
-  flags: SpanDetailFlag[],
-): Promise<DiagnoseResponse> {
-  return request<DiagnoseResponse>('/api/diagnose', {
+): Promise<DiagnosisResponse> {
+  return request<DiagnosisResponse>('/api/diagnose', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ span_id: spanId, flags }),
+    body: JSON.stringify({ span_id: spanId }),
+  })
+}
+
+export async function getDiagnosis(
+  token: string,
+  spanId: string,
+): Promise<DiagnosisResponse> {
+  return request<DiagnosisResponse>(`/api/diagnose/${spanId}`, {
+    headers: { Authorization: `Bearer ${token}` },
   })
 }

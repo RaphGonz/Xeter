@@ -262,21 +262,9 @@ export function SpanDetailPanel({ spanId, open, onClose }: SpanDetailPanelProps)
               </p>
             </SheetHeader>
 
-            {/* Flag section — only for flagged spans */}
-            {detail.status === 'flagged' && detail.flags.length > 0 && token && (
+            {/* Flag section + diagnosis */}
+            {token && (
               <FlagSection key={detail.span_id} flags={detail.flags} spanId={detail.span_id} token={token} />
-            )}
-
-            {/* Diagnostic button disabled for non-flagged */}
-            {detail.status !== 'flagged' && (
-              <div>
-                <Button size="sm" variant="outline" disabled className="opacity-50">
-                  Diagnose
-                </Button>
-                <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
-                  Diagnostics are only available for flagged spans.
-                </p>
-              </div>
             )}
 
             {/* Scores section */}

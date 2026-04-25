@@ -100,9 +100,56 @@
 
 ---
 
+## Milestone: v1.2 — Diagnosticer
+
+**Shipped:** 2026-04-25
+**Phases:** 3 (Phases 11–13) | **Plans:** 8 | **Timeline:** 4 days (2026-04-22 → 2026-04-25)
+
+### What Was Built
+
+- Phase 11 (Diagnosticer Backend): `diagnoses` table (migration 003, RLS, 12 columns), Diagnosis ORM, LLM provider factory (Anthropic/OpenAI/Ollama with lazy imports and structured output), `DiagnosisRepository` DAL, `assemble_context()` with parallel ClickHouse + PostgreSQL + S3 fetch, real POST /diagnose with fail-clean pipeline and 6-test suite
+- Phase 12 (Presenter Integration): `DiagnosisService` layer with tenant guard and HTTP error classification (503/504/502), real POST /diagnose and new GET /diagnose/{span_id} router, 10-test suite replacing 4 stale scaffold tests
+- Phase 13 (Frontend Diagnosis UI + verification): `DiagnosisCard` sub-component with colored verdict/severity badges and auto-load GET on mount; debugging session that surfaced and fixed 3 integration bugs (missing env vars, wrong S3 bucket, missing auth header)
+
+### What Worked
+
+- **Fail-clean pipeline design**: enforcing assemble → diagnose → persist in strict order — with explicit error mapping at each step — made the Diagnosticer correct-by-construction and easy to test
+- **Provider abstraction with lazy imports**: factory pattern meant adding/switching providers required zero changes to calling code; Ollama works without anthropic installed
+- **Re-read-from-DB after Diagnosticer write**: Presenter owns the response schema, Diagnosticer owns the write — clean separation; avoids parsing the HTTP body
+- **Parallel context assembly**: `asyncio.gather` for S3 fetches with `asyncio.wait_for` timeout meant LLM gets maximum context with bounded latency
+- **`autouse` fixture for lifespan isolation**: patching `get_async_engine` at module level before `TestClient` creates the app was the correct isolation point — without it, every test hits real PostgreSQL during lifespan startup
+- **Structured output via vendor tool/function calling**: Anthropic forced tool_choice + OpenAI strict=True + Ollama format= schema eliminated the free-text parsing failure mode entirely
+
+### What Was Inefficient
+
+- **Missing env vars in docker-compose**: `DIAGNOSTICER_PROVIDER`, `DIAGNOSTICER_MODEL`, `ANTHROPIC_API_KEY` were not added to the Diagnosticer service block when the service was scaffolded in v1.0 — discovered as 500 errors in Plan 13-02 debugging; should be wired at the same time as the real endpoint
+- **S3 bucket name mismatch in seed script**: `seed_spans.py` was uploading to `xeter-spans` but Presenter reads from `xeter-payloads` — surfaced only during visual E2E verification; a smoke test for seed data visibility would catch this earlier
+- **Auth forwarding discovered late**: Presenter was not forwarding the bearer token to Diagnosticer — caused 401s only during live E2E testing, not unit tests; cross-service auth contracts need explicit unit test coverage
+
+### Patterns Established
+
+- **Two-location patch pattern**: service-level tests patch `diagnosis_service.DiagnosisRepository`; router-level tests patch `routers.diagnose.DiagnosisRepository` — the right module to patch is where the name is imported, not where it's defined
+- **Verification plan as integration testbed**: Plan 13-02 ("visual verification") was where all integration bugs surfaced — this is the correct use of a verification plan; the pattern holds from v1.0
+- **Bearer token forwarding for service-to-service**: Presenter passes `request.headers.get("authorization")` directly to downstream services; shared SECRET_KEY validates — simple and sufficient for single-tenant SaaS
+
+### Key Lessons
+
+- Wire all env vars at the same commit that activates the feature — not at scaffold time, not at verification time
+- Cross-service auth (token forwarding) requires an integration test, not just unit tests; a unit-mocked call to Diagnosticer will never catch a missing auth header
+- The "verification" plan is the most valuable plan in a cross-service phase — budget time for it; it will find things unit tests can't
+
+### Cost Observations
+
+- 4 days, 3 phases, 8 plans — fastest milestone yet
+- Average plan execution: ~10 min (range 5–14 min)
+- Plan 13-02 was mostly debugging (~1.5 hours); the implementation plans themselves were clean
+
+---
+
 ## Cross-Milestone Trends
 
 | Milestone | Phases | Plans | Days | LOC | Key Pattern |
 |-----------|--------|-------|------|-----|-------------|
 | v1.0 MVP | 6 | 21 | 12 | ~12,660 | Bottom-up strict ordering |
 | v1.1 Analyser Accuracy | 4 | 10 | 12 | ~11,148 Py | One method at a time, calibrate before next |
+| v1.2 Diagnosticer | 3 | 8 | 4 | ~16,017 (+4,869) | Fail-clean service activation; verification plan as integration testbed |

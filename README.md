@@ -12,17 +12,19 @@ Xeter is a B2B SaaS observability platform that debugs AI agent tool-calling fai
 
 ### Flag Types
 
-- **wrong_tool** — agent picked the wrong tool for the prompt
+- **wrong_tool_called** — agent picked the wrong tool for the prompt
 - **wrong_tool_args** — right tool, wrong arguments
-- **no_tool** — agent should have called a tool but didn't
-- **excessive_tool** — too many tool calls for the task
+- **no_tool_used** — agent should have called a tool but didn't
+- **unnecessary_tool_call** — tool called on a social/phatic prompt that needed none
+- **tool_not_available** — agent called a tool not in the available tools list
 - **parsing_error** — model output couldn't be parsed into a tool call
+- **response_anomaly** — response is semantically unrelated to the prompt
 
 ### Two-Layer Analysis
 
 **Layer 1 (heuristic)** catches obvious mechanical failures fast and cheap — format mismatches, wrong-tool ranking via vector similarity, argument validation.
 
-**Layer 2 (LLM supervisor)** explains ambiguous reasoning failures on-demand — why the agent chose that tool, what the prompt implied, what went wrong in the chain of thought. *(Scaffolded in v1, active in v2.)*
+**Layer 2 (LLM diagnosis)** explains root cause on-demand — click "Diagnose" on any span to get a structured verdict (model / architecture / prompt), severity, affected field, and recommended fix. Configurable provider: Anthropic, OpenAI, or Ollama.
 
 ## Architecture
 
@@ -50,7 +52,7 @@ Customer Agent  ──SDK──▶  Analyser (ingestion)
 - **Worker** — BRPOP consumer; fetches span from ClickHouse, runs embedding similarity across 5 dimensions, writes flag rows and similarity scores to PostgreSQL
 - **Presenter** — REST API for the dashboard; merges ClickHouse spans + PostgreSQL flags at read time, lazy-loads S3 payloads on span detail
 - **View** — Next.js 15 dashboard (span list, filters, span detail panel with flag scores and S3 payload tabs)
-- **Diagnosticer** — LLM-powered root cause analysis (scaffolded, wired but inactive in v1)
+- **Diagnosticer** — LLM-powered root cause analysis; on-demand POST /diagnose assembles span + flag + S3 context and calls the configured LLM provider (Anthropic / OpenAI / Ollama) to return a structured verdict, severity, affected field, and recommended fix
 
 **Storage:**
 - **ClickHouse** — span storage with MergeTree `ORDER BY (tenant_id, trace_id, time_begin)`
@@ -130,6 +132,16 @@ All commands run from the repo root:
 | `cd xeter && python -m pytest tests/ -v` | Run test suite |
 | `python xeter/scripts/validate.py` | Run E2E smoke test (register → ingest → analyze → retrieve) |
 
+For frontend development, run the Next.js dev server separately instead of using the dockerized View — it hot-reloads on file changes:
+
+```bash
+cd services/view
+npm run dev
+# open http://localhost:3000
+```
+
+The Docker stack must be running for API calls to work.
+
 ### Ports
 
 | Service | Port |
@@ -157,10 +169,15 @@ All tables enforce tenant isolation via PostgreSQL Row Level Security. Every que
 
 **v1.0 shipped** (2026-04-04) — full pipeline operational: SDK → Analyser → Redis → Worker → Presenter → Next.js dashboard. E2E smoke test passes (~37s register → ingest → analyze → retrieve).
 
-**Next:** v1.1 — LLM-powered Diagnosticer (root cause analysis), TypeScript SDK, cloud deployment.
+**v1.1 shipped** (2026-04-18) — Analyser accuracy milestone: all four heuristic check methods rewritten with research-backed implementations, spaCy NLP integrated, Embedder extracted as a standalone microservice, calibration infra upgraded.
+
+**v1.2 shipped** (2026-04-25) — Diagnosticer milestone: LLM root-cause analysis active end-to-end. Click "Diagnose" on any span to get verdict, severity, affected field, and recommended fix. Configurable provider (Anthropic / OpenAI / Ollama). 112 tests passing.
+
+**Next:** v1.3 — TypeScript SDK, cloud deployment.
 
 ## Documentation
 
-- `documentation/xeterarc42_v0.5.md` — full arc42 architecture documentation (v1.0)
+- `documentation/xeterarc42_v1.2.md` — full arc42 architecture documentation (current, post-v1.2)
+- `documentation/xeterarc42_v1.1.md` — arc42 snapshot post-v1.1 (Analyser Accuracy milestone)
 - `documentation/silent_failures_ai_agents.md` — problem space research
 - `documentation/foundation_sprint/` — competitor analysis, positioning, hypothesis validation

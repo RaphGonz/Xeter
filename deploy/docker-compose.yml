@@ -203,6 +203,11 @@ services:
       S3_ACCESS_KEY: xeter
       S3_SECRET_KEY: xeter_dev_password
       S3_BUCKET: xeter-payloads
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
+      DIAGNOSTICER_PROVIDER: ${DIAGNOSTICER_PROVIDER:-anthropic}
+      DIAGNOSTICER_MODEL: ${DIAGNOSTICER_MODEL:-claude-haiku-4-5}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
 
   view:
     build:

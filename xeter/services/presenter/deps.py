@@ -9,14 +9,41 @@ Token format: JWT HS256, payload {"sub": tenant_id_str, "exp": unix_timestamp}
 """
 
 import os
+from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
 
+import clickhouse_connect
 from fastapi import Header, HTTPException
 from jose import JWTError, jwt
+
+from xeter.shared.db.clickhouse import get_clickhouse_client
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# ClickHouse dependency
+# ---------------------------------------------------------------------------
+
+
+def get_ch_client() -> Generator[clickhouse_connect.driver.Client, None, None]:
+    """FastAPI dependency that creates a fresh ClickHouse client per request.
+
+    clickhouse_connect clients are not safe for concurrent use within the same
+    session. Creating one client per request avoids the
+    "Attempt to execute concurrent queries within the same session" error when
+    multiple requests arrive simultaneously.
+
+    Yields:
+        A ClickHouse client. The client is closed after the request completes.
+    """
+    client = get_clickhouse_client()
+    try:
+        yield client
+    finally:
+        client.close()
+
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key-change-in-production")
 ALGORITHM = "HS256"

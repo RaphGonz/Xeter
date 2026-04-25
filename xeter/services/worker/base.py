@@ -26,7 +26,7 @@ import numpy as np
 
 @dataclass
 class Flag:
-    flag_type: str      # e.g. "wrong_tool", "no_tool", "excessive_tool", "parsing_error", "wrong_tool_args"
+    flag_type: str      # e.g. "tool_not_available", "wrong_tool_choice", "unnecessary_tool_call", "no_tool", "parsing_error"
     score: float        # similarity score that triggered the flag
     detail: dict        # structured detail for dashboard display; always includes "metric" key
 

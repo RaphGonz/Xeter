@@ -79,6 +79,7 @@ async def diagnose(
         session=session,
         http_client=request.app.state.http_client,
         ch_client=ch_client,
+        auth_header=request.headers.get("authorization", ""),
     )
 
 

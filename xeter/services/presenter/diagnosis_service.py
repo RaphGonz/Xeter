@@ -122,6 +122,7 @@ class DiagnosisService:
         session: AsyncSession,
         http_client: httpx.AsyncClient,
         ch_client,  # clickhouse_connect.driver.Client
+        auth_header: str,
     ) -> DiagnosisResponse:
         """Trigger a diagnosis or return a cached result.
 
@@ -149,15 +150,6 @@ class DiagnosisService:
             HTTPException 502: Diagnosticer returned non-2xx response.
             HTTPException 500: Diagnosis not found after successful forward.
         """
-        # Step 1 — Idempotency check (tenant_session block #1)
-        async with tenant_session(session, tenant_id) as s:
-            repo = DiagnosisRepository(s)
-            existing = await repo.get_latest_for_span(
-                span_id=span_id, tenant_id=tenant_id
-            )
-        if existing:
-            return _diagnosis_to_response(existing)
-
         # Step 2 — Tenant guard: verify span ownership via ClickHouse
         ch_query = (
             "SELECT span_id FROM spans "
@@ -182,6 +174,7 @@ class DiagnosisService:
             resp = await http_client.post(
                 "/diagnose",
                 json={"span_id": span_id},
+                headers={"Authorization": auth_header},
                 timeout=timeout,  # per-request override of client default 30s
             )
         except httpx.TimeoutException:

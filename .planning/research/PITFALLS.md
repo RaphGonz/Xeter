@@ -150,19 +150,57 @@ Additionally, provider-specific error codes differ: OpenAI uses `RateLimitError`
 LiteLLM and similar abstraction libraries claim to unify providers but introduce their own latency overhead and have known memory leak issues at scale (PyData Berlin 2025). Rolling a thin custom abstraction is tempting but requires handling provider-specific structured output contracts.
 
 **How to avoid:**
-- **One provider per deployment**: `LLM_PROVIDER` selects a single concrete provider implementation. No runtime switching. The abstraction layer is a factory pattern, not a runtime proxy.
-- **Provider-specific structured output adapter**: each provider implementation (`AnthropicProvider`, `OpenAIProvider`) implements a shared interface `LLMProvider.diagnose(context) -> DiagnosisResult`. Each implementation uses the provider's native structured output mechanism — `input_schema` for Anthropic, `json_schema` for OpenAI.
-- **Do not use LiteLLM**: it adds latency overhead and memory issues at scale that outweigh the abstraction benefit for a single-provider deployment. Implement two thin provider classes directly.
+- **ABC + registry, not an if/elif factory**: define `LLMProvider` as an ABC with `@abstractmethod diagnose()`. Each provider self-registers via a `@register("name")` decorator. The factory reads `LLM_PROVIDER` from settings and looks up the class in the registry — no hardcoded branches. Adding a new provider (local LLM, Gemini, Mistral) is one new file with no changes to the factory.
+
+  ```python
+  # llm/base.py
+  from abc import ABC, abstractmethod
+
+  class LLMProvider(ABC):
+      @abstractmethod
+      async def diagnose(self, system: str, user: str) -> DiagnosisResult: ...
+
+  # llm/registry.py
+  _REGISTRY: dict[str, type[LLMProvider]] = {}
+
+  def register(name: str):
+      def decorator(cls: type[LLMProvider]):
+          _REGISTRY[name] = cls
+          return cls
+      return decorator
+
+  def get_provider(settings: DiagnosticerSettings) -> LLMProvider:
+      cls = _REGISTRY.get(settings.LLM_PROVIDER)
+      if cls is None:
+          raise ValueError(f"Unknown LLM provider: {settings.LLM_PROVIDER}")
+      return cls(settings)
+
+  # llm/anthropic_provider.py
+  @register("anthropic")
+  class AnthropicProvider(LLMProvider): ...
+
+  # llm/local_provider.py  (Ollama, LM Studio, vLLM — OpenAI-compatible API)
+  @register("local")
+  class LocalProvider(LLMProvider): ...
+  ```
+
+  ABC over Protocol: `@abstractmethod` catches missing `diagnose()` at class definition time, not at the call site. Mypy reports the error on the incomplete class, not on the first usage.
+
+- **Local LLM support via OpenAI-compatible base_url**: local servers (Ollama, LM Studio, vLLM) expose an OpenAI-compatible API. `LocalProvider` reuses `AsyncOpenAI` with a custom `base_url` (`DIAGNOSTICER_LOCAL_BASE_URL`, e.g. `http://localhost:11434/v1`). Local models typically do not support native structured output enforcement — `LocalProvider` must handle this: parse with Pydantic, retry once on validation failure, fall back to `inconclusive`. Document this caveat in the provider class.
+- **Provider-specific structured output adapter**: each provider implementation uses the provider's native structured output mechanism — `input_schema` tool_use for Anthropic, `json_schema` response_format for OpenAI, prompt-only with Pydantic retry for local.
+- **Do not use LiteLLM**: it adds latency overhead and memory issues at scale that outweigh the abstraction benefit for a single-provider deployment. The registry pattern achieves the same extensibility in ~30 lines.
 - **Provider-specific error handling**: each provider class wraps its own exception types in a common `LLMProviderError`. The Diagnosticer only catches `LLMProviderError`.
 
 **Warning signs:**
-- A single code path handles both Anthropic and OpenAI API calls.
+- `get_provider()` contains `if/elif` branches per provider name — adding a provider requires editing the factory.
+- `LLMProvider` is a Protocol instead of ABC — missing `diagnose()` is only caught at the call site.
+- A single code path handles multiple provider API shapes.
 - The retry logic catches a generic `Exception` rather than provider-specific error types.
 - Structured output is enforced only via prompt ("respond in JSON format").
 - Integration tests only run against one provider but claim to test the abstraction.
 
 **Phase to address:**
-Diagnosticer provider abstraction phase. Define the `LLMProvider` interface and both concrete implementations before writing any prompt logic — so prompt logic is always provider-agnostic by construction.
+Diagnosticer provider abstraction phase. Define the `LLMProvider` ABC, registry, and at minimum `AnthropicProvider` + `StubProvider` before writing any prompt logic — so prompt logic is always provider-agnostic by construction.
 
 ---
 

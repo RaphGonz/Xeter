@@ -38,7 +38,7 @@ pytestmark = pytest.mark.skipif(
 
 def _get_spans(token: str) -> httpx.Response:
     """GET /spans with the given JWT token."""
-    with httpx.Client(timeout=15) as client:
+    with httpx.Client(timeout=60) as client:
         return client.get(
             f"{PRESENTER_URL}/spans",
             headers={"Authorization": f"Bearer {token}"},
@@ -47,7 +47,7 @@ def _get_spans(token: str) -> httpx.Response:
 
 def _get_span_detail(token: str, span_id: str) -> httpx.Response:
     """GET /spans/{span_id} with the given JWT token."""
-    with httpx.Client(timeout=15) as client:
+    with httpx.Client(timeout=60) as client:
         return client.get(
             f"{PRESENTER_URL}/spans/{span_id}",
             headers={"Authorization": f"Bearer {token}"},

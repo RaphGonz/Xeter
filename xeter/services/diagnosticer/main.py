@@ -29,7 +29,7 @@ from xeter.services.diagnosticer.providers import get_llm_client
 from xeter.services.diagnosticer.providers.base import LLMError, ParseError
 from xeter.shared.dal.diagnoses import DiagnosisRepository
 from xeter.shared.db.clickhouse import get_clickhouse_client
-from xeter.shared.db.postgres import get_async_engine, get_async_session_factory, tenant_session
+from xeter.shared.db.postgres import get_async_session_factory, tenant_session
 
 # ---------------------------------------------------------------------------
 # Lifespan
@@ -39,10 +39,8 @@ from xeter.shared.db.postgres import get_async_engine, get_async_session_factory
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: create session factory on startup."""
-    engine = get_async_engine()
-    app.state.session_factory = get_async_session_factory(engine)
+    app.state.session_factory = get_async_session_factory()
     yield
-    await engine.dispose()
 
 
 app = FastAPI(title="Xeter Diagnosticer", version="0.2.0", lifespan=lifespan)
@@ -142,8 +140,7 @@ async def diagnose(
         ),
     )
 
-    engine = get_async_engine()
-    session_factory: async_sessionmaker[AsyncSession] = get_async_session_factory(engine)
+    session_factory: async_sessionmaker[AsyncSession] = get_async_session_factory()
 
     async with session_factory() as session:
         # 1. Assemble context (span + flags + S3 payloads)

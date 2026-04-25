@@ -77,13 +77,6 @@ def _make_fake_diagnosis():
     return d
 
 
-def _make_mock_engine():
-    """Return a MagicMock engine with awaitable dispose."""
-    engine = MagicMock()
-    engine.dispose = AsyncMock()
-    return engine
-
-
 def _make_mock_session_factory():
     """Return a MagicMock async session factory (each call returns a context-manager session)."""
     mock_session = MagicMock()
@@ -104,16 +97,12 @@ def patch_db(monkeypatch):
     This prevents any test from hitting a real PostgreSQL or ClickHouse connection,
     including during TestClient lifespan startup.
     """
-    mock_engine = _make_mock_engine()
     mock_factory = _make_mock_session_factory()
 
     app.dependency_overrides[get_ch_client] = _ch_client_override()
 
-    with (
-        patch("xeter.services.diagnosticer.main.get_async_engine", return_value=mock_engine),
-        patch("xeter.services.diagnosticer.main.get_async_session_factory", return_value=mock_factory),
-    ):
-        yield mock_engine, mock_factory
+    with patch("xeter.services.diagnosticer.main.get_async_session_factory", return_value=mock_factory):
+        yield mock_factory
 
     # Clean up CH client override (auth override cleaned up per test)
     app.dependency_overrides.pop(get_ch_client, None)

@@ -200,5 +200,7 @@ def get_clickhouse_client():
     return clickhouse_connect.get_client(
         host=os.environ.get("CLICKHOUSE_HOST", "clickhouse"),
         port=int(os.environ.get("CLICKHOUSE_PORT", "8123")),
-        database=os.environ.get("CLICKHOUSE_DATABASE", "xeter"),
+        database=os.environ.get("CLICKHOUSE_DB", "default"),
+        username=os.environ.get("CLICKHOUSE_USER", "default"),
+        password=os.environ.get("CLICKHOUSE_PASSWORD", ""),
     )

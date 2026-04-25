@@ -23,11 +23,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from datetime import datetime
-from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlparse
 
 import numpy as np
 
@@ -38,22 +35,6 @@ from xeter.services.worker.tool_call_registry import (
     extract_nested,
 )
 
-
-_WRONG_ARGS_ERROR_PATTERNS: list[re.Pattern] = [
-    re.compile(r'invalid argument', re.IGNORECASE),
-    re.compile(r'invalid param', re.IGNORECASE),
-    re.compile(r'missing required', re.IGNORECASE),
-    re.compile(r'missing param', re.IGNORECASE),
-    re.compile(r'required field', re.IGNORECASE),
-    re.compile(r'validation error', re.IGNORECASE),
-    re.compile(r'type error', re.IGNORECASE),
-    re.compile(r'value error', re.IGNORECASE),
-    re.compile(r'parse error', re.IGNORECASE),
-    re.compile(r'HTTP [4][0-9][0-9]', re.IGNORECASE),
-    re.compile(r'status[ _]?code[: ]*4[0-9][0-9]', re.IGNORECASE),
-    re.compile(r'400 bad request', re.IGNORECASE),
-    re.compile(r'422 unprocessable', re.IGNORECASE),
-]
 
 # ---------------------------------------------------------------------------
 # spaCy helpers — lazy-loaded to avoid paying import cost at module level
@@ -122,107 +103,8 @@ _ACTION_VERBS: frozenset[str] = frozenset({
 })
 
 
-def _extract_context_candidates(prompt: str) -> set[str]:
-    """Extract candidate strings from the prompt for argument grounding checks.
-
-    Returns NER entities (dates, names, IDs, quantities, etc.) and proper-noun-headed
-    noun chunks, lowercased and deduplicated. Restricting chunks to proper-noun heads
-    (PROPN) avoids adding common noun phrases like "compound interest" which provide
-    no meaningful grounding signal and cause false positives.
-    """
-    nlp = _get_spacy()
-    doc = nlp(prompt)
-    candidates: set[str] = set()
-    for ent in doc.ents:
-        if ent.label_ in _NER_ENTITY_TYPES:
-            candidates.add(ent.text.lower().strip())
-    for chunk in doc.noun_chunks:
-        if chunk.root.pos_ == "PROPN":
-            candidates.add(chunk.text.lower().strip())
-    return {c for c in candidates if len(c) > 1}
 
 
-def _arg_grounding_score(value: str, candidates: set[str]) -> float:
-    """Return a grounding score for value against context candidates.
-
-    Two-signal check (takes the max):
-    1. Containment: if any candidate appears as a substring of value, score=1.0.
-       Handles long arg values (SQL queries, sentences) that embed a NER entity.
-    2. SequenceMatcher: character-level ratio of the whole value vs each candidate.
-       Handles short values (location names, IDs) that should closely resemble the entity.
-
-    Returns 1.0 when candidates is empty (no NER signal → no evidence of mismatch).
-    """
-    if not candidates:
-        return 1.0
-    normalized = value.lower().strip()
-    if any(c in normalized for c in candidates):
-        return 1.0
-    return max(SequenceMatcher(None, normalized, c).ratio() for c in candidates)
-
-
-# ---------------------------------------------------------------------------
-# Schema-free format heuristics (key-name based)
-# ---------------------------------------------------------------------------
-
-def _validate_email(value: str) -> str | None:
-    if re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', value.strip()):
-        return None
-    return "invalid_email_format"
-
-
-def _validate_date(value: str) -> str | None:
-    stripped = value.strip()
-    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y"):
-        try:
-            datetime.strptime(stripped, fmt)
-            return None
-        except ValueError:
-            pass
-    # Accept natural language date indicators
-    if re.search(
-        r'\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|\d{4}|'
-        r'today|tomorrow|yesterday|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b',
-        stripped, re.IGNORECASE,
-    ):
-        return None
-    return "invalid_date_format"
-
-
-def _validate_url(value: str) -> str | None:
-    try:
-        r = urlparse(value.strip())
-        if r.scheme in ("http", "https", "ftp", "ftps") and r.netloc:
-            return None
-    except Exception:
-        pass
-    return "invalid_url_format"
-
-
-_FORMAT_KEY_PATTERNS: list[tuple[re.Pattern, object]] = [
-    # "email" anywhere in key — avoids \b which treats _ as a word char
-    (re.compile(r'email', re.IGNORECASE), _validate_email),
-    # Match "date" as standalone or after "_" (avoids matching "update")
-    (re.compile(r'(?:^|_)date(?:_|$)|_at$|_on$', re.IGNORECASE), _validate_date),
-    (re.compile(r'(?:^|_)url(?:_|$)|(?:^|_)uri(?:_|$)', re.IGNORECASE), _validate_url),
-]
-
-
-def _key_has_format_pattern(key: str) -> bool:
-    """Return True if any format pattern applies to this key."""
-    return any(p.search(key) for p, _ in _FORMAT_KEY_PATTERNS)
-
-
-def _check_format_heuristic(key: str, value: str) -> str | None:
-    """Return an error reason string if value fails the format implied by key name.
-
-    Matches key against _FORMAT_KEY_PATTERNS in order and runs the corresponding
-    validator. Returns None if key matches no known pattern or value passes validation.
-    """
-    for pattern, validator in _FORMAT_KEY_PATTERNS:
-        if pattern.search(key):
-            return validator(value)  # type: ignore[operator]
-    return None
 
 
 def _lemma_set(text: str) -> set[str]:
@@ -237,6 +119,17 @@ def _lemma_set(text: str) -> set[str]:
         for token in nlp(text)
         if token.is_alpha and not token.is_stop
     }
+
+
+_STRIP_PUNCT_RE = re.compile(r'[^a-z0-9]')
+_NUMERIC_OR_BOOL_RE = re.compile(r'^[\d\s\+\-\*\/\^\%\.]+$')
+_TIME_FORMAT_RE = re.compile(r'^\d{1,2}:\d{2}(:\d{2})?$')
+_SQL_KEYWORD_RE = re.compile(r'\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE)\b', re.IGNORECASE)
+_BOOL_LITERALS = frozenset({"true", "false"})
+
+
+def _strip_punctuation(token: str) -> str:
+    return _STRIP_PUNCT_RE.sub('', token.lower())
 
 
 class ToolCallAnalyzer(BaseAnalyzer):
@@ -465,42 +358,9 @@ class ToolCallAnalyzer(BaseAnalyzer):
     # ------------------------------------------------------------------
 
     def _check_wrong_args(self, span: SpanData) -> list[Flag]:
-        """Detect when tool arguments are semantically unrelated to the prompt.
-
-        Three-path detection (ARGS-01 takes priority):
-
-        Path 1 — output-error priority (ARGS-01):
-          If tool_output contains an error pattern (regex), flag immediately.
-          Score=1.0. No spaCy call.
-
-        Path 2 — per-argument format heuristics (schema-free):
-          For arguments whose key name implies a known format (email, date, url),
-          validate the value against that format. Format violations score 0.0 and
-          skip the grounding check for that argument.
-
-        Path 3 — per-argument grounding check:
-          Build context candidates from the prompt (NER entities + noun chunks).
-          For each argument value, compute the best SequenceMatcher ratio against
-          candidates. If no candidates are found → no signal → no flag.
-          Flag if the worst-case score across all args is below threshold.
-
-        low_confidence is NOT included in flag detail (ARGS-05).
-        """
         if span.tool_arguments is None or span.prompt is None:
             return []
 
-        # ARGS-01: output-error priority path (no spaCy)
-        if span.tool_output and any(
-            p.search(span.tool_output) for p in _WRONG_ARGS_ERROR_PATTERNS
-        ):
-            self.log_score("wrong_args_output_error", 1.0)
-            return [Flag(
-                flag_type="wrong_tool_args",
-                score=1.0,
-                detail={"metric": "output_error_pattern", "source": "tool_output"},
-            )]
-
-        # Skip empty / null args — nothing to compare
         args_stripped = span.tool_arguments.strip()
         if not args_stripped or args_stripped in ("{}", "[]", "null"):
             return []
@@ -512,50 +372,49 @@ class ToolCallAnalyzer(BaseAnalyzer):
         if not isinstance(parsed, dict) or not parsed:
             return []
 
-        # Per-argument checks — format heuristics run unconditionally;
-        # grounding checks only when prompt yields candidates.
+        prompt_stripped = _strip_punctuation(span.prompt)
+        prompt_vec = self.embed(span.prompt)
+        threshold = self._thresholds["wrong_tool_args"]
         violations: list[dict] = []
-        all_scores: list[float] = []
-        needs_grounding: list[tuple[str, str]] = []  # (key, value) pairs deferred to grounding
+        worst_score = 1.0
 
         for key, value in parsed.items():
+            # Check 1 — missing argument
             if value is None or str(value).strip() == "":
+                violations.append({"key": key, "value": "", "score": 0.0, "reason": "missing_argument"})
+                worst_score = 0.0
                 continue
+
             str_value = str(value)
 
-            # Path 2: schema-free format heuristic
-            format_issue = _check_format_heuristic(key, str_value)
-            if format_issue is not None:
-                # Value is structurally malformed for this key type
-                all_scores.append(0.0)
-                violations.append({"key": key, "value": str_value, "score": 0.0, "reason": format_issue})
-                continue
-            if _key_has_format_pattern(key):
-                # Value passes format validation — trust it, skip grounding
-                # (e.g. ISO date "2025-03-05" won't SequenceMatcher-match "March 5th")
-                all_scores.append(1.0)
+            # Skip — numeric/boolean/expression literals
+            if _NUMERIC_OR_BOOL_RE.match(str_value.strip()) or str_value.strip().lower() in _BOOL_LITERALS:
                 continue
 
-            needs_grounding.append((key, str_value))
+            # Skip — clock time values (e.g. "10:00" won't substring-match "10am")
+            if _TIME_FORMAT_RE.match(str_value.strip()):
+                continue
 
-        # Path 3: grounding check — only when candidates are available
-        if needs_grounding:
-            candidates = _extract_context_candidates(span.prompt)
-            if candidates:
-                for key, str_value in needs_grounding:
-                    score = _arg_grounding_score(str_value, candidates)
-                    all_scores.append(score)
-                    if score < self._thresholds["wrong_tool_args"]:
-                        violations.append({"key": key, "value": str_value, "score": score, "reason": "not_grounded"})
-            else:
-                # No NER signal — treat remaining args as grounded
-                all_scores.extend(1.0 for _ in needs_grounding)
+            # Skip — multi-line or SQL values (model-generated content)
+            if "\n" in str_value or _SQL_KEYWORD_RE.search(str_value):
+                continue
 
-        if not all_scores:
-            return []  # no checkable arguments
+            # Check 2 — argument in prompt (substring match)
+            if _strip_punctuation(str_value) in prompt_stripped:
+                continue
 
-        worst_score = min(all_scores)
-        self.log_score("arg_grounding", worst_score)  # log BEFORE threshold (ARGS-05)
+            # Check 3 — argument similar to prompt (embedding)
+            score = 0.0
+            if prompt_vec is not None:
+                value_vec = self.embed(str_value)
+                if value_vec is not None and isinstance(value_vec, np.ndarray) and isinstance(prompt_vec, np.ndarray):
+                    score = self.compare(value_vec, prompt_vec)
+
+            self.log_score("arg_grounding", score)
+
+            if score < threshold:
+                violations.append({"key": key, "value": str_value, "score": score, "reason": "not_grounded"})
+                worst_score = min(worst_score, score)
 
         if not violations:
             return []
@@ -563,8 +422,7 @@ class ToolCallAnalyzer(BaseAnalyzer):
         return [Flag(
             flag_type="wrong_tool_args",
             score=worst_score,
-            detail={"metric": "arg_grounding", "violations": violations},
-            # ARGS-05: no low_confidence key
+            detail={"metric": "arg_violations", "violations": violations},
         )]
 
     # ------------------------------------------------------------------

@@ -2,9 +2,9 @@
 
 ## What This Is
 
-Xeter is a B2B SaaS observability platform that debugs AI agent tool-calling failures. It ingests OpenTelemetry spans from instrumented agent code via a Python SDK, applies heuristic analysis (vector similarity between prompt and tool fields) to flag anomalous tool calls, and exposes a dashboard where developers can see what went wrong and why. Unlike existing tools that show traces, Xeter isolates root cause — model, architecture, or prompt.
+Xeter is a B2B SaaS observability platform that debugs AI agent tool-calling failures. It ingests OpenTelemetry spans from instrumented agent code via a Python SDK, applies heuristic analysis (vector similarity between prompt and tool fields) to flag anomalous tool calls, and exposes a dashboard where developers can see what went wrong and why. Unlike existing tools that show traces, Xeter isolates root cause — model, architecture, or prompt — via on-demand LLM diagnosis.
 
-v1.0 shipped: full pipeline from SDK to dashboard running locally via Docker Compose.
+v1.0 shipped: full pipeline from SDK to dashboard running locally via Docker Compose. v1.1 shipped: all four analyser check methods rewritten with research-backed implementations. v1.2 shipped: LLM-powered Diagnosticer active end-to-end.
 
 ## Core Value
 
@@ -34,29 +34,17 @@ When a tool call fails, tell the developer whether it was the model, the archite
 - ✓ `_check_excessive_tool` → `unnecessary_tool_call`: social centroid signal flags tool calls on conversational/phatic prompts — v1.1
 - ✓ Shared hybrid scoring utility (`bow_score` + `hybrid_score`) in `base.py` (HYBRID-01) — v1.1
 - ✓ `calibrate.py` per-method isolation (`--flag-type`) and `BINARY_FLAG_TYPES` for non-threshold detectors — v1.1
+- ✓ LLM-powered Diagnosticer: on-demand root cause analysis per span — verdict (model/architecture/prompt) + severity + affected field + recommended fix — v1.2
+- ✓ Configurable LLM provider + model via env vars (Anthropic / OpenAI / Ollama) — v1.2
+- ✓ Diagnosis results stored in PostgreSQL (`diagnoses` table with RLS) and rendered in SpanDetailPanel (DiagnosisCard with auto-load) — v1.2
 
 ### Active
 
-<!-- Current milestone scope -->
-
-- [ ] LLM-powered Diagnosticer: on-demand root cause analysis per span — verdict (model/architecture/prompt) + severity + affected field + recommended fix
-- [ ] Configurable LLM provider + model via env vars (provider-agnostic Diagnosticer)
-- [ ] Diagnosis results stored in PostgreSQL and rendered in SpanDetailPanel
-
-## Current Milestone: v1.2 Diagnosticer
-
-**Goal:** Wire the scaffolded Diagnosticer service to perform on-demand LLM root-cause analysis — reading flags, span fields, and S3 payloads — and surface structured diagnosis in the dashboard.
-
-**Target features:**
-- LLM context assembly: fetch flags, span fields, S3 payloads and build a structured prompt
-- Configurable LLM provider + model via env vars (Anthropic, OpenAI, or others)
-- PostgreSQL `diagnoses` table + DAL for storing structured results
-- Presenter endpoint to trigger diagnosis and retrieve results
-- SpanDetailPanel "Diagnose" button + diagnosis display (verdict, severity, affected field, fix)
+<!-- Next milestone scope — to be defined via /gsd:new-milestone -->
 
 ### Out of Scope
 
-<!-- Explicit boundaries. -->
+<!-- Explicit boundaries — reviewed after v1.2. -->
 
 - Prompt management / versioning — competes with Langfuse on their home turf; not our moat
 - LLM cost attribution / billing analytics — general observability breadth, not diagnosis
@@ -64,16 +52,17 @@ When a tool call fails, tell the developer whether it was the model, the archite
 - LLM-as-a-judge eval pipelines — HoneyHive and LangSmith have mature offerings
 - On-premise distribution — SaaS only per constraints
 - Clerk auth migration — future; schema supports it, deferred to when multi-member tenants are needed
+- TypeScript SDK — deferred to v1.3+; Python SDK covers current customer base
 
 ## Context
 
-- v1.0 shipped 2026-04-04, v1.1 shipped 2026-04-18: full pipeline operational locally via Docker Compose; all 4 analyzer methods rewritten
-- ~11,148 LOC Python + 2,255 TypeScript; flag types: `wrong_tool_called`, `wrong_tool_args`, `no_tool_used`, `unnecessary_tool_call`, `parsing_error`
-- Tech stack: Python 3.12, FastAPI, ClickHouse, PostgreSQL (RLS), Redis, MinIO (S3), Next.js 15, sentence-transformers (all-MiniLM-L6-v2)
-- Architecture: Analyser (ingestion) → Redis queue → Worker (embedding+flagging) → Presenter (read/auth) → View (Next.js); Diagnosticer scaffolded
+- v1.0 shipped 2026-04-04, v1.1 shipped 2026-04-18, v1.2 shipped 2026-04-25: full pipeline + LLM diagnosis active locally via Docker Compose
+- ~13,398 LOC Python + 2,619 TypeScript; flag types: `wrong_tool_called`, `wrong_tool_args`, `no_tool_used`, `unnecessary_tool_call`, `tool_not_available`, `parsing_error`, `response_anomaly`
+- Tech stack: Python 3.12, FastAPI, ClickHouse, PostgreSQL (RLS), Redis, MinIO (S3), Next.js 15, sentence-transformers (all-MiniLM-L6-v2), Anthropic/OpenAI/Ollama (Diagnosticer)
+- Architecture: Analyser (ingestion) → Redis queue → Worker (embedding+flagging) → Presenter (read/auth/diagnosis trigger) → Diagnosticer (LLM root cause) → View (Next.js)
 - Calibration: precision target 80%; `wrong_tool_called` is binary (no threshold sweep); full-suite mean precision ≥ 95%
 - Main adversary: Langfuse — open-source, self-hostable, but doesn't diagnose root cause
-- Solo developer; Python primary language
+- Solo developer; Python primary language; 112 tests passing
 
 ## Constraints
 
@@ -106,6 +95,14 @@ When a tool call fails, tell the developer whether it was the model, the archite
 | Skip `tool_use_violation` windowed proximity approach | `no_tool_used` covers the priority case cleanly; proximity detection adds complexity for marginal gain | ✓ Good — simpler and calibrated well |
 | Social centroid for `unnecessary_tool_call` | Necessity-delta approach was theoretically sound but hard to calibrate; social centroid is interpretable and P=1.0 | ✓ Good — R=0.667 at threshold=0.25 |
 | Three-branch logic for `wrong_tool_called` | Old AND-gate suppressed high-score wrong-tool spans; three explicit branches cover all cases | ✓ Good — logic is explicit, tests cover all branches |
+| String (not PG enum) for verdict/severity | Avoids migration pain when adding new values; consistent with FLAG-03 pattern | ✓ Good — no enum migrations needed |
+| Fail-clean Diagnosticer pipeline | assemble → diagnose → persist strictly in order; no DB row written unless LLM parse succeeds | ✓ Good — prevents phantom diagnosis rows |
+| Presenter re-reads from DB after Diagnosticer write | Presenter owns the response schema; avoids parsing Diagnosticer HTTP body | ✓ Good — clean separation of concerns |
+| Auth token forwarding to Diagnosticer | Presenter forwards bearer token; shared SECRET_KEY validates — simple, no separate service auth | ✓ Good — sufficient for single-tenant deployment |
+| Re-diagnosis always overwrites (no idempotency) | Every Diagnose click triggers fresh LLM call; diagnoses table is append-only so history preserved | ✓ Good — UX is simple, history intact |
+| getDiagnosis 404 suppressed in frontend | No prior diagnosis is normal initial state; surfacing 404 would confuse users | ✓ Good — clean UX on first visit |
+| LLM provider lazy imports in factory | Only selected provider SDK imported at runtime — avoids ImportError when other SDKs absent | ✓ Good — Ollama works without anthropic installed |
+| Structured output via vendor tool/function calling | No free-text parsing; Anthropic tool_choice force, OpenAI strict=True, Ollama format= schema | ✓ Good — eliminated free-text parsing failure mode |
 
 ---
-*Last updated: 2026-04-20 after v1.2 milestone started*
+*Last updated: 2026-04-25 after v1.2 Diagnosticer milestone*

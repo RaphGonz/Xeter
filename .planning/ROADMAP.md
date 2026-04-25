@@ -4,7 +4,7 @@
 
 - ✅ **v1.0 MVP** — Phases 1–6 (shipped 2026-04-04)
 - ✅ **v1.1 Analyser Accuracy** — Phases 7–10 (shipped 2026-04-18)
-- 📋 **v1.2 Diagnosticer** — Phases 11–13 (in progress)
+- ✅ **v1.2 Diagnosticer** — Phases 11–13 (shipped 2026-04-25)
 
 ## Phases
 
@@ -34,43 +34,16 @@ See `.planning/milestones/v1.1-ROADMAP.md` for full phase details.
 
 </details>
 
-### 📋 v1.2 Diagnosticer (Phases 11–13)
+<details>
+<summary>✅ v1.2 Diagnosticer (Phases 11–13) — SHIPPED 2026-04-25</summary>
 
-- [x] Phase 11: Diagnosticer Backend (0/4 plans) — not started (completed 2026-04-22)
-- [x] Phase 12: Presenter Integration (0/2 plans) — not started (completed 2026-04-23)
-- [ ] Phase 13: Frontend Diagnosis UI (0/2 plans) — not started
+- [x] Phase 11: Diagnosticer Backend (4/4 plans) — completed 2026-04-22
+- [x] Phase 12: Presenter Integration (2/2 plans) — completed 2026-04-23
+- [x] Phase 13: Frontend Diagnosis UI (2/2 plans) — completed 2026-04-25
 
-#### Phase 11: Diagnosticer Backend
+See `.planning/milestones/v1.2-ROADMAP.md` for full phase details.
 
-**Goal:** Implement core Diagnosticer service — `diagnoses` table + DAL, LLM context assembly, configurable provider/model via env vars, root-cause analysis logic
-**Depends on:** Phase 10
-**Plans:** 4/4 plans complete
-
-Plans:
-- [ ] 11-01-PLAN.md — DB foundation: diagnoses table migration, Diagnosis ORM model, LLM SDK deps
-- [ ] 11-02-PLAN.md — LLM provider factory: AnthropicProvider, OpenAIProvider, OllamaProvider
-- [ ] 11-03-PLAN.md — DAL + context assembly: DiagnosisRepository, assemble_context()
-- [ ] 11-04-PLAN.md — Endpoint wire-up: real POST /diagnose + unit tests
-
-#### Phase 12: Presenter Integration
-
-**Goal:** Wire Presenter to Diagnosticer — trigger endpoint, retrieve endpoint, inter-service communication
-**Depends on:** Phase 11
-**Plans:** 2/2 plans complete
-
-Plans:
-- [ ] 12-01-PLAN.md — DiagnosisService layer + real POST /diagnose + GET /diagnose/{span_id} router
-- [ ] 12-02-PLAN.md — Replace scaffold tests with 9 behavior tests for both endpoints
-
-#### Phase 13: Frontend Diagnosis UI
-
-**Goal:** SpanDetailPanel "Diagnose" button + structured diagnosis display (verdict, severity, affected field, recommended fix)
-**Depends on:** Phase 12
-**Plans:** 1/2 plans executed
-
-Plans:
-- [ ] 13-01-PLAN.md — Update api.ts types + rewrite FlagSection with DiagnosisCard and auto-load
-- [ ] 13-02-PLAN.md — Visual verification of diagnosis UI end-to-end
+</details>
 
 ## Progress
 
@@ -86,6 +59,6 @@ Plans:
 | 8. wrong_tool Rewrite | v1.1 | 3/3 | Complete | 2026-04-18 |
 | 9. no_tool_used + wrong_tool_choice | v1.1 | 1/1 | Complete | 2026-04-18 |
 | 10. unnecessary_tool_call | v1.1 | 1/1 | Complete | 2026-04-18 |
-| 11. Diagnosticer Backend | 4/4 | Complete    | 2026-04-22 | — |
-| 12. Presenter Integration | 2/2 | Complete    | 2026-04-23 | — |
-| 13. Frontend Diagnosis UI | 1/2 | In Progress|  | — |
+| 11. Diagnosticer Backend | v1.2 | 4/4 | Complete | 2026-04-22 |
+| 12. Presenter Integration | v1.2 | 2/2 | Complete | 2026-04-23 |
+| 13. Frontend Diagnosis UI | v1.2 | 2/2 | Complete | 2026-04-25 |

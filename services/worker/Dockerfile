@@ -2,16 +2,13 @@ FROM python:3.12-slim
 WORKDIR /app
 ENV PYTHONPATH=/app
 
-# Install xeter package and its dependencies
+# Install xeter package (no ML deps needed — embedder is a separate service)
 COPY xeter/ xeter/
-RUN pip install --no-cache-dir -e "xeter/[ml]"
+RUN pip install --no-cache-dir -e xeter/
 
-# Worker-specific deps: PostgreSQL, S3, Redis
-RUN pip install --no-cache-dir psycopg2-binary boto3 redis
-
-# Pre-bake the sentence-transformers model into the image layer.
-# This avoids an 80 MB download at container startup on first span.
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+# Worker-specific deps: PostgreSQL, S3, Redis, spaCy NLP
+RUN pip install --no-cache-dir psycopg2-binary boto3 redis httpx spacy && \
+    python -m spacy download en_core_web_md
 
 # Copy Docker entry point
 COPY services/worker/ services/worker/

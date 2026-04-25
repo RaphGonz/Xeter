@@ -16,13 +16,15 @@ import httpx
 from fastapi import FastAPI
 
 from xeter.services.presenter.routers import auth, diagnose, spans
-from xeter.shared.db.clickhouse import get_clickhouse_client
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan: create ClickHouse client and httpx client on startup."""
-    app.state.ch_client = get_clickhouse_client()
+    """Application lifespan: create httpx client on startup.
+
+    ClickHouse clients are created per-request via the get_ch_client dependency
+    to avoid concurrent-session errors when multiple requests arrive at once.
+    """
     app.state.http_client = httpx.AsyncClient(
         base_url=os.environ.get("DIAGNOSTICER_URL", "http://diagnosticer:8001"),
         timeout=30.0,

@@ -65,7 +65,7 @@ def _register_and_login(client: httpx.Client, name_prefix: str) -> dict:
 
     reg_resp = client.post(
         f"{PRESENTER_URL}/register",
-        json={"name": name, "email": email, "password": password},
+        json={"tenant_name": name, "email": email, "password": password},
     )
     assert reg_resp.status_code == 200, (
         f"Register failed: {reg_resp.status_code} — {reg_resp.text}"
@@ -81,7 +81,7 @@ def _register_and_login(client: httpx.Client, name_prefix: str) -> dict:
     assert login_resp.status_code == 200, (
         f"Login failed: {login_resp.status_code} — {login_resp.text}"
     )
-    token = login_resp.json()["token"]
+    token = login_resp.json()["session_token"]
 
     return {"tenant_id": tenant_id, "api_key": api_key, "token": token}
 

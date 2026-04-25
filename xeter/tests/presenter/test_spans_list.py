@@ -11,7 +11,7 @@ Tests cover:
 
 Mocking strategy:
   - app.dependency_overrides[get_session] injects an AsyncMock session
-  - app.state.ch_client is patched with a MagicMock on the app object directly
+  - app.dependency_overrides[get_ch_client] injects a MagicMock CH client per-request
   - verify_session_token dependency is overridden to return the test tenant_id
     (avoids needing a real JWT for most tests)
 """
@@ -25,7 +25,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from xeter.services.presenter.deps import create_session_token, verify_session_token
+from xeter.services.presenter.deps import create_session_token, get_ch_client, verify_session_token
 from xeter.services.presenter.main import app
 from xeter.services.presenter.routers.auth import get_session
 from xeter.shared.models import Flag
@@ -118,13 +118,20 @@ def _session_override(session):
     return override
 
 
+def _ch_client_override(ch_client):
+    """Return a FastAPI dependency override that yields the given CH client."""
+    def override():
+        yield ch_client
+    return override
+
+
 def _client_with_mocks(ch_rows, flags=None, scored_span_ids=None,
                        tenant_id=TENANT_A):
     """Create a TestClient with mocked CH + PG dependencies."""
     ch_client = _make_ch_client(ch_rows)
     pg_session = _make_pg_session(flags=flags, scored_span_ids=scored_span_ids)
 
-    app.state.ch_client = ch_client
+    app.dependency_overrides[get_ch_client] = _ch_client_override(ch_client)
     app.dependency_overrides[verify_session_token] = _auth_override(tenant_id)
     app.dependency_overrides[get_session] = _session_override(pg_session)
 
@@ -133,6 +140,7 @@ def _client_with_mocks(ch_rows, flags=None, scored_span_ids=None,
 
 def _cleanup():
     """Remove dependency overrides after each test."""
+    app.dependency_overrides.pop(get_ch_client, None)
     app.dependency_overrides.pop(verify_session_token, None)
     app.dependency_overrides.pop(get_session, None)
 

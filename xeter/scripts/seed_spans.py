@@ -165,7 +165,7 @@ async def main() -> None:
 
     # 2. Upload payloads to S3, then insert spans into ClickHouse
     import os
-    bucket = os.environ.get("MINIO_BUCKET", "xeter-spans")
+    bucket = os.environ.get("MINIO_BUCKET", "xeter-payloads")
     endpoint_url = os.environ["MINIO_ENDPOINT"]
     boto_session = aioboto3.Session(
         aws_access_key_id=os.environ["MINIO_ACCESS_KEY"],

@@ -46,3 +46,23 @@
 
 ---
 
+
+## v1.2 Diagnosticer (Shipped: 2026-04-25)
+
+**Phases completed:** 3 phases (Phases 11–13), 8 plans
+**Timeline:** 2026-04-22 → 2026-04-25 (4 days)
+**Code:** ~13,398 LOC Python + 2,619 TypeScript; 112 tests passing
+
+**Key accomplishments:**
+- PostgreSQL `diagnoses` table (migration 003) with 12-column schema, RLS tenant isolation, and Diagnosis ORM model — foundation for all Diagnosticer plans
+- Async LLM provider factory supporting Anthropic (forced tool_choice), OpenAI (strict function calling), and Ollama (format= schema) — typed `DiagnosisResult` returned, no free-text parsing
+- `assemble_context()` pulls ClickHouse span + PostgreSQL flags + S3 payloads in parallel (5s timeout) into a single LLM-ready prompt string
+- Real POST /diagnose endpoint replacing 501 scaffold: fail-clean pipeline (assemble → diagnose → persist), error mapping (ValueError→404, LLMError→502, ParseError→422), 6-test suite
+- `DiagnosisService` in Presenter with ClickHouse tenant guard, HTTP error classification (503/504/502), and re-read-from-DB pattern; GET /diagnose/{span_id} polling endpoint added
+- SpanDetailPanel `DiagnosisCard` with auto-load GET on mount, colored verdict/severity badges, affected field + recommended fix display, always-enabled Diagnose button
+
+**Archive:**
+- Roadmap: `.planning/milestones/v1.2-ROADMAP.md`
+
+---
+

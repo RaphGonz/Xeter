@@ -4,7 +4,7 @@ Unit tests for POST /diagnose and GET /diagnose/{span_id} endpoints.
 Tests cover:
   POST /diagnose:
     - Returns 401 without Authorization header
-    - Idempotency: returns cached result, Diagnosticer not called
+    - Always calls Diagnosticer — re-diagnosis overwrites prior result
     - Tenant guard: returns 404 when span not owned by tenant
     - Returns 503 on httpx.ConnectError
     - Returns 504 on httpx.ReadTimeout
@@ -139,9 +139,14 @@ def test_post_diagnose_returns_401_without_token():
         _cleanup()
 
 
-def test_post_diagnose_idempotency_returns_cached_without_calling_diagnosticer():
-    """POST /diagnose returns cached result immediately without calling Diagnosticer."""
+def test_post_diagnose_always_calls_diagnosticer_even_when_prior_diagnosis_exists():
+    """POST /diagnose always calls Diagnosticer — re-diagnosis overwrites prior result."""
+    mock_resp = MagicMock()
+    mock_resp.is_success = True
+    mock_resp.status_code = 200
+
     http_client_mock = AsyncMock(spec=httpx.AsyncClient)
+    http_client_mock.post = AsyncMock(return_value=mock_resp)
     app.state.http_client = http_client_mock
     app.dependency_overrides[verify_session_token] = _auth_override()
     app.dependency_overrides[get_session] = _session_override
@@ -161,11 +166,8 @@ def test_post_diagnose_idempotency_returns_cached_without_calling_diagnosticer()
             response = client.post(_DIAGNOSE_URL, json={"span_id": "span-abc"}, headers=_AUTH_HEADER)
 
         assert response.status_code == 200, response.text
-        # Diagnosticer should NOT have been called
-        http_client_mock.post.assert_not_called()
-        data = response.json()
-        assert data["span_id"] == "span-abc"
-        assert data["verdict"] == "model"
+        # Diagnosticer MUST have been called — no idempotency short-circuit
+        http_client_mock.post.assert_called_once()
     finally:
         _cleanup()
 
@@ -304,9 +306,8 @@ def test_post_diagnose_returns_200_on_success():
             "xeter.services.presenter.diagnosis_service.DiagnosisRepository"
         ) as MockRepo:
             mock_repo_instance = MagicMock()
-            # First call: None (no cached) → Second call: diagnosis (after forward)
             mock_repo_instance.get_latest_for_span = AsyncMock(
-                side_effect=[None, _make_diagnosis()]
+                return_value=_make_diagnosis()
             )
             MockRepo.return_value = mock_repo_instance
 

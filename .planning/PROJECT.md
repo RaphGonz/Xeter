@@ -38,9 +38,31 @@ When a tool call fails, tell the developer whether it was the model, the archite
 - ✓ Configurable LLM provider + model via env vars (Anthropic / OpenAI / Ollama) — v1.2
 - ✓ Diagnosis results stored in PostgreSQL (`diagnoses` table with RLS) and rendered in SpanDetailPanel (DiagnosisCard with auto-load) — v1.2
 
+## Current Milestone: v1.3 Security Hardening
+
+**Goal:** Close all pre-launch security gaps — auth hardening, RLS coverage, DB-level validation, secrets hygiene, and deployment documentation.
+
+**Target features:**
+- JWT expiry (30 min access token) + refresh token endpoint (httpOnly) + JWT_SECRET rotation runbook
+- span_scores RLS policy mirroring flags table; Worker BYPASSRLS scoped to inserts only
+- PostgreSQL CHECK constraints: `verdict IN ('model','architecture','prompt','unknown')`, `severity IN ('low','medium','high')`
+- bcrypt cost factor ≥ 12 verified; CI test that fails if it drops below 12
+- docker-compose default passwords → CHANGE_ME_BEFORE_DEPLOY; generate-secrets.sh for random `.env`
+- xeter-payloads S3/MinIO bucket policy documented (private ACL, mc policy set + IAM JSON)
+
 ### Active
 
-<!-- Next milestone scope — to be defined via /gsd:new-milestone -->
+<!-- v1.3 Security Hardening -->
+
+- [ ] JWT access token expires in 30 min; refresh token endpoint issues long-lived token stored httpOnly
+- [ ] JWT_SECRET rotation runbook documented
+- [ ] span_scores table has tenant_isolation RLS policy; Worker BYPASSRLS scoped to insert paths only
+- [ ] verdict column has CHECK constraint: IN ('model','architecture','prompt','unknown')
+- [ ] severity column has CHECK constraint: IN ('low','medium','high')
+- [ ] bcrypt rounds ≥ 12 enforced; CI test added
+- [ ] docker-compose default passwords replaced with CHANGE_ME_BEFORE_DEPLOY placeholders
+- [ ] generate-secrets.sh script writes .env with random secrets
+- [ ] xeter-payloads bucket policy documented: private ACL, mc policy set command + S3 IAM JSON
 
 ### Out of Scope
 
@@ -105,4 +127,4 @@ When a tool call fails, tell the developer whether it was the model, the archite
 | Structured output via vendor tool/function calling | No free-text parsing; Anthropic tool_choice force, OpenAI strict=True, Ollama format= schema | ✓ Good — eliminated free-text parsing failure mode |
 
 ---
-*Last updated: 2026-04-25 after v1.2 Diagnosticer milestone*
+*Last updated: 2026-04-27 after v1.3 Security Hardening milestone started*

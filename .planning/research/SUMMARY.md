@@ -1,129 +1,223 @@
-# Research Summary — v1.1 Analyser Accuracy
+# Project Research Summary
 
-**Project:** Xeter v1.1 — Analyser Signal Redesign
-**Domain:** LLM agent observability — span-local tool-call anomaly detection
-**Researched:** 2026-04-06
-**Confidence:** MEDIUM (signal design is well-reasoned and grounded in research; threshold values require calibration on real spans)
+**Project:** Xeter v1.3 Security Hardening
+**Domain:** Auth hardening, RLS completion, DB integrity, secrets hygiene -- existing FastAPI + Next.js 15 AI observability SaaS
+**Researched:** 2026-04-27
+**Confidence:** HIGH
+
+## Executive Summary
+
+Xeter v1.3 is a security hardening milestone on an already-shipping platform. The work closes six concrete gaps before public launch: permanent JWT credentials, incomplete tenant isolation on span_scores, unconstrained diagnosis values, hardcoded secrets in docker-compose, unasserted MinIO bucket policy, and no CI guard on bcrypt cost factor. None of these require new libraries -- every feature is implementable with the existing dependency set, with the sole change being removal of passlib[bcrypt] which was never imported anywhere. The recommended approach treats these as infrastructure-first changes: migrations and config hygiene go first, then endpoint logic, then frontend integration.
+
+The most significant architectural decision in this milestone is the refresh token design. Features research initially recommended a refresh_tokens DB table with server-side revocation; Architecture research concludes that for the current single-tenant-per-deployment threat model, a long-lived HS256 JWT in an httpOnly cookie with client-side revocation (clear cookie on logout) is sufficient. The Architecture position wins: it avoids a new table, a jti claim, and per-refresh DB writes, while still delivering the primary XSS protection that httpOnly provides. If device-level revocation becomes a requirement (10k+ users scale), a refresh_tokens table can be added in v1.4 without changing the token format. The logout handler must carry an explicit comment acknowledging that stolen refresh tokens remain valid until natural expiry (7 days) -- this is an accepted tradeoff, not an oversight.
+
+The second design resolution: Features research described creating a dedicated xeter_worker BYPASSRLS PostgreSQL role with a separate WORKER_DATABASE_URL. Architecture research identifies that the simpler and equally correct path is modifying score_writer.py to use SET LOCAL app.current_tenant_id inside an explicit transaction -- matching the existing flag_writer.py pattern. This eliminates a new DB role, a new env var, and new docker-compose wiring. Architecture wins. The key risk in this milestone is the interaction between PostgreSQL RLS, FORCE ROW LEVEL SECURITY, and the existing migration role: Pitfalls research confirms that ENABLE ROW LEVEL SECURITY without FORCE leaves the table owner bypassing all policies silently -- migration 004 must add FORCE retroactively to all six existing RLS tables in the same change.
+
+## Key Findings
+
+### Recommended Stack
+
+No new dependencies are required for any v1.3 feature. The existing stack handles everything: python-jose[cryptography] for refresh JWT issuance, fastapi/Starlette Response.set_cookie(httponly=True) for the cookie, SQLAlchemy 2.0 + alembic for the RLS and CHECK constraint migrations, bcrypt directly for the cost factor CI test, and standard POSIX openssl rand for generate-secrets.sh. The only dependency change is a removal: passlib[bcrypt]>=1.7 must be removed from pyproject.toml -- it is never imported anywhere in the codebase, conflicts with Python 3.14+, and was already rejected in PROJECT.md.
+
+**Core technologies (v1.3 relevant):**
+- python-jose[cryptography] 3.5.0: Refresh JWT issuance -- same jwt.encode() / jwt.decode() API already used for access tokens; add type: refresh claim and longer exp
+- fastapi 0.135.2 / Starlette: response.set_cookie(httponly=True, secure=True, samesite="lax") -- confirmed via official Starlette docs; Cookie() dependency for reading the refresh token server-side
+- alembic 1.18.4: Migration 004 -- span_scores RLS + FORCE RLS on all tables + diagnoses CHECK constraints; op.execute(sa.text(...NOT VALID...)) pattern required for live table
+- bcrypt 5.0.0: CI test reads cost factor from gensalt() output via salt.split(b"$")[2]; no hashpw call needed
+- Migration note: python-jose to PyJWT migration is recommended for v1.4 (near-abandoned library), explicitly out of scope for v1.3
+
+### Expected Features
+
+**Must have (table stakes -- all required before public launch):**
+- JWT 30-minute access token expiry -- change TOKEN_EXPIRE_HOURS = 24 to TOKEN_EXPIRE_MINUTES = 30 in deps.py
+- httpOnly refresh token cookie + POST /auth/refresh endpoint -- XSS token theft prevention; cookie set by Next.js Route Handler (not Presenter directly, due to Next.js rewrite stripping upstream Set-Cookie headers)
+- docker-compose secrets hygiene -- replace 12+ xeter_dev_password literals with ${VAR:-CHANGE_ME_BEFORE_DEPLOY}; add generate-secrets.sh; create root .gitignore
+- PostgreSQL CHECK constraints on verdict/severity in diagnoses -- data integrity guard against LLM hallucinations writing unexpected enum values
+
+**Should have (differentiators that complete tenant isolation):**
+- span_scores RLS policy + score_writer.py SET LOCAL -- closes the documented "RLS intentionally omitted" gap in migration 002; the table comment in spans.py explicitly flags this as the sole isolation mechanism
+- FORCE ROW LEVEL SECURITY on all existing RLS tables -- retroactive fix; without it the migration role owner bypasses all tenant policies silently
+- bcrypt rounds >= 12 CI enforcement -- regression guard; gensalt() defaults are already correct; test prevents future rounds=4 test-speed shortcuts from reaching production
+
+**P2 (include in v1.3, not a hard launch blocker):**
+- JWT_SECRET rotation runbook -- operational readiness doc; Option A (30-min re-login gap) requires zero code with 30-min access token expiry in place
+- MinIO xeter-payloads private bucket assertion -- add mc anonymous set none local/xeter-payloads to minio-init; document IAM equivalent for cloud deployments
+
+**Defer to v1.4+:**
+- Rate limiting on /auth/login and /auth/refresh -- brute-force protection; relevant post-launch
+- Explicit logout endpoint with DB revocation -- session ends naturally on expiry; add when device-level revocation is a requirement
+- python-jose to PyJWT migration
+- RS256 / JWKS -- only relevant when third-party API consumers exist
+- Argon2id migration from bcrypt
+- Per-service MinIO IAM service accounts (current shared credential is acceptable for solo-dev SaaS)
+
+**Conflict resolution -- refresh token revocation store:**
+Features recommended a refresh_tokens table. Architecture rules it out for v1.3 as over-engineered for the current threat model. The refresh token is a long-lived HS256 JWT; revocation is client-side (cookie cleared on logout). Pitfall 2 documents the stolen-token risk accurately -- this is an accepted gap, bounded by 7-day absolute expiry.
+
+**Conflict resolution -- Worker BYPASSRLS role:**
+Features recommended a dedicated xeter_worker DB role + WORKER_DATABASE_URL. Architecture rules it out for v1.3 in favor of adding SET LOCAL app.current_tenant_id to score_writer.py (same pattern as flag_writer.py). The two-role approach remains the right v1.4 path if Worker ever has SELECT requirements.
+
+### Architecture Approach
+
+The v1.3 architecture adds two new files (Next.js Route Handlers for login and refresh), modifies five existing files, and introduces one new Alembic migration (004). The only structural pattern change is in the auth cookie flow: the Presenter never sets cookies directly -- it returns both tokens in JSON; the Next.js Route Handler at app/api/login/route.ts sets the httpOnly cookie using cookies().set() from the Next.js App Router API. This is required because Next.js rewrites strip upstream Set-Cookie headers, so FastAPI cookies would be silently discarded.
+
+**Modified/new components:**
+
+1. services/view/src/app/api/login/route.ts (NEW) -- Login Route Handler; calls Presenter, receives {session_token, refresh_token} in JSON body, sets httpOnly refresh cookie on browser-facing response
+2. services/view/src/app/api/auth/refresh/route.ts (NEW) -- Refresh Route Handler; reads httpOnly cookie, calls POST http://presenter:8000/auth/refresh with token in request body, returns new access token in JSON
+3. xeter/services/presenter/routers/auth.py (MODIFIED) -- Add POST /auth/refresh route; read token from request body (not cookie); validate and return new access token
+4. xeter/services/presenter/deps.py (MODIFIED) -- TOKEN_EXPIRE_MINUTES = 30; add create_refresh_token(); access token stays Bearer pattern
+5. services/view/src/lib/auth.ts (MODIFIED) -- Remove sessionStorage; access token in Zustand memory only; add 401 interceptor that calls /api/auth/refresh
+6. xeter/services/worker/score_writer.py (MODIFIED) -- Add explicit transaction + SET LOCAL app.current_tenant_id matching flag_writer.py pattern
+7. xeter/migrations/versions/004_security.py (NEW) -- ENABLE ROW LEVEL SECURITY on span_scores + tenant_isolation policy; FORCE ROW LEVEL SECURITY retroactively on all 6 existing RLS tables; CHECK constraints on diagnoses verdict/severity using NOT VALID pattern
+8. deploy/docker-compose.yml (MODIFIED) -- Replace all xeter_dev_password literals; update minio-init to add mc anonymous set none
+9. deploy/generate-secrets.sh (NEW) -- openssl rand -hex 32 for all secrets; git-tracking guard check
+10. xeter/pyproject.toml (MODIFIED) -- Remove passlib[bcrypt]>=1.7
+
+**Build order constraint (hard dependencies):**
+Migration 004 must exist before score_writer.py changes are deployed. Presenter deps.py changes must exist before the /auth/refresh route. Presenter route must exist before Next.js Route Handlers call it. auth.ts sessionStorage removal is last (depends on working cookie refresh).
+
+### Critical Pitfalls
+
+1. **Next.js rewrites strip upstream Set-Cookie headers** -- The Presenter cannot set httpOnly cookies directly; the cookie must be set by a Next.js Route Handler using cookies().set(). A direct FastAPI response.set_cookie() will succeed in curl and be silently discarded by the browser.
+
+2. **ENABLE ROW LEVEL SECURITY without FORCE leaves table owner unrestricted** -- The migration role owns all tables. Every existing migration (001-003) uses only ENABLE. Migration 004 must add ALTER TABLE ... FORCE ROW LEVEL SECURITY for all six RLS tables. Verify with SELECT relforcerowsecurity FROM pg_class -- must be t for all.
+
+3. **CHECK constraint migration blocks writes on live diagnoses table** -- Standard op.create_check_constraint() acquires ACCESS EXCLUSIVE lock and scans all rows. Use ALTER TABLE ... ADD CONSTRAINT ... NOT VALID in the migration (instantaneous), then VALIDATE CONSTRAINT manually after a pre-flight violation query. Existing v1.2 data may include verdict='undetermined' and severity='critical' -- both violate the proposed constraints.
+
+4. **Secrets env var fallback silently uses weak defaults** -- os.environ.get("SECRET_KEY", "dev-secret-key") and docker-compose :- patterns are two layers of silent fallback. Change to os.environ["SECRET_KEY"] (raises KeyError on startup) and ${SECRET_KEY} (no fallback, docker-compose fails loudly). The .gitignore entry for .env must exist before generate-secrets.sh is run.
+
+5. **bcrypt module-level hash in test_auth_login.py accumulates CI time at rounds=12** -- Line 32 of test_auth_login.py calls bcrypt.hashpw() at module scope. At rounds=12 this adds 300-600ms per import. Move all test bcrypt calls to scope="session" fixtures using rounds=4. The CI enforcement test verifies the hash prefix $2b$12$ only; it never calls hashpw with production cost.
+
+6. **/auth/refresh must return access token in JSON body, not only as a cookie** -- If the endpoint returns only a cookie, Next.js 15 Client Components cannot read it (httpOnly blocks document.cookie). The 401 interceptor reads response.json().session_token from the refresh response body.
+
+## Implications for Roadmap
+
+The six security features group naturally into three phases based on hard dependencies and deployment risk. All are P1 for v1.3 launch.
+
+### Phase 1: Database Foundation
+**Rationale:** Migration 004 must exist before any code that depends on RLS or constraints is deployed. Applying it first, independently, means it can be run on production before any service code changes, eliminating the race condition where services deploy against an old schema.
+
+**Delivers:**
+- span_scores ENABLE ROW LEVEL SECURITY + tenant_isolation policy
+- FORCE ROW LEVEL SECURITY retroactively on all 6 existing RLS tables
+- diagnoses CHECK constraints on verdict/severity (NOT VALID; VALIDATE run manually after data audit)
+- passlib[bcrypt] removed from pyproject.toml
+
+**Addresses:** Table stakes (data integrity), differentiator (tenant isolation completion)
+
+**Avoids:**
+- Table owner RLS bypass -- add FORCE in same migration as ENABLE
+- Blocking writes on live diagnoses -- use NOT VALID pattern; pre-flight violation query required before VALIDATE
+
+**Research flag:** Standard Alembic and PostgreSQL patterns. No phase research needed. Pre-flight SQL for existing constraint violations must be run manually before VALIDATE.
 
 ---
 
-## What's Wrong (Current State)
+### Phase 2: Secrets Hygiene + Worker RLS Wiring
+**Rationale:** Can deploy independently from auth changes. Bundled together because docker-compose and score_writer.py changes both touch deployment configuration, and the bcrypt fixture refactor should precede adding more auth tests in Phase 3.
 
-- **wrong_tool:** The AND gate is inverted — it suppresses the flag when the top-ranked tool has a *high* score, which is exactly when the ranking signal is most trustworthy and a disagreement most meaningful. The flag score reports `top_score` (the best available tool) instead of the gap or the called tool's own score, so severity is unreadable from the dashboard. The fallback path compares bare tool names (1-4 tokens) against a full prompt, which reliably produces noise regardless of actual relevance.
+**Delivers:**
+- All xeter_dev_password literals replaced in docker-compose.yml
+- generate-secrets.sh with git-tracking guard
+- Root .gitignore with .env entry
+- SECRET_KEY hard-fail on missing env var (os.environ["SECRET_KEY"], no :- fallback in docker-compose)
+- score_writer.py explicit transaction + SET LOCAL app.current_tenant_id
+- MinIO mc anonymous set none added to minio-init command
+- MinIO bucket policy documentation in deployment guide
+- bcrypt rounds >= 12 CI test + module-level bcrypt fixture refactor in test suite
 
-- **no_tool:** Compares the prompt against the hardcoded string `"call a function tool"` — too generic to catch real capability gaps. Recall is 0.2; 80% of true gaps are missed. The span already contains `available_tools`, which are the semantically correct comparison target and are never consulted.
+**Addresses:** Table stakes (secrets hygiene), P2 (MinIO bucket assertion), differentiator (bcrypt CI enforcement)
 
-- **tool_use_violation (buried inside no_tool):** Uses cosine similarity to detect explicit prohibition phrases like "do not use tools." Research confirms all-MiniLM-L6-v2 encodes "do not use tools" and "use tools" as nearly identical vectors (empirically measured at ~0.993 cosine similarity). This check cannot work with this model class — it is not a threshold calibration problem, it is a documented representational limitation of contrastive-trained SBERT models.
+**Avoids:**
+- .env committed to git -- create .gitignore before writing generate-secrets.sh
+- Silent :- fallback defaults for security-critical env vars
+- Worker score_writer.py failing on RLS policies -- SET LOCAL must land with or after migration 004
+- bcrypt CI slowdown -- fixture refactor ships in same PR as cost factor test
 
-- **wrong_args:** Embeds the raw JSON string of `tool_arguments` including structural syntax characters (`{`, `}`, `"`, `:`). Research shows a 19% Recall@10 improvement just from flattening structured data before embedding; the current approach wastes token capacity on non-semantic characters and operates outside the model's training distribution. The check is already marked `low_confidence: True` in production, confirming the team recognises it is unreliable.
-
-- **excessive_tool:** Computes `cosine(prompt, tool_name)` — the same signal as the `wrong_tool` fallback path. It cannot distinguish "called the wrong tool" from "didn't need any tool at all." The concept of tool necessity is not encoded in prompt-vs-tool-name similarity.
-
----
-
-## Recommended Signals
-
-### wrong_tool
-
-Replace the single AND condition with a two-gate approach. Gate 1: ranking is trustworthy only when `top_score > wrong_tool_rank_floor` (a minimum floor, not a ceiling — the current code has the direction inverted). Gate 2: flag when `gap = top_score - called_tool_score > wrong_tool_gap`. Report `gap` as the flag score (higher gap = more severe misfiling). When `available_tools` is absent or contains fewer than 3 tools, fall back to Signal 1 only: embed `tool_name + " " + tool_description` as a unit and flag when `called_tool_score < wrong_tool_called`. Never compare on tool name alone.
-
-New threshold keys required: `wrong_tool_gap` (suggested start: 0.15), `wrong_tool_rank_floor` (suggested start: 0.20), `wrong_tool_called` (suggested start: 0.25). The existing `wrong_tool` key can be retired after migration.
-
-### no_tool
-
-When `available_tools` is present and non-empty, compute the max cosine similarity between the prompt embedding and each available tool embedding (reusing the existing `_get_tool_embeddings` cache). A high max score means the prompt semantically overlapped with at least one available tool — a tool-less response is therefore a capability gap. Log as `prompt_vs_best_tool`.
-
-When `available_tools` is absent, compare against a centroid of action-oriented reference phrases ("look up information", "retrieve from database", "call an external service", etc.) rather than the single generic string. Log as `prompt_vs_action_reference`. Keep metric names distinct so calibration can track both paths separately. Expect the threshold to shift upward from the current 0.25; a starting value of 0.45 is recommended for the `available_tools` path.
-
-### tool_use_violation (split out from no_tool)
-
-Retire the embedding-based approach entirely — it cannot be fixed by threshold adjustment. Use keyword regex as the primary and sufficient mechanism. Compile patterns once at class init covering three categories: direct prohibition ("do not use tools", "don't call functions"), answer-directly instructions ("respond without calling", "answer from memory"), and format-constrained responses ("plain text only", "do not make API calls"). The flag score is binary (1.0 on any match). Log metric as `prompt_forbids_tool`. An embedding score can optionally be logged as a calibration artefact but must never gate the flag decision.
-
-### wrong_args
-
-Implement three signals in priority order. Priority 1 (output-based, highest ROI): scan `tool_output` for error patterns using compiled regex (`error`, `exception`, `invalid`, `missing required`, HTTP 4xx/5xx). This is deterministic, zero embedding cost, and directly causally linked to bad arguments. Priority 2 (semantic, replaces broken signal): flatten `tool_arguments` JSON to string values only (strip keys and all structural syntax), embed the result against the prompt; skip the embedding entirely if the flattened string is empty or all-numeric. Priority 3 (log-only in v1.1): compute `cosine(embed(arg_key_names), embed(tool_description))` to accumulate calibration data for a future threshold — do not flag on this in v1.1.
-
-The `wrong_tool_args` threshold will need recalibration after raw-JSON embedding is replaced because the score distribution will shift significantly.
-
-### excessive_tool
-
-Replace `cosine(prompt, tool_name)` with a necessity delta signal. Embed two reference strings at class init: `DIRECT_ANSWER_REF` ("answer this question directly from existing knowledge without calling any external tool or API") and `TOOL_REQUIRED_REF` ("use a tool, API, or external system to perform this action or retrieve this information"). For each span: `necessity_delta = cosine(prompt, TOOL_REQUIRED_REF) - cosine(prompt, DIRECT_ANSWER_REF)`. Flag when `necessity_delta < thresholds["excessive_tool_delta"]` (start at -0.05, calibrate). Log secondary signal `prompt_vs_tool_output_overlap` when `tool_output` is available — a high score (output paraphrases the prompt) corroborates the necessity finding.
-
-Add a mutual exclusion guard: if `wrong_tool` has already fired on the span, skip `_check_excessive_tool`. New threshold key: `excessive_tool_delta`.
+**Research flag:** Standard patterns. No phase research needed.
 
 ---
 
-## Cross-Cutting Findings
+### Phase 3: JWT Hardening + Refresh Token Flow
+**Rationale:** Most complex phase; requires coordination across Presenter (Python), Next.js (TypeScript), and browser cookie behavior. Must come after Phase 1 (schema ready) and Phase 2 (secrets hygiene, so SECRET_KEY is properly set). The Next.js Route Handler pattern must be implemented correctly from the start -- retrofitting after a direct-Presenter-cookie implementation is costly.
 
-**Calibration infrastructure must accommodate binary signals.** The existing `calibrate.py` P/R sweep assumes continuous scores. Three new signals are binary (keyword match, output error, JSON validity). These should either be excluded from the numeric threshold sweep or handled with a sentinel value in `calibrated_thresholds.json`. The calibration script likely needs a `"binary": true` marker per flag type so it does not attempt sweep optimisation on them.
+**Delivers:**
+- TOKEN_EXPIRE_MINUTES = 30 in deps.py
+- create_refresh_token() helper in deps.py (HS256 JWT, 7-day exp, type: refresh claim)
+- POST /auth/refresh on Presenter -- reads refresh token from request body, returns new access token in JSON
+- app/api/login/route.ts -- Next.js Route Handler that sets httpOnly cookie
+- app/api/auth/refresh/route.ts -- Next.js Route Handler that reads cookie and calls Presenter
+- auth.ts -- remove sessionStorage; access token in Zustand memory only; 401 interceptor with refresh retry
+- JWT_SECRET rotation runbook (Option A: 30-min re-login gap, zero code)
 
-**Metric naming discipline is more important in v1.1 than v1.0.** Several checks now produce multiple sub-signals per span. Each sub-signal must be logged under a distinct `metric_name` key (e.g., `prompt_vs_best_tool` vs. `prompt_vs_action_reference`, `wrong_tool_gap` vs. `prompt_vs_called_tool`) so calibration datasets are separable by signal path. Do not aggregate sub-signals into a single score in the log.
+**Addresses:** Table stakes (JWT expiry, refresh token, httpOnly cookie)
 
-**all-MiniLM-L6-v2 has two hard limits affecting multiple methods.** First, it is symmetric — comparing short text (tool names, argument values, 1-4 tokens) against long text (prompts) degrades cosine reliability in proportion to length asymmetry. Consistent mitigation: always embed the richest available representation of the short side (`name + description`, `flattened values`, action phrase centroid). Any new signal that embeds a sub-sentence fragment against a full prompt must be flagged for review. Second, it cannot encode negation polarity — "do not use tools" and "use tools" score ~0.993 cosine similarity. Any check needing to detect prohibitive language must use keyword regex, not cosine similarity.
+**Avoids:**
+- Set-Cookie stripped by Next.js rewrite -- Route Handler pattern, not direct Presenter cookie
+- Access token in sessionStorage -- Zustand memory only after this phase
+- /auth/refresh returning only cookies -- must return {session_token, expires_in: 1800} in JSON body
+- Revocation theater -- logout clears cookie; gap (stolen tokens valid 7 days) is explicitly documented in handler comment as accepted v1.3 tradeoff
 
-**Double-flagging between wrong_tool and excessive_tool must be resolved explicitly.** Without a structural guard, the same span can fire both flags representing the same underlying issue. The recommended guard: if `wrong_tool` has already been appended to `flags` in `analyze()`, skip the `_check_excessive_tool` call. This requires `analyze()` to pass the accumulating flag list or check it before the call, but aligns with the natural execution order (wrong_tool runs first).
-
-**The no_tool / tool_use_violation split is architecturally necessary.** The current single `_check_no_tool` conflates two opposite situations: "should have called a tool and didn't" vs. "was told not to call a tool and did anyway." These require different signals, different threshold types (continuous vs. binary), and different developer actions. Keeping them merged prevents independent calibration and makes flag semantics ambiguous.
-
-**New threshold keys needed across all methods:**
-
-| Key | Method | Type | Suggested Start |
-|-----|--------|------|----------------|
-| `wrong_tool_gap` | wrong_tool | continuous | 0.15 |
-| `wrong_tool_rank_floor` | wrong_tool | continuous | 0.20 |
-| `wrong_tool_called` | wrong_tool fallback | continuous | 0.25 |
-| `tool_use_violation` | tool_use_violation | binary sentinel | 1.0 |
-| `excessive_tool_delta` | excessive_tool | continuous (low-bad) | -0.05 |
-
-The existing `wrong_tool`, `no_tool`, and `excessive_tool` keys may be retired or reused depending on migration approach. `wrong_tool_args` is retained but will need recalibration.
+**Research flag:** Next.js App Router cookies() API and Route Handler interaction with rewrites is the one non-obvious integration. Architecture covers it completely. No additional research needed, but the first implementation task must be a manual browser test verifying the cookie is attached on the refresh call before any other frontend logic is built on top of it.
 
 ---
 
-## Recommended Build Order
+### Phase Ordering Rationale
 
-**1. wrong_args (first)** — Highest ROI for least risk. The output-based error signal (Priority 1) requires no embedding changes and no new threshold calibration; it is purely additive. It immediately resolves the `low_confidence: True` flag that has been shipping to users. The flattened-values improvement (Priority 2) is a localised change to one method. Start here — it is the clearest win with the most contained blast radius.
+- Phase 1 first because the schema is a hard prerequisite for Phase 2 score_writer.py change (RLS must exist before SET LOCAL is meaningful).
+- Phase 2 before Phase 3 because SECRET_KEY hard-fail must be in place before the refresh token flow depends on it, and the bcrypt fixture refactor must precede adding more auth tests in Phase 3.
+- Phase 3 last because it touches the most files across two services and the frontend simultaneously.
+- The three phases can be code-reviewed and deployed independently, reducing blast radius if any phase needs rollback.
 
-**2. wrong_tool (second)** — The logic inversion bug is clearly defined and the fix is surgical: invert one threshold comparison, change what is scored and reported, add the two-tool pool guard. The three new threshold keys are straightforward additions to `calibrated_thresholds.json`. This fix will have immediate impact on flag quality because the current AND-gate bug suppresses valid flags on high-confidence spans — the cases most worth catching.
+### Research Flags
 
-**3. no_tool + tool_use_violation split (third)** — These two changes are tightly coupled: the method split is the prerequisite for fixing both signals independently. The `tool_use_violation` fix (keyword regex) is trivial to implement once the method is separated. The `no_tool` fix (max cosine against available_tools) reuses `_get_tool_embeddings` already in place from the wrong_tool work.
+Phases with standard patterns -- no additional phase research needed:
+- **Phase 1 (Database Foundation):** Alembic migrations and PostgreSQL RLS are well-documented. The NOT VALID pattern is covered in depth in ARCHITECTURE.md. Only non-standard step is the manual pre-flight violation query before VALIDATE.
+- **Phase 2 (Secrets Hygiene + Worker):** Pure config and one Python pattern change. All patterns documented in existing codebase (flag_writer.py is the reference implementation).
 
-**4. excessive_tool (last)** — The necessity delta signal is conceptually the most novel and has no prior art for span-local detection specifically. The reference string embeddings need validation against real spans before the threshold is trustworthy. Implement last so calibration data from the first three fixes is available to inform the threshold choice, and so any cross-span double-flagging guards can be designed with full knowledge of what wrong_tool actually produces.
+Phase that warrants careful step-by-step verification (not additional research):
+- **Phase 3 (JWT Hardening):** The Next.js Route Handler cookie-setting pattern is the one genuinely non-obvious integration. Architecture covers it completely. First sub-task must be a real browser verification that the httpOnly cookie is present on the refresh request before building additional frontend logic on top of it.
 
----
+## Confidence Assessment
 
-## Watch Out For
+| Area | Confidence | Notes |
+|------|------------|-------|
+| Stack | HIGH | All claims verified against PyPI and official docs 2026-04-27; no new dependencies; single removal (passlib) confirmed by codebase grep |
+| Features | HIGH | PostgreSQL RLS/BYPASSRLS/FORCE patterns verified against official PostgreSQL 16 docs. Refresh token revocation gap explicitly accepted, not a research uncertainty |
+| Architecture | HIGH | All patterns verified against actual codebase files with line-level specificity. Next.js Route Handler cookie pattern verified against Next.js App Router docs |
+| Pitfalls | HIGH | 10 pitfalls documented with direct codebase evidence (file paths, line numbers). PostgreSQL behavior verified against official docs |
 
-**1. The symmetric model trap applies to all four methods.** all-MiniLM-L6-v2 degrades when one side of a cosine comparison is much shorter than the other. The pattern that causes this is embedding bare tool names, single argument values, or short generic reference strings against a full prompt. The consistent fix is always to embed the richest available representation of the shorter input. Any v1.1 implementation that introduces a new cosine comparison where one side is a sub-sentence fragment should be treated as a red flag.
+**Overall confidence:** HIGH
 
-**2. Threshold values will not transfer from v1.0 to v1.1.** Score distributions shift when the underlying signal changes. The existing `calibrate.py` infrastructure handles recalibration, but the team must run it after each method rewrite before deploying. Do not reuse v1.0 threshold values for v1.1 signals — they were calibrated against different score distributions and will produce incorrect precision/recall tradeoffs. Budget a calibration run as the acceptance criterion for each method rewrite.
+### Gaps to Address
 
-**3. The tool_use_violation embedding approach is not fixable by threshold adjustment.** This is the most important constraint from the research. The limitation is peer-reviewed and multiply confirmed: SBERT-family models assign near-identical embeddings to negated and non-negated forms of the same sentence because the contrastive training objective optimises for content-word similarity, not polarity. If anyone proposes keeping the cosine-similarity approach with a different threshold or reference string, the answer is no. Only keyword regex (or a negation-aware NLI classifier, which is not in scope) can detect explicit prohibition reliably.
-
----
+- **Existing diagnoses data audit:** Before running VALIDATE CONSTRAINT for verdict/severity, a pre-flight query must be run against the production database. Architecture documents that undetermined (verdict) and critical (severity) may appear in existing rows -- both violate the proposed constraints. The migration uses NOT VALID so it is non-blocking, but VALIDATE will fail until data is cleaned. Diagnosticer provider code must also be updated to only emit values in the allowed sets.
+- **minio-init env var reference:** docker-compose minio-init currently hardcodes the MinIO password in the mc alias set command string. When secrets hygiene replaces it, the command string must also reference ${MINIO_ROOT_PASSWORD} -- easy to miss since it is not in an environment: block.
+- **sessionStorage removal regression test:** Removing sessionStorage from auth.ts may break any frontend test that mocks window.sessionStorage. Audit services/view test files before Phase 3 lands.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- Scientific Reports 2025 (Nature) — peer-reviewed confirmation that SBERT negation pairs score ~0.993 cosine similarity; confirms this is a model-class limitation
-- HuggingFace community forum — empirical demonstration with measured score on negated pair
-- sentence-transformers/all-MiniLM-L6-v2 model card (HuggingFace) — symmetric design, 256 token limit, contrastive training objective
-- Towards Data Science: "Optimizing Vector Search: Why You Should Flatten Structured Data" — 19.1% Recall@10 improvement and 27.2% MRR improvement from JSON flattening before embedding
+- Starlette Response.set_cookie() docs (https://www.starlette.dev/responses/#set-cookie) -- httponly, secure, samesite parameter signatures confirmed
+- PyPI: bcrypt 5.0.0 (https://pypi.org/project/bcrypt/) -- gensalt() default rounds=12; hash format $2b$<rounds>$...
+- PostgreSQL 16: Row Security Policies (https://www.postgresql.org/docs/current/ddl-rowsecurity.html) -- BYPASSRLS, FORCE ROW LEVEL SECURITY semantics
+- PostgreSQL 16: ALTER TABLE (https://www.postgresql.org/docs/current/sql-altertable.html) -- NOT VALID, VALIDATE CONSTRAINT, lock behavior
+- FastAPI: Cookie params (https://fastapi.tiangolo.com/tutorial/cookie-params/) -- Cookie() dependency pattern
+- Next.js: cookies() function (https://nextjs.org/docs/app/api-reference/functions/cookies) -- Route Handler cookie API
+- MinIO mc anonymous set (https://docs.min.io/enterprise/aistor-object-store/reference/cli/mc-anonymous/mc-anonymous-set/) -- none removes all anonymous access policies
+- OWASP Password Storage Cheat Sheet (https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html) -- bcrypt minimum work factor 10; recommended 12 for new systems
+- Codebase direct inspection: presenter/deps.py, presenter/routers/auth.py, worker/score_writer.py, worker/flag_writer.py, migrations/001_initial.py, migrations/002_span_scores.py, migrations/003_diagnoses.py, deploy/docker-compose.yml, services/view/src/lib/auth.ts, services/view/next.config.ts, tests/presenter/test_auth_login.py
 
 ### Secondary (MEDIUM confidence)
-- Arize Phoenix: How to Evaluate Tool-Calling Agents — LLM-as-a-judge for argument correctness; semantic equivalence problem documented
-- Self-RAG (arXiv 2310.11511) — retrieval necessity as a query property; conceptual basis for necessity delta signal
-- Adaptive-RAG — classifier-based query routing as lightweight equivalent of necessity delta
-- ToolFlood (arXiv 2603.13950) — rank position as a meaningful signal for tool selection quality
-- Internal Representations as Indicators of Hallucinations (arXiv 2601.05214) — wrong tool selection as a distinct hallucination category; detectable as a separate signal
-- Don't use cosine similarity carelessly (Piotr Migdal, 2025) — prompt-vs-tool asymmetry; symmetric model misuse pitfalls
-- Galileo tool selection quality docs — production observability platform uses LLM-as-judge, confirms embedding-only is not industry standard for high-accuracy evaluation
+- FastAPI discussion #11345 (https://github.com/fastapi/fastapi/discussions/11345) -- python-jose near-abandoned; PyJWT recommended for v1.4
+- Auth0: Refresh Tokens -- token family reuse detection (https://auth0.com/blog/refresh-tokens-what-are-they-and-when-to-use-them/) -- revocation store patterns (deferred to v1.4)
+- Squawk: constraint-missing-not-valid (https://squawkhq.com/docs/constraint-missing-not-valid) -- NOT VALID migration pattern for live tables
+- Common Postgres RLS footguns -- Bytebase (https://www.bytebase.com/blog/postgres-row-level-security-footguns/) -- FORCE ROW LEVEL SECURITY necessity
 
-### Tertiary (MEDIUM-LOW confidence)
-- DeepEval tool correctness metric — "unnecessary calls" as a distinct metric from wrong selection; no span-local necessity signal documented
-- Is Cosine-Similarity of Embeddings Really About Similarity? (arXiv 2403.05440) — cosine reliability varies across models; `necessity_delta` confidence remains MEDIUM until calibrated on real Xeter spans
-- Adaptive Retrieval without Self-Knowledge? (arXiv 2501.12835) — supports keeping necessity signal continuous (delta) rather than binary
+### Tertiary (LOW confidence -- implementation caution advised)
+- Chrome 80 SameSite=None impact on localhost (https://medium.com/swlh/how-the-new-chrome-80-cookie-rule-samesite-none-secure-affects-web-development-c06380220ced) -- cross-port cookie behavior; moot under Next.js Route Handler pattern but relevant if implementation deviates from Architecture recommendation
 
 ---
-
-*Research completed: 2026-04-06*
+*Research completed: 2026-04-27*
 *Ready for roadmap: yes*

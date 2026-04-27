@@ -1,181 +1,197 @@
 # Stack Research
 
 **Domain:** AI agent observability and debugging SaaS platform
-**Researched:** 2026-03-27 (base platform); 2026-04-20 (v1.2 Diagnosticer additions)
+**Researched:** 2026-03-27 (base platform); 2026-04-20 (v1.2 Diagnosticer additions); 2026-04-27 (v1.3 Security Hardening additions)
 **Confidence:** HIGH (all versions verified against PyPI and official docs)
 
 ---
 
-## v1.2 Diagnosticer Additions
+## v1.3 Security Hardening Additions
 
-This section covers only the new libraries needed for the LLM-powered Diagnosticer service.
+This section covers library changes needed for the v1.3 security hardening milestone.
 All other stack decisions are unchanged — see the base platform sections below.
 
-### What Already Exists (Do Not Re-add)
+### What Already Exists and Is Sufficient
 
-The following are already in `xeter/pyproject.toml` and cover the Diagnosticer's data-access needs:
+The following are already in `xeter/pyproject.toml` and require **no changes** to handle the v1.3 security features:
 
-- `fastapi==0.135.2` — HTTP framework, Diagnosticer is already a FastAPI app
-- `pydantic==2.12.5` — Used for structured output schemas
-- `asyncpg==0.31.0` + `sqlalchemy==2.0.48` — PostgreSQL reads/writes; `Diagnostic` model already in `shared/models.py`
-- `aioboto3==15.5.0` — S3 payload retrieval (large prompts/responses)
-- `clickhouse-connect==0.15.0` — Span field reads
-- `httpx` — Already present; no additional async HTTP client needed for LLM SDKs (both Anthropic and OpenAI SDKs use `httpx` internally)
-- `python-dotenv` — Env var loading already covered
+- `python-jose[cryptography]>=3.3` — already imported as `from jose import JWTError, jwt` in `presenter/deps.py` and `diagnosticer/main.py`. Supports arbitrary JWT claims including `type: "refresh"` and long-lived `exp`. Refresh token issuance is a pure logic addition, no new JWT library needed.
+- `bcrypt==5.0.0` (installed transitively) — `import bcrypt` is used directly throughout the codebase. `bcrypt.gensalt()` defaults to `rounds=12`. The stored hash format `$2b$12$...` encodes the cost factor at index 2 when split on `$` — parseable in a pytest CI test without any new library.
+- `fastapi==0.135.2` — `response.set_cookie(httponly=True, secure=True, samesite="lax")` is fully supported via Starlette's `Response` class. Exact signature confirmed: `set_cookie(key, value, max_age=None, expires=None, path="/", domain=None, secure=False, httponly=False, samesite="lax")`. No additional cookie library needed.
+- `sqlalchemy==2.0.48` + `asyncpg==0.31.0` + `alembic==1.18.4` — RLS policies and CHECK constraints are schema migrations; no ORM library changes needed.
 
 ### New Dependencies Required
 
-| Library | Version | Purpose | Why |
-|---------|---------|---------|-----|
-| `anthropic` | `>=0.96.0` | Anthropic Claude API client | Official SDK; async via `AsyncAnthropic`; `client.messages.parse()` for structured output with Pydantic; uses `httpx` internally (no new transitive dep) |
-| `openai` | `>=2.32.0` | OpenAI GPT API client | Official SDK; async via `AsyncOpenAI`; `client.beta.chat.completions.parse()` for structured output with Pydantic; same `httpx` backend |
+**None.** All six security features in v1.3 are implementable with the existing dependency set. No new packages are needed in `pyproject.toml`.
 
-Both libraries are all that's needed. No additional abstraction library, no LiteLLM.
+### Dependency to Remove
+
+| Library | Action | Reason |
+|---------|--------|--------|
+| `passlib[bcrypt]>=1.7` | **Remove from pyproject.toml** | The codebase uses `import bcrypt` directly throughout (confirmed by grep). `passlib` is never imported anywhere in the codebase. It was explicitly rejected in PROJECT.md key decisions because `passlib 1.7.4` is incompatible with Python 3.14+. It is dead weight. |
+
+Removing `passlib` does not break anything — all bcrypt calls already use the `bcrypt` package directly.
 
 ---
 
-### Core Technology: LLM Client Libraries
+### Feature-by-Feature Library Analysis
 
-#### Anthropic SDK (`anthropic>=0.96.0`)
+#### 1. JWT Expiry + Refresh Token Endpoint (httpOnly cookie)
 
-The official Python client for Claude models. **HIGH confidence** — verified on PyPI 2026-04-20 at version 0.96.0.
+**Libraries needed:** None new.
 
-Async pattern for FastAPI:
+`python-jose[cryptography]` already handles both access and refresh token creation. The refresh token is just a JWT with a longer `exp` and an additional `type: "refresh"` claim to distinguish it from access tokens. The new endpoint issues it via:
 
 ```python
-from anthropic import AsyncAnthropic
+from fastapi import Response
+from jose import jwt
 
-client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+def create_refresh_token(tenant_id: str) -> str:
+    expire = datetime.now(tz=timezone.utc) + timedelta(days=7)
+    payload = {"sub": tenant_id, "type": "refresh", "exp": expire}
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
-response = await client.messages.create(
-    model=settings.LLM_MODEL,          # e.g. "claude-sonnet-4-5-20250929"
-    max_tokens=1024,
-    messages=[{"role": "user", "content": prompt}],
+@router.post("/refresh")
+async def refresh(response: Response, ...) -> LoginResponse:
+    token = create_refresh_token(tenant_id)
+    response.set_cookie(
+        key="refresh_token",
+        value=token,
+        httponly=True,
+        secure=True,         # HTTPS only — set False in dev
+        samesite="lax",
+        max_age=7 * 24 * 3600,
+        path="/auth/refresh",
+    )
+    ...
+```
+
+`response.set_cookie(httponly=True)` is confirmed correct — Starlette's `Response.set_cookie` signature supports `httponly` as a named boolean parameter. **HIGH confidence** (official Starlette docs verified 2026-04-27).
+
+The refresh endpoint reads the cookie via `Cookie` header dependency:
+
+```python
+from fastapi import Cookie
+
+@router.post("/refresh")
+async def refresh(refresh_token: str | None = Cookie(default=None)):
+    ...
+```
+
+FastAPI's `Cookie()` dependency is already part of `fastapi` — no additional library.
+
+**python-jose maintenance note (LOW priority, not blocking v1.3):** `python-jose` is considered near-abandoned by the community (last meaningful development activity has stalled despite a 3.5.0 release in May 2025 patching CVE-2024-33663). FastAPI's own documentation updated in PR #11589 to acknowledge this. `PyJWT==2.12.1` is the actively-maintained alternative and is a near-drop-in replacement (import changes from `jose` to `jwt`, slight API differences). Migration from `python-jose` to `PyJWT` is recommended for v1.4 or later — it is explicitly out of scope for v1.3 (would require touching `presenter/deps.py`, `diagnosticer/main.py`, and all related tests simultaneously with no functional security gain in the short term).
+
+#### 2. span_scores RLS + Worker BYPASSRLS Scoped Role
+
+**Libraries needed:** None new.
+
+RLS policies are SQL DDL executed via Alembic migrations. Pattern mirrors existing RLS on `flags` and `diagnoses` tables (already implemented). No new Python library.
+
+The Worker BYPASSRLS scoping requires a PostgreSQL role change and a `GRANT INSERT ON span_scores TO worker_role` statement — pure SQL.
+
+#### 3. PostgreSQL CHECK Constraints (verdict, severity)
+
+**Libraries needed:** None new.
+
+CHECK constraints are Alembic migrations:
+
+```python
+# In migration:
+op.create_check_constraint(
+    "ck_diagnoses_verdict",
+    "diagnoses",
+    "verdict IN ('model', 'architecture', 'prompt', 'unknown')"
+)
+op.create_check_constraint(
+    "ck_diagnoses_severity",
+    "diagnoses",
+    "severity IN ('low', 'medium', 'high')"
 )
 ```
 
-Structured output (current pattern — no beta header required as of v1.2 timeframe):
+SQLAlchemy 2.0's `CheckConstraint` is available in `sqlalchemy.schema`. Already in pyproject.toml.
+
+#### 4. bcrypt Cost Factor CI Test (rounds >= 12)
+
+**Libraries needed:** None new.
+
+`bcrypt.gensalt()` with no arguments already defaults to `rounds=12`. The cost factor is encoded in the stored hash string at position `hash.split("$")[2]`:
+
+- `$2b$12$<salt+digest>` → split on `$` → index 2 = `"12"` → `int("12") == 12`
+
+The CI test parses a freshly-generated hash and asserts the extracted value:
 
 ```python
-from pydantic import BaseModel
+# tests/test_bcrypt_cost.py
+import bcrypt
 
-class DiagnosisResult(BaseModel):
-    verdict: str          # "model" | "architecture" | "prompt"
-    severity: str         # "low" | "medium" | "high"
-    affected_field: str
-    recommended_fix: str
-
-response = await client.messages.parse(
-    model=settings.LLM_MODEL,
-    max_tokens=1024,
-    messages=[{"role": "user", "content": prompt}],
-    output_format=DiagnosisResult,
-)
-result: DiagnosisResult = response.parsed_output
+def test_bcrypt_cost_factor_minimum():
+    """Fail CI if bcrypt cost factor drops below 12."""
+    salt = bcrypt.gensalt()
+    # bcrypt hash format: $2b$<rounds>$<22-char-salt><31-char-digest>
+    rounds = int(salt.decode("utf-8").split("$")[2])
+    assert rounds >= 12, f"bcrypt cost factor is {rounds}, minimum is 12"
 ```
 
-`client.messages.parse()` handles schema transformation, constrained decoding, and validation.
-Returns a typed `DiagnosisResult` instance directly — no manual JSON parsing.
+No new dependency. `bcrypt` is already used directly and `import bcrypt` works in the test environment (confirmed in `tests/presenter/test_auth_login.py:15`).
 
-#### OpenAI SDK (`openai>=2.32.0`)
+**Note:** The existing `gensalt()` calls in `auth.py`, `api_keys.py`, and `seed.py` use `bcrypt.gensalt()` without an explicit `rounds` argument. Since `bcrypt.gensalt()` defaults to 12, the current behavior is already compliant. The CI test enforces this cannot regress.
 
-The official Python client for GPT models. **HIGH confidence** — verified on PyPI 2026-04-20 at version 2.32.0.
+#### 5. docker-compose Secrets Hygiene + generate-secrets.sh
 
-Async pattern for FastAPI:
+**Libraries needed:** None new.
 
-```python
-from openai import AsyncOpenAI
+`generate-secrets.sh` uses only standard POSIX tooling:
 
-client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+SECRET_KEY=$(openssl rand -hex 32)
+POSTGRES_PASSWORD=$(openssl rand -hex 16)
+MINIO_PASSWORD=$(openssl rand -hex 16)
+CLICKHOUSE_PASSWORD=$(openssl rand -hex 16)
+
+cat > .env << EOF
+SECRET_KEY=${SECRET_KEY}
+POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+# ... etc
+EOF
+echo ".env written."
 ```
 
-Structured output:
+`openssl` is available in any Docker-capable dev environment (Linux, macOS, WSL2). No Python dependency, no shell library.
 
-```python
-completion = await client.beta.chat.completions.parse(
-    model=settings.LLM_MODEL,          # e.g. "gpt-4o-2024-08-06"
-    messages=[{"role": "user", "content": prompt}],
-    response_format=DiagnosisResult,   # same Pydantic model as above
-)
-result: DiagnosisResult = completion.choices[0].message.parsed
+The docker-compose changes replace hardcoded `xeter_dev_password` values with `${POSTGRES_PASSWORD:-CHANGE_ME_BEFORE_DEPLOY}` patterns — pure YAML edits.
+
+#### 6. MinIO/S3 Bucket Policy Documentation
+
+**Libraries needed:** None new.
+
+`xeter-payloads` bucket policy uses the `mc` CLI (already used in docker-compose `minio-init` entrypoint) and S3 IAM JSON (documented, no code change). Documentation only:
+
+```bash
+# Set bucket to private (deny public access):
+mc alias set local http://localhost:9100 $MINIO_USER $MINIO_PASSWORD
+mc anonymous set none local/xeter-payloads
+
+# Verify:
+mc anonymous get local/xeter-payloads  # Should print: No anonymous policy found
 ```
 
-Note: `client.beta.chat.completions.parse()` with Pydantic requires GPT-4o (gpt-4o-2024-08-06 or later).
-Older models (gpt-3.5-turbo, gpt-4-turbo) only support JSON mode, which does not guarantee schema conformance.
+The IAM JSON for AWS S3 equivalents is a static JSON document — no Python library.
 
 ---
 
-### Provider-Agnostic Adapter Pattern
+### pyproject.toml Delta
 
-**Recommendation:** Hand-roll a minimal adapter (Protocol + two concrete classes). Do NOT use LiteLLM.
+```toml
+# REMOVE from [project] dependencies:
+# "passlib[bcrypt]>=1.7",    ← never imported; incompatible with Python 3.14
 
-**Why not LiteLLM:** ~200MB memory footprint, 1.2s import time, 300+ transitive dependencies. For a solo-dev service with two providers and a single operation (diagnose), this is an unacceptable weight. The abstraction cost of LiteLLM exceeds the abstraction benefit when the interface is one `diagnose()` call.
-
-**Why not `instructor`:** The `instructor` library (v1.15.1 on PyPI 2026-04-20) wraps both SDKs behind a unified retry+validation interface and is legitimate for teams using 5+ providers. For Xeter at v1.2, both native SDKs already provide `parse()` methods with Pydantic schemas — `instructor` adds a dependency without adding capability beyond what the SDKs already ship.
-
-**Recommended pattern — Protocol + factory:**
-
-```python
-# xeter/services/diagnosticer/llm/base.py
-from typing import Protocol
-from xeter.services.diagnosticer.schemas import DiagnosisResult
-
-class LLMProvider(Protocol):
-    async def diagnose(self, prompt: str) -> DiagnosisResult: ...
-
-# xeter/services/diagnosticer/llm/anthropic_provider.py
-class AnthropicProvider:
-    def __init__(self, api_key: str, model: str): ...
-    async def diagnose(self, prompt: str) -> DiagnosisResult: ...
-
-# xeter/services/diagnosticer/llm/openai_provider.py
-class OpenAIProvider:
-    def __init__(self, api_key: str, model: str): ...
-    async def diagnose(self, prompt: str) -> DiagnosisResult: ...
-
-# xeter/services/diagnosticer/llm/factory.py
-def get_provider(settings: DiagnosticerSettings) -> LLMProvider:
-    if settings.LLM_PROVIDER == "anthropic":
-        return AnthropicProvider(settings.ANTHROPIC_API_KEY, settings.LLM_MODEL)
-    elif settings.LLM_PROVIDER == "openai":
-        return OpenAIProvider(settings.OPENAI_API_KEY, settings.LLM_MODEL)
-    raise ValueError(f"Unknown LLM provider: {settings.LLM_PROVIDER}")
+# NO additions needed — all v1.3 features use existing deps
 ```
-
-This gives full provider-agnosticism in ~80 lines with zero new dependencies beyond the two SDKs.
-
----
-
-### Environment Configuration
-
-Use Pydantic `BaseSettings` (already available via `pydantic-settings`, installed transitively with FastAPI):
-
-```python
-from pydantic_settings import BaseSettings
-
-class DiagnosticerSettings(BaseSettings):
-    LLM_PROVIDER: str = "anthropic"           # "anthropic" | "openai"
-    LLM_MODEL: str = "claude-sonnet-4-5-20250929"
-    ANTHROPIC_API_KEY: str = ""
-    OPENAI_API_KEY: str = ""
-    LLM_MAX_TOKENS: int = 1024
-    LLM_TIMEOUT_SECONDS: float = 30.0
-
-    class Config:
-        env_file = ".env"
-```
-
-**Why pydantic-settings and not raw `os.getenv`:** Type coercion, defaults, and `.env` file support in one place. Already available — `pydantic-settings` is installed alongside `pydantic>=2.0`.
-
----
-
-### Structured Output Schema
-
-The `Diagnostic` SQLAlchemy model (`shared/models.py`) already has:
-- `llm_backend: str` — store `f"{provider}/{model}"` (e.g. `"anthropic/claude-sonnet-4-5-20250929"`)
-- `result: dict` (JSON column) — store the serialized `DiagnosisResult`
-
-The Pydantic `DiagnosisResult` model lives in `xeter/services/diagnosticer/schemas.py` (new file) and is shared between the LLM provider and the DAL write path. No new PostgreSQL columns needed.
 
 ---
 
@@ -183,51 +199,41 @@ The Pydantic `DiagnosisResult` model lives in `xeter/services/diagnosticer/schem
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| `litellm` | 200MB / 300+ deps for a 2-provider service; import time ~1.2s | Direct `anthropic` + `openai` SDKs with hand-rolled adapter |
-| `instructor` | Adds dependency whose value (retry+parse) is already provided by native SDK `.parse()` methods | `client.messages.parse()` (Anthropic) / `client.beta.chat.completions.parse()` (OpenAI) |
-| `langchain` | 500MB+ ecosystem; brings its own abstractions that conflict with Xeter's minimal service pattern | Direct SDK calls |
-| `aiohttp` separately | `httpx` is already in pyproject.toml; both Anthropic and OpenAI SDKs use `httpx` internally | Nothing extra needed |
-| `tenacity` for retry | Both SDKs have built-in retry with exponential backoff (`max_retries` param on client construction) | `AsyncAnthropic(max_retries=3)` / `AsyncOpenAI(max_retries=3)` |
-
----
-
-### Installation Delta (pyproject.toml additions only)
-
-```toml
-# Add to [project] dependencies in xeter/pyproject.toml:
-"anthropic>=0.96.0",
-"openai>=2.32.0",
-```
-
-No other changes to pyproject.toml needed.
+| `PyJWT` (right now) | Migration from `python-jose` → `PyJWT` requires touching `presenter/deps.py`, `diagnosticer/main.py`, and multiple tests simultaneously with no functional security gain for v1.3 | Keep `python-jose` for v1.3; plan migration for v1.4 |
+| `itsdangerous` | Sometimes used for signed cookies — unnecessary when the refresh token itself is a signed JWT | `response.set_cookie()` + `python-jose` JWT |
+| `fastapi-jwt-auth` | Third-party extension with its own cookie middleware pattern; conflicts with existing `verify_session_token` dependency pattern | Direct `Cookie()` FastAPI dependency + `jose.jwt.decode()` |
+| `secrets` module for bcrypt test | No need for a new tool — the hash format embeds the cost factor; parsing is a one-liner | `bcrypt.gensalt()` + string split |
+| `python-dotenv` for generate-secrets.sh | Shell script doesn't need Python; `openssl rand` is simpler and available everywhere | `openssl rand -hex 32` in bash |
 
 ---
 
 ### Version Compatibility
 
-| Package | Compatible With | Notes |
-|---------|-----------------|-------|
-| `anthropic>=0.96.0` | Python 3.9–3.14; `httpx>=0.25` | `httpx` already in pyproject.toml; no conflict |
-| `openai>=2.32.0` | Python 3.9–3.14; `httpx>=0.25` | Same `httpx` dep; no conflict |
-| `anthropic>=0.96.0` | `pydantic>=2.0` | `.parse()` requires Pydantic v2 BaseModel |
-| `openai>=2.32.0` | `pydantic>=2.0` | `.parse()` requires Pydantic v2 BaseModel; already at 2.12.5 |
-| Both SDKs | `fastapi==0.135.2` | No conflict; both are pure HTTP client libs |
+| Package | Version | Notes |
+|---------|---------|-------|
+| `python-jose[cryptography]` | >=3.3 (3.5.0 installed) | Refresh tokens are plain JWT with extra claims — no API change; `exp` claim already validated on decode |
+| `fastapi` | 0.135.2 | `response.set_cookie(httponly=True)` confirmed via Starlette 0.45+ signature; `Cookie()` dependency available since FastAPI 0.47 |
+| `bcrypt` | 5.0.0 | `gensalt()` default rounds=12 confirmed on PyPI 2026-04-27; hash format `$2b$<rounds>$...` stable since bcrypt 3.x |
+| `alembic` | 1.18.4 | `op.create_check_constraint()` available since Alembic 1.0; no version concern |
 
 ---
 
-### Sources (v1.2 Additions)
+### Migration Note: python-jose → PyJWT (Future, v1.4+)
 
-- [PyPI: anthropic 0.96.0](https://pypi.org/project/anthropic/) — version verified 2026-04-20; HIGH confidence
-- [PyPI: openai 2.32.0](https://pypi.org/project/openai/) — version verified 2026-04-20; HIGH confidence
-- [PyPI: instructor 1.15.1](https://pypi.org/project/instructor/) — version verified 2026-04-20; considered and rejected
-- [Anthropic structured outputs docs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs) — `client.messages.parse()` pattern; HIGH confidence (official docs)
-- [Anthropic async client docs](https://github.com/anthropics/anthropic-sdk-python/blob/main/README.md) — `AsyncAnthropic` pattern; HIGH confidence (official GitHub)
-- [OpenAI structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs) — `client.beta.chat.completions.parse()` pattern; HIGH confidence (official docs)
-- [LiteLLM memory footprint](https://github.com/silvestrid/ullm) — 200MB / 1.2s import benchmarked vs ULLM; MEDIUM confidence (third-party benchmark)
+When this migration is done, the changes are:
+
+| File | Change |
+|------|--------|
+| `presenter/deps.py` | `from jose import JWTError, jwt` → `import jwt` + catch `jwt.ExpiredSignatureError`, `jwt.InvalidTokenError` |
+| `diagnosticer/main.py` | Same import swap |
+| `pyproject.toml` | Remove `python-jose[cryptography]`; add `PyJWT[crypto]>=2.12` |
+| Tests | Update any `from jose import jwt` references |
+
+PyJWT 2.12.1 is the current stable version (released 2026-03-13). The API differences are minor — `jwt.decode()` raises `jwt.ExpiredSignatureError` (subclass of `jwt.InvalidTokenError`) rather than `JWTError`.
 
 ---
 
-## Base Platform Stack (Unchanged from v1.0/v1.1)
+## Base Platform Stack (Unchanged from v1.0/v1.1/v1.2)
 
 ---
 
@@ -339,16 +345,12 @@ The `opentelemetry-exporter-otlp` convenience meta-package installs both HTTP an
 
 | Technology | Version | Purpose | Why Recommended |
 |------------|---------|---------|-----------------|
-| React | 19.x | UI component library | Industry standard; largest ecosystem; required by shadcn/ui and TanStack Query |
-| Vite | 6.x | Build tool and dev server | Instant HMR; far faster than webpack/CRA for development iteration; official shadcn/ui Vite support; ideal for SPA dashboard (no SSR needed for internal dev tool) |
-| TypeScript | 5.x | Type safety for frontend | Standard for any non-trivial React app; shadcn/ui ships TypeScript-first |
-| Tailwind CSS | 4.x | Utility-first CSS | Industry standard for SaaS dashboards in 2026; pairs with shadcn/ui v3 |
-| shadcn/ui | latest | Component library | Copy-paste component system (not a dependency); full Tailwind v4 support; includes table, filter, badge, dialog components needed for span list and detail views; Vite installation officially supported |
-| TanStack Query | 5.x (v5.90+) | Server state management | Powers 80% of new React apps per 2025 State of JS; handles polling, loading states, cache invalidation for span list and detail views; avoids manual fetch-in-useEffect patterns |
-
-**Not Next.js.** The dashboard is a pure SPA — authenticated, served to logged-in B2B users, no SEO requirement, no SSR benefit. Next.js adds build complexity (server components, server actions, routing conventions) with no benefit for this use case. Vite + React Router v6 is the leaner choice.
-
-**Not plain CSS / CSS modules.** Tailwind + shadcn/ui is the standard SaaS component toolkit in 2026 with the most available templates and patterns for exactly this type of dashboard.
+| Next.js | 15 | Frontend framework | Already shipped as v1.0; SSR supports cookie-based auth patterns natively via `httpOnly` cookie reading server-side |
+| React | 19.x | UI component library | Industry standard; largest ecosystem |
+| TypeScript | 5.x | Type safety for frontend | Standard for any non-trivial React app |
+| Tailwind CSS | 4.x | Utility-first CSS | Industry standard for SaaS dashboards in 2026 |
+| shadcn/ui | latest | Component library | Copy-paste component system; full Tailwind v4 support |
+| TanStack Query | 5.x (v5.90+) | Server state management | Powers 80% of new React apps per 2025 State of JS |
 
 ---
 
@@ -356,15 +358,11 @@ The `opentelemetry-exporter-otlp` convenience meta-package installs both HTTP an
 
 | Technology | Version | Purpose | Why Recommended |
 |------------|---------|---------|-----------------|
-| Docker Compose | v2 (Compose spec 5.0) | Multi-service local dev environment | Industry standard; Compose spec v5.0 (Dec 2025) delegates builds to Docker Bake for better caching; `watch` mode for live reload without rebuilds |
-| ClickHouse | 25.x (official image) | Local span storage | Use `clickhouse/clickhouse-server:latest` or pin to `25.3`; minimal config for dev |
-| PostgreSQL | 16 | Local flags/diagnostics/auth storage | `postgres:16-alpine`; stable, widely-tested |
-| Redis | 7 | Local queue for arq workers | `redis:7-alpine`; lightweight |
-| MinIO | latest | Local S3-compatible object storage | `minio/minio:latest`; S3 v4 API compatible; configure with `MINIO_ROOT_USER` + `MINIO_ROOT_PASSWORD` env vars; expose port 9000 (API) and 9001 (console) |
-
-**Compose network pattern:** Define separate `backend` and `frontend` networks. Stateful services (ClickHouse, PostgreSQL, Redis, MinIO) attach to `backend` only. Analyser and Presenter attach to `backend`. Frontend attaches to a separate `frontend` network with Presenter exposed as the API. This limits blast radius and reflects production isolation.
-
-**Volume pattern:** Named volumes for ClickHouse data (`ch_data`), PostgreSQL data (`pg_data`), and MinIO data (`minio_data`). Never use bind-mounts for database data — they cause permission issues on Windows/WSL2.
+| Docker Compose | v2 (Compose spec 5.0) | Multi-service local dev environment | Industry standard |
+| ClickHouse | 25.x (official image) | Local span storage | `clickhouse/clickhouse-server:25.3` |
+| PostgreSQL | 16 | Local flags/diagnostics/auth storage | `postgres:16-alpine` |
+| Redis | 7 | Local queue for arq workers | `redis:7-alpine` |
+| MinIO | latest | Local S3-compatible object storage | S3 v4 API compatible; `mc` CLI for bucket policy operations |
 
 ---
 
@@ -373,14 +371,16 @@ The `opentelemetry-exporter-otlp` convenience meta-package installs both HTTP an
 | Library | Version | Purpose | When to Use |
 |---------|---------|---------|-------------|
 | uvicorn[standard] | >=0.32 | ASGI server with uvloop | All FastAPI services |
-| python-jose[cryptography] | >=3.3 | JWT token generation/validation | Dashboard auth (Path A email/password) |
-| passlib[bcrypt] | >=1.7 | Password hashing | `api_keys.key_hash` and `users.password_hash` |
-| httpx | >=0.28 | Async HTTP client | Presenter → Diagnosticer calls; async test client for pytest; also used internally by Anthropic and OpenAI SDKs |
-| pytest | >=8.3 | Test runner | All services |
-| pytest-asyncio | 1.3.0 | Async test support | Required for testing FastAPI async endpoints |
-| anyio | >=4.7 | Async test backend | Used by pytest-asyncio; pin to same version FastAPI depends on |
+| python-jose[cryptography] | >=3.3 (3.5.0) | JWT token generation/validation for access + refresh tokens | Dashboard auth; refresh endpoint |
+| bcrypt | 5.0.0 | Password hashing (used directly, not via passlib) | `api_keys.key_hash` and `users.password_hash` |
+| httpx | >=0.28 | Async HTTP client | Presenter → Diagnosticer calls; async test client for pytest |
+| pytest | >=8.3 | Test runner | All services including bcrypt CI cost test |
+| pytest-asyncio | 0.24.0 | Async test support | Required for testing FastAPI async endpoints |
+| anyio | >=4.7 | Async test backend | Used by pytest-asyncio |
 | python-dotenv | >=1.0 | Environment variable loading | Load `.env` in development |
-| structlog | >=25.0 | Structured logging | JSON-formatted logs for all services; pairs well with observability tooling |
+| structlog | >=25.0 | Structured logging | JSON-formatted logs for all services |
+| anthropic | ==0.86.0 | Anthropic Claude API client | Diagnosticer LLM provider |
+| openai | ==2.22.0 | OpenAI GPT API client | Diagnosticer LLM provider |
 
 ---
 
@@ -388,84 +388,36 @@ The `opentelemetry-exporter-otlp` convenience meta-package installs both HTTP an
 
 | Recommended | Alternative | When to Use Alternative |
 |-------------|-------------|-------------------------|
-| FastAPI | Django REST Framework | Only if you need admin panels, heavy ORM magic, or a team already expert in Django |
-| FastAPI | Flask | Never for this project — Flask is synchronous and lacks async embedding worker integration |
-| arq | Celery | Only if you need scheduled tasks (Celery Beat), complex workflow DAGs, or multi-broker support |
-| arq | RQ | Only for pure simplicity at the cost of 4x slower job throughput |
-| sentence-transformers + bge-base-en-v1.5 | OpenAI text-embedding-3-small | Only after GA when cost and latency of API calls are acceptable; requires feature flag toggle |
-| clickhouse-connect | clickhouse-driver | Only if benchmarks prove the native TCP protocol is a bottleneck in production |
-| aioboto3 | boto3 | Only in synchronous scripts (migrations, CLI tools) — never in async FastAPI handlers |
-| Vite + React | Next.js | Only if the dashboard needs public-facing pages, SSR for SEO, or server-side data fetching |
-| asyncpg + SQLAlchemy 2.0 | psycopg3 | Either works; asyncpg has a larger production track record in the FastAPI ecosystem |
-| Direct SDK adapter pattern | litellm | Only if adding 5+ providers and needing cost tracking, rate limiting, and observability built-in |
-| Direct SDK adapter pattern | instructor | Only if validation retry logic becomes complex across many providers |
+| `python-jose` (for now) | `PyJWT==2.12.1` | Use PyJWT in v1.4+ — it is actively maintained and a near-drop-in replacement; migration is straightforward but out of scope for v1.3 |
+| `response.set_cookie(httponly=True)` | `fastapi-jwt-auth` extension | Only if the project needs cookie rotation middleware, token blacklisting, or full CSRF double-submit patterns — none of which are in scope |
+| Bash + `openssl rand` for generate-secrets.sh | Python `secrets` module | Python is fine too; bash is simpler since no virtualenv needed to run a secret-generation script |
+| Direct `jose.jwt` for refresh tokens | Storing refresh tokens in Redis | Redis refresh token storage adds invalidation capability (allows logout-all-devices) — defer to v1.4 if needed |
 
 ---
 
-## What NOT to Use
+## What NOT to Add
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| Flask | Synchronous; embedding calls block the process; no native ASGI | FastAPI |
-| Celery | Not asyncio-native; heavyweight for simple embedding worker pattern; config overhead | arq |
-| all-MiniLM-L6-v2 | 2019 architecture; 56% top-5 accuracy is too low for a trust-critical flagging product | BAAI/bge-base-en-v1.5 |
-| nomic-embed-text-v1.5 | 137M params, 2x inference latency vs bge-base; 8192 context wasted on field-pair comparisons | BAAI/bge-base-en-v1.5 |
-| boto3 (sync) in FastAPI handlers | Blocks the asyncio event loop on every S3 read/write | aioboto3 |
-| clickhouse-driver | Community-maintained, native TCP complexity, no official backing | clickhouse-connect |
-| SQLAlchemy 1.x | Async support is bolted on; 2.0 rewrote it properly | SQLAlchemy 2.0.x |
-| Next.js for the dashboard | SSR overhead with zero benefit for an authenticated SPA; couples frontend deployment to Node.js server | Vite + React |
-| Python 3.9 or 3.10 | clickhouse-connect deprecates 3.9; sentence-transformers 5.x requires >=3.10 but 3.12 avoids edge cases | Python 3.12 |
-| Python 3.13 in production | JIT is experimental; torch/embedding stack has patchy 3.13 support as of Q1 2026 | Python 3.12 |
-| litellm | 200MB memory footprint, 300+ transitive deps, 1.2s import — massive overhead for 2-provider service | Direct `anthropic` + `openai` SDKs |
-| langchain | 500MB+ ecosystem; own abstractions that conflict with Xeter's minimal DAL/service pattern | Direct SDK calls |
-| instructor | Duplicate of native SDK `.parse()` methods; adds dependency without capability | `client.messages.parse()` / `client.beta.chat.completions.parse()` |
+| `passlib[bcrypt]` | Never imported in codebase; incompatible with Python 3.14+; explicitly rejected in PROJECT.md; should be removed from pyproject.toml | `bcrypt` directly (already the pattern everywhere) |
+| `itsdangerous` | Signed cookies are redundant when the refresh token itself is a signed JWT | `response.set_cookie()` + `jose.jwt` |
+| `fastapi-jwt-auth` | Third-party extension that introduces its own middleware layer; conflicts with existing `verify_session_token` dependency pattern and adds complexity for one new endpoint | Direct `Cookie()` dependency + `jose.jwt.decode()` |
+| `PyJWT` (in v1.3) | Migration requires simultaneous changes across `presenter/deps.py`, `diagnosticer/main.py`, and all related tests — too wide a change for a security hardening sprint | Keep `python-jose` for now; plan migration for v1.4 |
+| `cryptography` standalone | `python-jose[cryptography]` already pulls it as a transitive dep; adding it directly creates duplicate version management | Nothing — already present |
 
 ---
 
-## Installation
+## Installation Delta (v1.3)
 
-```bash
-# Backend services (Analyser, Presenter, Diagnosticer)
-pip install \
-  fastapi==0.135.2 \
-  "uvicorn[standard]>=0.32" \
-  pydantic==2.12.5 \
-  opentelemetry-sdk==1.40.0 \
-  opentelemetry-exporter-otlp-proto-http==1.40.0 \
-  opentelemetry-exporter-otlp-proto-grpc==1.40.0 \
-  arq==0.27.0 \
-  redis==7.4.0 \
-  sentence-transformers==5.3.0 \
-  clickhouse-connect==0.15.0 \
-  sqlalchemy==2.0.48 \
-  asyncpg==0.31.0 \
-  alembic==1.18.4 \
-  aioboto3==15.5.0 \
-  httpx \
-  python-jose[cryptography] \
-  passlib[bcrypt] \
-  python-dotenv \
-  structlog \
-  "anthropic>=0.96.0" \
-  "openai>=2.32.0"
+```toml
+# xeter/pyproject.toml — changes for v1.3 Security Hardening
 
-# Dev / test dependencies
-pip install \
-  pytest \
-  pytest-asyncio==1.3.0 \
-  anyio \
-  httpx
+# REMOVE:
+# "passlib[bcrypt]>=1.7",
 
-# SDK (subset — lighter footprint)
-pip install \
-  opentelemetry-sdk==1.40.0 \
-  opentelemetry-exporter-otlp-proto-http==1.40.0
+# ADD: nothing
 
-# Frontend (from frontend/ directory)
-npm create vite@latest . -- --template react-ts
-npm install
-npx shadcn@latest init
-npm install @tanstack/react-query tailwindcss
+# Net result: one package removed, none added
 ```
 
 ---
@@ -474,71 +426,26 @@ npm install @tanstack/react-query tailwindcss
 
 | Package A | Compatible With | Notes |
 |-----------|-----------------|-------|
-| fastapi==0.135.2 | pydantic==2.12.5 | FastAPI 0.100+ requires Pydantic v2; do not mix Pydantic v1 |
-| sentence-transformers==5.3.0 | Python >=3.10 | Do not run on Python 3.9; use Python 3.12 |
-| clickhouse-connect==0.15.0 | Python >=3.9 (3.9 deprecated) | Use Python 3.12; 3.9 support removed in 1.0 |
-| arq==0.27.0 | redis==7.4.0 | arq uses redis-py asyncio client internally; pin compatible versions |
-| sqlalchemy==2.0.48 | asyncpg==0.31.0 | Use `postgresql+asyncpg://` URL; SQLAlchemy 2.1.x (pre-release) is not stable yet |
-| alembic==1.18.4 | sqlalchemy==2.0.48 | Alembic follows SQLAlchemy major version; both on 2.x is correct |
-| opentelemetry-sdk==1.40.0 | opentelemetry-exporter-otlp-proto-http==1.40.0 | Always pin sdk and exporter to the same release; mixed versions cause serialization errors |
-| Tailwind CSS v4 | shadcn/ui (latest) | shadcn/ui now supports Tailwind v4 natively; do not use Tailwind v3 with the latest shadcn install |
-| anthropic>=0.96.0 | pydantic==2.12.5, httpx | No conflict; uses httpx already in deps; `.parse()` requires Pydantic v2 |
-| openai>=2.32.0 | pydantic==2.12.5, httpx | No conflict; `.parse()` requires Pydantic v2; GPT-4o model required for structured outputs |
-
----
-
-## Stack Patterns by Service
-
-**Analyser service:**
-- FastAPI endpoint receives OTLP spans (HTTP POST, protobuf or JSON)
-- Synchronous path: validate → write to ClickHouse via clickhouse-connect → enqueue to Redis via arq
-- Async path (arq worker): dequeue span_id → load bge-base-en-v1.5 model → compute cosine similarities → write flag rows to PostgreSQL via SQLAlchemy async
-
-**Presenter service:**
-- FastAPI with async SQLAlchemy sessions
-- Span list: query ClickHouse + LEFT JOIN flag counts from PostgreSQL in parallel (asyncio.gather)
-- Span detail: query ClickHouse span row + PostgreSQL flags + lazy-fetch S3 payloads via aioboto3
-- SSE endpoint: `StreamingResponse` with `text/event-stream` content type for flag-update and diagnostic-complete push events
-
-**Diagnosticer service (v1.2 — LLM-powered):**
-- FastAPI service; `POST /diagnose` receives `span_id` + `tenant_id`
-- Context assembly: async-parallel fetch of span fields (ClickHouse), flags (PostgreSQL), S3 payloads (aioboto3)
-- LLM call: provider resolved from `LLM_PROVIDER` env var; `AsyncAnthropic` or `AsyncOpenAI` with structured output
-- Result persistence: write to `diagnostics` table (existing model) via SQLAlchemy async; `llm_backend = f"{provider}/{model}"`
-- Response: return `DiagnosisResult` JSON immediately (synchronous request-response; no background task needed given Diagnosticer is already isolated)
-
-**Python SDK:**
-- opentelemetry-sdk + opentelemetry-exporter-otlp-proto-http
-- Thin wrapper that creates spans with Xeter-specific attributes
-- `XeterTracer` class configures OTLP exporter pointing at Analyser endpoint
-- No heavy dependencies; importable in any Python agent framework
+| `python-jose[cryptography]>=3.3` | Python 3.12, `fastapi==0.135.2` | Refresh tokens use same `jwt.encode()` / `jwt.decode()` API as access tokens; no compatibility concern |
+| `bcrypt==5.0.0` | Python 3.12 | `gensalt()` default rounds=12 confirmed; hash format `$2b$<rounds>$...` stable since bcrypt 3.x; CI test parses index 2 of `hash.split("$")` |
+| `fastapi==0.135.2` / Starlette | `response.set_cookie(httponly=True, secure=True, samesite="lax")` | Confirmed via Starlette official docs 2026-04-27; `partitioned=` parameter requires Python 3.14+ but is not needed here |
+| `alembic==1.18.4` | `op.create_check_constraint()` | Available since Alembic 1.0; no version concern for adding CHECK constraints or RLS migrations |
 
 ---
 
 ## Sources
 
-- [PyPI: anthropic 0.96.0](https://pypi.org/project/anthropic/) — version verified 2026-04-20; HIGH confidence
-- [PyPI: openai 2.32.0](https://pypi.org/project/openai/) — version verified 2026-04-20; HIGH confidence
-- [PyPI: instructor 1.15.1](https://pypi.org/project/instructor/) — version verified 2026-04-20; considered and rejected
-- [Anthropic structured outputs docs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs) — `client.messages.parse()` pattern; HIGH confidence (official docs, no beta header required)
-- [Anthropic async client (GitHub README)](https://github.com/anthropics/anthropic-sdk-python/blob/main/README.md) — `AsyncAnthropic` pattern; HIGH confidence
-- [OpenAI structured outputs guide](https://developers.openai.com/api/docs/guides/structured-outputs) — `client.beta.chat.completions.parse()` with Pydantic; HIGH confidence (official docs)
-- [LiteLLM memory vs ULLM benchmark](https://github.com/silvestrid/ullm) — 200MB / 1.2s import; MEDIUM confidence (third-party benchmark, consistent with community reports)
-- [PyPI: opentelemetry-sdk 1.40.0](https://pypi.org/project/opentelemetry-sdk/) — version verified March 2026
-- [PyPI: FastAPI 0.135.2](https://pypi.org/project/fastapi/) — verified March 2026
-- [PyPI: Pydantic 2.12.5](https://pypi.org/project/pydantic/) — verified
-- [PyPI: clickhouse-connect 0.15.0](https://pypi.org/project/clickhouse-connect/) — verified March 2026; deprecation notice on Python 3.9
-- [PyPI: sentence-transformers 5.3.0](https://pypi.org/project/sentence-transformers/) — verified March 2026; requires Python >=3.10
-- [PyPI: arq 0.27.0](https://pypi.org/project/arq/) — verified February 2026
-- [PyPI: SQLAlchemy 2.0.48](https://pypi.org/project/sqlalchemy/) — verified March 2026
-- [PyPI: asyncpg 0.31.0](https://pypi.org/project/asyncpg/) — verified November 2025
-- [PyPI: Alembic 1.18.4](https://pypi.org/project/alembic/) — verified February 2026
-- [PyPI: aioboto3 15.5.0](https://pypi.org/project/aioboto3/) — verified October 2025
-- [shadcn/ui Vite installation](https://ui.shadcn.com/docs/installation/vite) — HIGH confidence (official docs)
-- [shadcn/ui Tailwind v4](https://ui.shadcn.com/docs/tailwind-v4) — HIGH confidence (official docs)
-- [OpenTelemetry Python docs](https://opentelemetry.io/docs/languages/python/) — HIGH confidence (official docs)
+- [Starlette Response.set_cookie() docs](https://www.starlette.dev/responses/#set-cookie) — exact signature with `httponly`, `secure`, `samesite` parameters confirmed; HIGH confidence (official Starlette docs, 2026-04-27)
+- [PyPI: bcrypt 5.0.0](https://pypi.org/project/bcrypt/) — current version and `gensalt()` default rounds=12 confirmed; HIGH confidence (official PyPI, 2026-04-27)
+- [PyPI: PyJWT 2.12.1](https://pypi.org/project/PyJWT/) — current stable version, released 2026-03-13; HIGH confidence (verified for future migration reference)
+- [FastAPI discussion #11345](https://github.com/fastapi/fastapi/discussions/11345) — community consensus that python-jose is near-abandoned; PyJWT recommended; MEDIUM confidence (community discussion, not official docs)
+- [FastAPI discussion #9587](https://github.com/fastapi/fastapi/discussions/9587) — additional confirmation of python-jose maintenance concerns; MEDIUM confidence
+- [python-jose PyPI](https://pypi.org/project/python-jose/) — version 3.5.0 released May 2025, CVE-2024-33663 patched; used in codebase confirmed by grep; HIGH confidence for current v1.3 use
+- [FastAPI Cookie dependency docs](https://fastapi.tiangolo.com/tutorial/cookie-params/) — `Cookie()` dependency pattern for reading httpOnly refresh token on server; HIGH confidence (official FastAPI docs)
+- Codebase grep — confirmed: `from jose import JWTError, jwt` in `presenter/deps.py:17` and `diagnosticer/main.py:23`; `import bcrypt` in `presenter/routers/auth.py:24`, `shared/dal/api_keys.py:28`, `scripts/seed.py:26`, `tests/presenter/test_auth_login.py:15`; `passlib` never imported anywhere; `gensalt()` called without explicit rounds in all 5 call sites
 
 ---
 *Stack research for: Xeter — AI agent observability SaaS*
 *Base stack researched: 2026-03-27*
 *v1.2 Diagnosticer additions researched: 2026-04-20*
+*v1.3 Security Hardening additions researched: 2026-04-27*

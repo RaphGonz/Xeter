@@ -61,14 +61,14 @@ Requirements for v1.3 Security Hardening. Each maps to roadmap phases.
 | DB-01 | Phase 14 | Pending |
 | DB-02 | Phase 14 | Pending |
 | DB-03 | Phase 14 | Pending |
-| DB-04 | Phase 16 | Pending |
-| AUTH-01 | Phase 16 | Pending |
-| AUTH-02 | Phase 16 | Pending |
-| AUTH-03 | Phase 16 | Pending |
+| DB-04 | Phase 15 | Pending |
 | OPS-01 | Phase 15 | Pending |
 | OPS-02 | Phase 15 | Pending |
 | OPS-03 | Phase 15 | Pending |
 | OPS-04 | Phase 15 | Pending |
+| AUTH-01 | Phase 16 | Pending |
+| AUTH-02 | Phase 16 | Pending |
+| AUTH-03 | Phase 16 | Pending |
 
 **Coverage:**
 - v1.3 requirements: 11 total
@@ -77,4 +77,4 @@ Requirements for v1.3 Security Hardening. Each maps to roadmap phases.
 
 ---
 *Requirements defined: 2026-04-27*
-*Last updated: 2026-04-27 after initial v1.3 definition*
+*Last updated: 2026-04-27 — traceability updated after v1.3 roadmap creation*

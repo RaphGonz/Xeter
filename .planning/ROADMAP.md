@@ -66,7 +66,7 @@ See `.planning/milestones/v1.2-ROADMAP.md` for full phase details.
   2. Developer can confirm no table owner can silently bypass RLS — SELECT relforcerowsecurity FROM pg_class WHERE relname IN ('spans','flags','span_scores','diagnoses','tenants','api_keys') returns t for all six rows
   3. Developer can trust verdict and severity columns reject unexpected values — INSERT with verdict='undetermined' or severity='critical' raises a constraint violation after VALIDATE CONSTRAINT runs
   4. Migration 004 applies cleanly from zero (fresh alembic upgrade) and idempotently (second run exits without error)
-  5. All S3 payload keys for new spans use `{tenant_id}/{span_id}/...` prefix; Presenter S3 fetch asserts the key belongs to the requesting tenant before returning content; an integration test fetching a span key as the wrong tenant returns 403
+  5. All S3 payload keys for new spans use `{tenant_id}/{span_id}/...` prefix; Presenter S3 fetch asserts the key belongs to the requesting tenant before returning content; a unit test fetching a span key as the wrong tenant returns 403
   6. Diagnosticer LLM provider code only emits verdict values in `('model','architecture','prompt','unknown')` and severity values in `('low','medium','high')`; pre-flight violation query against existing `diagnoses` rows returns zero results before `VALIDATE CONSTRAINT` runs
   7. An integration test connects to PostgreSQL without calling `set_config` and asserts `SELECT COUNT(*) FROM span_scores` returns 0 even when rows exist — confirming RLS silent-empty behavior is detected, not invisible
 **Plans**: 3 plans

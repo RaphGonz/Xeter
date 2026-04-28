@@ -14,11 +14,16 @@ Requirements for v1.3 Security Hardening. Each maps to roadmap phases.
 - [ ] **DB-03**: Developer can trust verdict and severity values are domain-valid at DB level — CHECK constraints added via NOT VALID + VALIDATE CONSTRAINT two-step, with pre-flight violation query before VALIDATE
 - [ ] **DB-04**: Project has no dead passlib[bcrypt] dependency — removed from pyproject.toml
 
+### Data Isolation
+
+- [ ] **S3-01**: All S3 payload keys are prefixed with the tenant ID — key format is `{tenant_id}/{span_id}/prompt` (and `/response`, `/raw_response`, `/available_tools`); Presenter asserts the fetched key starts with the requesting tenant's ID before returning content; a unit test confirms a cross-tenant key fetch returns 403
+
 ### Authentication
 
 - [ ] **AUTH-01**: Session tokens expire after 30 minutes; server hard-fails on startup if SECRET_KEY env var is unset (no silent fallback to dev key)
 - [ ] **AUTH-02**: User can silently refresh an expired access token via httpOnly refresh token cookie — Presenter POST /auth/refresh endpoint; Next.js Route Handlers for /api/login and /api/auth/refresh; sessionStorage removed from auth.ts
 - [ ] **AUTH-03**: Operator has a documented JWT_SECRET rotation runbook covering dual-secret window and service restart sequence
+- [ ] **AUTH-04**: Presenter-to-Diagnosticer calls are authenticated by a static internal API key — `INTERNAL_API_KEY` env var (required, no fallback) present in both services; Presenter includes it as `X-Internal-Api-Key` request header; Diagnosticer middleware rejects any request missing or providing a wrong value with 401
 
 ### Operations & Secrets
 
@@ -26,6 +31,11 @@ Requirements for v1.3 Security Hardening. Each maps to roadmap phases.
 - [ ] **OPS-02**: Operator can generate a valid random .env in one command via generate-secrets.sh (uses openssl rand)
 - [ ] **OPS-03**: xeter-payloads MinIO bucket is asserted private on every startup (mc anonymous set none in minio-init container); deployment guide documents mc policy set and S3 IAM JSON
 - [ ] **OPS-04**: CI fails if bcrypt cost factor drops below 12; test fixtures use rounds=4 with session scope to avoid CI slowdown
+- [ ] **OPS-05**: Redis requires password authentication — `REDIS_PASSWORD` env var in docker-compose with no `:-` fallback; Redis started with `--requirepass ${REDIS_PASSWORD}`; an unauthenticated `redis-cli ping` returns `NOAUTH Authentication required`
+
+### GDPR & Data Retention
+
+- [ ] **GDPR-01**: Operator can delete all data for a given tenant in one command — `delete_tenant.py --tenant-id <id>` shows a dry-run summary of affected rows and S3 objects by default; `--confirm` flag required to execute; deletion covers ClickHouse spans (`ALTER TABLE spans DELETE WHERE tenant_id = :id`), all PostgreSQL tables (`flags`, `span_scores`, `diagnoses`, `users`, `api_keys`, `tenants`), all S3 objects under `{tenant_id}/` prefix, and a documented Redis key flush procedure; script is idempotent
 
 ## Future Requirements
 
@@ -41,6 +51,15 @@ Requirements for v1.3 Security Hardening. Each maps to roadmap phases.
 ### Access Control
 
 - **ACL-F01**: Per-service MinIO IAM service accounts (deferred; single bucket policy sufficient for v1.3)
+
+### Data Isolation
+
+- **DB-F01**: ClickHouse per-service read-only users and row-level policies — ClickHouse cannot enforce tenant isolation at the DB layer; create a read-only ClickHouse user per service scoped to the `xeter` database and document this as an architectural constraint requiring ClickHouse Cloud row policies for full enforcement (deferred; Python DAL + integration test is the v1.3 enforcement layer)
+
+### Operations
+
+- **OPS-F01**: Rate limiting on Analyser ingestion — per-API-key sliding window using Redis; configurable `RATE_LIMIT_SPANS_PER_MINUTE` env var; HTTP 429 with `Retry-After` header; maximum payload size rejection before S3 touch (deferred to v1.4; B2B customer set mitigates runaway-agent risk for v1.3)
+- **OPS-F02**: Per-tenant Redis queue keys — replace global `analysis_queue` list with `analysis_queue:{tenant_id}` keys; Worker pops in round-robin across tenant queues to prevent starvation (deferred to v1.4; Worker refactor independent from v1.3 security surface)
 
 ## Out of Scope
 
@@ -61,18 +80,22 @@ Requirements for v1.3 Security Hardening. Each maps to roadmap phases.
 | DB-01 | Phase 14 | Pending |
 | DB-02 | Phase 14 | Pending |
 | DB-03 | Phase 14 | Pending |
+| S3-01 | Phase 14 | Pending |
 | DB-04 | Phase 15 | Pending |
 | OPS-01 | Phase 15 | Pending |
 | OPS-02 | Phase 15 | Pending |
 | OPS-03 | Phase 15 | Pending |
 | OPS-04 | Phase 15 | Pending |
+| OPS-05 | Phase 15 | Pending |
 | AUTH-01 | Phase 16 | Pending |
 | AUTH-02 | Phase 16 | Pending |
 | AUTH-03 | Phase 16 | Pending |
+| AUTH-04 | Phase 16 | Pending |
+| GDPR-01 | Phase 17 | Pending |
 
 **Coverage:**
-- v1.3 requirements: 11 total
-- Mapped to phases: 11
+- v1.3 requirements: 15 total
+- Mapped to phases: 15
 - Unmapped: 0 ✓
 
 ---

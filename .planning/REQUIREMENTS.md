@@ -16,7 +16,7 @@ Requirements for v1.3 Security Hardening. Each maps to roadmap phases.
 
 ### Data Isolation
 
-- [ ] **S3-01**: All S3 payload keys are prefixed with the tenant ID — key format is `{tenant_id}/{span_id}/prompt` (and `/response`, `/raw_response`, `/available_tools`); Presenter asserts the fetched key starts with the requesting tenant's ID before returning content; a unit test confirms a cross-tenant key fetch returns 403
+- [x] **S3-01**: All S3 payload keys are prefixed with the tenant ID — key format is `{tenant_id}/{span_id}/prompt` (and `/response`, `/raw_response`, `/available_tools`); Presenter asserts the fetched key starts with the requesting tenant's ID before returning content; a unit test confirms a cross-tenant key fetch returns 403
 
 ### Authentication
 
@@ -80,7 +80,7 @@ Requirements for v1.3 Security Hardening. Each maps to roadmap phases.
 | DB-01 | Phase 14 | Pending |
 | DB-02 | Phase 14 | Pending |
 | DB-03 | Phase 14 | Pending |
-| S3-01 | Phase 14 | Pending |
+| S3-01 | Phase 14 | Complete |
 | DB-04 | Phase 15 | Pending |
 | OPS-01 | Phase 15 | Pending |
 | OPS-02 | Phase 15 | Pending |

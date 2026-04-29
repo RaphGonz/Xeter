@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Security Hardening
-status: planning
-last_updated: "2026-04-27T00:00:00.000Z"
+status: in-progress
+last_updated: "2026-04-29T00:12:00.000Z"
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 0
-  completed_plans: 0
+  completed_plans: 2
 ---
 
 # Project State
@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 ## Current Position
 
 Phase: 14 of 16 (DB Foundation)
-Plan: — (not started)
-Status: Ready to plan
-Last activity: 2026-04-27 — v1.3 roadmap created; Phase 14 ready to plan
+Plan: 02 of N (S3 Tenant-Prefix Guard — complete)
+Status: In progress
+Last activity: 2026-04-29 — 14-02 complete: _fetch_s3_payload now asserts S3-01 tenant-prefix guard, 37 presenter tests pass
 
-Progress: [░░░░░░░░░░] 0% (v1.3)
+Progress: [██░░░░░░░░] ~20% (v1.3 — 14-01, 14-02 complete)
 
 ## Accumulated Context
 
@@ -40,6 +40,7 @@ v1.0–v1.2 retrospective in RETROSPECTIVE.md.
 - Refresh token: long-lived HS256 JWT in httpOnly cookie; no DB revocation table (accepted v1.3 tradeoff)
 - httpOnly cookie set by Next.js Route Handler, not Presenter directly (Next.js rewrites strip upstream Set-Cookie)
 - CHECK constraints: NOT VALID migration + manual VALIDATE after pre-flight data audit (avoids ACCESS EXCLUSIVE lock)
+- S3-01 guard: key.startswith(f"{tenant_id}/") check before GetObject raises HTTP 403 — defence-in-depth independent of ClickHouse tenant filter
 
 ### Pending Todos
 
@@ -52,5 +53,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-27 — v1.3 roadmap written.
-Next: /gsd:plan-phase 14
+Last session: 2026-04-29 — 14-02 complete: S3 tenant-prefix guard shipped.
+Stopped at: Completed 14-02-PLAN.md
+Next: /gsd:execute-phase 14 plan 03

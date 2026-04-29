@@ -12,7 +12,7 @@ Requirements for v1.3 Security Hardening. Each maps to roadmap phases.
 - [ ] **DB-01**: Developer can rely on span_scores rows being tenant-isolated — RLS tenant_isolation policy added; score_writer.py uses SET LOCAL in transaction (matching flag_writer.py pattern)
 - [ ] **DB-02**: Developer can rely on all RLS policies being enforced even for the table owner role — FORCE ROW LEVEL SECURITY added retroactively to all existing RLS tables
 - [ ] **DB-03**: Developer can trust verdict and severity values are domain-valid at DB level — CHECK constraints added via NOT VALID + VALIDATE CONSTRAINT two-step, with pre-flight violation query before VALIDATE
-- [ ] **DB-04**: Project has no dead passlib[bcrypt] dependency — removed from pyproject.toml
+- [x] **DB-04**: Project has no dead passlib[bcrypt] dependency — removed from pyproject.toml
 
 ### Data Isolation
 
@@ -30,7 +30,7 @@ Requirements for v1.3 Security Hardening. Each maps to roadmap phases.
 - [ ] **OPS-01**: Developer cannot accidentally commit secrets — root .gitignore excludes .env; docker-compose uses env var refs with CHANGE_ME_BEFORE_DEPLOY defaults
 - [ ] **OPS-02**: Operator can generate a valid random .env in one command via generate-secrets.sh (uses openssl rand)
 - [x] **OPS-03**: xeter-payloads MinIO bucket is asserted private on every startup (mc anonymous set none in minio-init container); deployment guide documents mc policy set and S3 IAM JSON
-- [ ] **OPS-04**: CI fails if bcrypt cost factor drops below 12; test fixtures use rounds=4 with session scope to avoid CI slowdown
+- [x] **OPS-04**: CI fails if bcrypt cost factor drops below 12; test fixtures use rounds=4 with session scope to avoid CI slowdown
 - [x] **OPS-05**: Redis requires password authentication — `REDIS_PASSWORD` env var in docker-compose with no `:-` fallback; Redis started with `--requirepass ${REDIS_PASSWORD}`; an unauthenticated `redis-cli ping` returns `NOAUTH Authentication required`
 
 ### GDPR & Data Retention
@@ -81,11 +81,11 @@ Requirements for v1.3 Security Hardening. Each maps to roadmap phases.
 | DB-02 | Phase 14 | Pending |
 | DB-03 | Phase 14 | Pending |
 | S3-01 | Phase 14 | Complete |
-| DB-04 | Phase 15 | Pending |
+| DB-04 | Phase 15 | Complete |
 | OPS-01 | Phase 15 | Pending |
 | OPS-02 | Phase 15 | Pending |
 | OPS-03 | Phase 15 | Complete |
-| OPS-04 | Phase 15 | Pending |
+| OPS-04 | Phase 15 | Complete |
 | OPS-05 | Phase 15 | Complete |
 | AUTH-01 | Phase 16 | Pending |
 | AUTH-02 | Phase 16 | Pending |

@@ -316,14 +316,28 @@ async def list_spans(
 # ---------------------------------------------------------------------------
 
 
-async def _fetch_s3_payload(s3_client, bucket: str, key: str | None) -> str | None:
+async def _fetch_s3_payload(
+    s3_client,
+    bucket: str,
+    key: str | None,
+    tenant_id: str,
+) -> str | None:
     """Fetch a single S3 object and extract the 'value' field from its JSON body.
 
     Returns None if key is None (field was not uploaded).
+    Raises HTTPException 403 if the key's tenant prefix does not match tenant_id
+    (S3-01 defence-in-depth: ClickHouse already filters by tenant_id, but the S3
+    layer independently asserts ownership before any GetObject call).
     Caller is responsible for wrapping in asyncio.wait_for.
     """
     if not key:
         return None
+    # S3-01: assert the key belongs to the requesting tenant before fetching
+    if not key.startswith(f"{tenant_id}/"):
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "forbidden", "message": "S3 key does not belong to requesting tenant"},
+        )
     response = await s3_client.get_object(Bucket=bucket, Key=key)
     body = await response["Body"].read()
     data = json.loads(body)
@@ -334,6 +348,7 @@ async def _fetch_all_s3_payloads(
     prompt_ref: str | None,
     response_ref: str | None,
     raw_response_ref: str | None,
+    tenant_id: str,
 ) -> tuple[str | None, str | None, str | None]:
     """Fetch all three S3 payloads in parallel using aioboto3.
 
@@ -359,9 +374,9 @@ async def _fetch_all_s3_payloads(
             endpoint_url=endpoint_url,
         ) as s3:
             return await asyncio.gather(
-                _fetch_s3_payload(s3, bucket, prompt_ref),
-                _fetch_s3_payload(s3, bucket, response_ref),
-                _fetch_s3_payload(s3, bucket, raw_response_ref),
+                _fetch_s3_payload(s3, bucket, prompt_ref, tenant_id),
+                _fetch_s3_payload(s3, bucket, response_ref, tenant_id),
+                _fetch_s3_payload(s3, bucket, raw_response_ref, tenant_id),
             )
 
     return await asyncio.wait_for(_fetch_all(), timeout=5.0)
@@ -458,7 +473,7 @@ async def get_span_detail(
     # --- Step 3: Fetch S3 payloads ---
     try:
         prompt, response, raw_response = await _fetch_all_s3_payloads(
-            prompt_ref, response_ref, raw_response_ref
+            prompt_ref, response_ref, raw_response_ref, tenant_id
         )
     except asyncio.TimeoutError:
         raise HTTPException(

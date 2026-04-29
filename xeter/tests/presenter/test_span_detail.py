@@ -56,11 +56,19 @@ def _ch_span_row(
     tool_output="Some result",
     time_begin=None,
     time_end=None,
-    prompt_ref="tenant/2026-03/span-detail-1/prompt.json",
-    response_ref="tenant/2026-03/span-detail-1/response.json",
-    raw_response_ref="tenant/2026-03/span-detail-1/raw_response.json",
+    prompt_ref=None,
+    response_ref=None,
+    raw_response_ref=None,
 ):
-    """Return a ClickHouse-style result row tuple for span detail."""
+    """Return a ClickHouse-style result row tuple for span detail.
+
+    S3 key defaults use the TENANT_A prefix so the tenant-prefix guard
+    in _fetch_s3_payload (S3-01) does not reject them in tests.
+    """
+    # Default refs must start with TENANT_A/ to pass the S3-01 tenant-prefix guard
+    _prompt_ref = prompt_ref if prompt_ref is not None else f"{TENANT_A}/2026-03/{span_id}/prompt.json"
+    _response_ref = response_ref if response_ref is not None else f"{TENANT_A}/2026-03/{span_id}/response.json"
+    _raw_response_ref = raw_response_ref if raw_response_ref is not None else f"{TENANT_A}/2026-03/{span_id}/raw_response.json"
     return (
         span_id,
         trace_id,
@@ -73,9 +81,9 @@ def _ch_span_row(
         tool_output,
         time_begin or _THEN,
         time_end or _NOW,
-        prompt_ref,
-        response_ref,
-        raw_response_ref,
+        _prompt_ref,
+        _response_ref,
+        _raw_response_ref,
     )
 
 

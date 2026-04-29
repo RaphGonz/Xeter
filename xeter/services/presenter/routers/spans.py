@@ -6,8 +6,8 @@ GET /spans
   Tenant isolation is enforced by the JWT session token (via verify_session_token)
   AND by explicit WHERE tenant_id = ? clauses on all queries.
 
-  CRITICAL: span_scores has NO PostgreSQL RLS. The WHERE tenant_id clause is the
-  SOLE isolation mechanism for that table — never omit it.
+  span_scores has RLS (migration 004) + explicit WHERE tenant_id clause — both
+  layers enforce tenant isolation; never omit the WHERE clause.
 
 GET /spans/{span_id}
   Returns full span detail merging ClickHouse span row, PostgreSQL flags+scores,
@@ -439,7 +439,7 @@ async def get_span_detail(
         )
         flags = list(flags_result.scalars().all())
 
-        # CRITICAL: span_scores has NO RLS — tenant_id filter is mandatory
+        # span_scores has RLS (migration 004) + explicit WHERE tenant_id — both layers required
         scores_result = await session.execute(
             text(
                 "SELECT analyzer_name, metric_name, score "

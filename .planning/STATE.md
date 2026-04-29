@@ -18,14 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-27)
 
 **Core value:** When a tool call fails, tell the developer whether it was the model, the architecture, or the prompt — and why.
-**Current focus:** v1.3 Security Hardening — Phase 14: DB Foundation
+**Current focus:** v1.3 Security Hardening — Phase 15: Secrets Hygiene
 
 ## Current Position
 
-Phase: 14 of 16 (DB Foundation) — COMPLETE
-Plan: All 3 plans complete (Provider Vocab, S3 Guard, Migration 004 + score_writer)
-Status: Phase complete — ready for Phase 15
-Last activity: 2026-04-29 — 14-03 complete: migration 004 written, score_writer uses SET LOCAL in explicit transaction
+Phase: 15 of 16 (Secrets Hygiene) — IN PROGRESS
+Plan: 2 of 2 complete (15-01 .env.example, 15-02 docker-compose hardening)
+Status: Phase 15 complete — ready for Phase 16
+Last activity: 2026-04-29 — 15-02 complete: docker-compose hardened, all secrets parameterised, Redis auth, MinIO bucket privacy, deployment-guide.md
 
 Progress: [███░░░░░░░] ~33% (v1.3 — Phase 14 complete)
 
@@ -42,6 +42,8 @@ v1.0–v1.2 retrospective in RETROSPECTIVE.md.
 - CHECK constraints: NOT VALID migration + manual VALIDATE after pre-flight data audit (avoids ACCESS EXCLUSIVE lock)
 - 14-01: Provider vocabulary aligned BEFORE migration runs — ensures no new bad rows in window before VALIDATE CONSTRAINT; preflight_diagnoses_audit.py exits 0/1 with repair SQL
 - S3-01 guard: key.startswith(f"{tenant_id}/") check before GetObject raises HTTP 403 — defence-in-depth independent of ClickHouse tenant filter
+- 15-02: No :- fallbacks for secrets in docker-compose.yml — fail-loud at startup if var unset (intentional)
+- 15-02: mc anonymous set none runs on every docker compose up via minio-init (idempotent bucket privacy)
 
 ### Pending Todos
 
@@ -54,6 +56,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-29 — Phase 14 complete: all 3 plans done. Migration 004, score_writer SET LOCAL, S3 tenant-prefix guard all shipped.
-Stopped at: Phase 14 execution + verification
-Next: /gsd:execute-phase 15
+Last session: 2026-04-29 — Phase 15 plan 02 complete: docker-compose hardened (no hardcoded secrets, Redis auth, MinIO bucket privacy), deployment-guide.md created.
+Stopped at: 15-02 execution complete
+Next: /gsd:execute-phase 16

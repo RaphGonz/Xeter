@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Security Hardening
 status: in-progress
-last_updated: "2026-04-29T00:12:00.000Z"
+last_updated: "2026-04-29T06:34:26.000Z"
 progress:
   total_phases: 3
   completed_phases: 0
@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 ## Current Position
 
 Phase: 14 of 16 (DB Foundation)
-Plan: 02 of N (S3 Tenant-Prefix Guard — complete)
+Plan: 01 + 02 complete (Provider Vocab Alignment, S3 Guard)
 Status: In progress
-Last activity: 2026-04-29 — 14-02 complete: _fetch_s3_payload now asserts S3-01 tenant-prefix guard, 37 presenter tests pass
+Last activity: 2026-04-29 — 14-01 complete: provider enums aligned to DB vocabulary, pre-flight audit script created
 
 Progress: [██░░░░░░░░] ~20% (v1.3 — 14-01, 14-02 complete)
 
@@ -40,6 +40,7 @@ v1.0–v1.2 retrospective in RETROSPECTIVE.md.
 - Refresh token: long-lived HS256 JWT in httpOnly cookie; no DB revocation table (accepted v1.3 tradeoff)
 - httpOnly cookie set by Next.js Route Handler, not Presenter directly (Next.js rewrites strip upstream Set-Cookie)
 - CHECK constraints: NOT VALID migration + manual VALIDATE after pre-flight data audit (avoids ACCESS EXCLUSIVE lock)
+- 14-01: Provider vocabulary aligned BEFORE migration runs — ensures no new bad rows in window before VALIDATE CONSTRAINT; preflight_diagnoses_audit.py exits 0/1 with repair SQL
 - S3-01 guard: key.startswith(f"{tenant_id}/") check before GetObject raises HTTP 403 — defence-in-depth independent of ClickHouse tenant filter
 
 ### Pending Todos
@@ -49,10 +50,10 @@ None.
 ### Blockers/Concerns
 
 - Phase 16 depends on Phase 14 landing first (span_scores RLS must exist before score_writer.py SET LOCAL is meaningful)
-- Before running VALIDATE CONSTRAINT in Phase 14: run pre-flight query for verdict='undetermined' or severity='critical' in diagnoses — existing v1.2 data may violate new constraints
+- Before running VALIDATE CONSTRAINT in Phase 14: run xeter/scripts/preflight_diagnoses_audit.py — existing v1.2 data may violate new constraints
 
 ## Session Continuity
 
-Last session: 2026-04-29 — 14-02 complete: S3 tenant-prefix guard shipped.
-Stopped at: Completed 14-02-PLAN.md
+Last session: 2026-04-29 — 14-01 complete: provider vocabulary aligned, preflight_diagnoses_audit.py created.
+Stopped at: Completed 14-01-PLAN.md
 Next: /gsd:execute-phase 14 plan 03

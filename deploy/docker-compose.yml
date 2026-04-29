@@ -7,7 +7,7 @@ services:
     environment:
       POSTGRES_DB: xeter
       POSTGRES_USER: xeter
-      POSTGRES_PASSWORD: xeter_dev_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
@@ -28,7 +28,7 @@ services:
       - ch_data:/var/lib/clickhouse
     environment:
       CLICKHOUSE_USER: default
-      CLICKHOUSE_PASSWORD: xeter_dev_password
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
     healthcheck:
       test: ["CMD-SHELL", "wget --spider -q http://localhost:8123/ping"]
       interval: 10s
@@ -40,8 +40,11 @@ services:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -54,8 +57,8 @@ services:
     volumes:
       - minio_data:/data
     environment:
-      MINIO_ROOT_USER: xeter
-      MINIO_ROOT_PASSWORD: xeter_dev_password
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     command: server /data --console-address ":9001"
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live"]
@@ -70,7 +73,13 @@ services:
       minio:
         condition: service_healthy
     entrypoint: /bin/sh
-    command: -c "mc alias set local http://minio:9000 xeter xeter_dev_password && mc mb local/xeter-payloads --ignore-existing"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    command: >-
+      -c "mc alias set local http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD}
+       && mc mb local/xeter-payloads --ignore-existing
+       && mc anonymous set none local/xeter-payloads"
 
   # --- Application stub services ---
 
@@ -93,14 +102,14 @@ services:
       minio:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql+asyncpg://xeter:xeter_dev_password@postgres:5432/xeter
+      DATABASE_URL: "postgresql+asyncpg://xeter:${POSTGRES_PASSWORD}@postgres:5432/xeter"
       CLICKHOUSE_HOST: clickhouse
-      CLICKHOUSE_PASSWORD: xeter_dev_password
-      REDIS_URL: redis://redis:6379
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379"
       MINIO_ENDPOINT: http://minio:9000
       S3_ENDPOINT_URL: http://minio:9000
       S3_ACCESS_KEY: xeter
-      S3_SECRET_KEY: xeter_dev_password
+      S3_SECRET_KEY: ${MINIO_SECRET_KEY}
       S3_BUCKET: xeter-payloads
 
   presenter:
@@ -124,15 +133,15 @@ services:
       diagnosticer:
         condition: service_started
     environment:
-      DATABASE_URL: postgresql+asyncpg://xeter:xeter_dev_password@postgres:5432/xeter
+      DATABASE_URL: "postgresql+asyncpg://xeter:${POSTGRES_PASSWORD}@postgres:5432/xeter"
       CLICKHOUSE_HOST: clickhouse
-      CLICKHOUSE_PASSWORD: xeter_dev_password
-      REDIS_URL: redis://redis:6379
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379"
       MINIO_ENDPOINT: http://minio:9000
-      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
+      SECRET_KEY: ${SECRET_KEY}
       S3_ENDPOINT_URL: http://minio:9000
       S3_ACCESS_KEY: xeter
-      S3_SECRET_KEY: xeter_dev_password
+      S3_SECRET_KEY: ${MINIO_SECRET_KEY}
       S3_BUCKET: xeter-payloads
       DIAGNOSTICER_URL: http://diagnosticer:8001
 
@@ -165,14 +174,14 @@ services:
       embedder:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql+asyncpg://xeter:xeter_dev_password@postgres:5432/xeter
+      DATABASE_URL: "postgresql+asyncpg://xeter:${POSTGRES_PASSWORD}@postgres:5432/xeter"
       CLICKHOUSE_HOST: clickhouse
-      CLICKHOUSE_PASSWORD: xeter_dev_password
-      REDIS_URL: redis://redis:6379
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379"
       EMBEDDER_URL: http://embedder:8002
       S3_ENDPOINT_URL: http://minio:9000
       S3_ACCESS_KEY: xeter
-      S3_SECRET_KEY: xeter_dev_password
+      S3_SECRET_KEY: ${MINIO_SECRET_KEY}
       S3_BUCKET: xeter-payloads
       WORKER_THRESHOLD_WRONG_TOOL_ARGS: "0.1"
       WORKER_THRESHOLD_UNNECESSARY_TOOL_CALL: "0.25"
@@ -196,14 +205,14 @@ services:
       minio:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql+asyncpg://xeter:xeter_dev_password@postgres:5432/xeter
+      DATABASE_URL: "postgresql+asyncpg://xeter:${POSTGRES_PASSWORD}@postgres:5432/xeter"
       CLICKHOUSE_HOST: clickhouse
-      CLICKHOUSE_PASSWORD: xeter_dev_password
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
       S3_ENDPOINT_URL: http://minio:9000
       S3_ACCESS_KEY: xeter
-      S3_SECRET_KEY: xeter_dev_password
+      S3_SECRET_KEY: ${MINIO_SECRET_KEY}
       S3_BUCKET: xeter-payloads
-      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
+      SECRET_KEY: ${SECRET_KEY}
       DIAGNOSTICER_PROVIDER: ${DIAGNOSTICER_PROVIDER:-anthropic}
       DIAGNOSTICER_MODEL: ${DIAGNOSTICER_MODEL:-claude-haiku-4-5}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}

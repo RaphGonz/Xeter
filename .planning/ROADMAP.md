@@ -107,7 +107,14 @@ Plans:
   5. Presenter includes X-Internal-Api-Key: ${INTERNAL_API_KEY} on every HTTP call to Diagnosticer; Diagnosticer middleware returns 401 on any request missing or providing a wrong value; INTERNAL_API_KEY is a required env var (KeyError on startup) in both services
   6. CORSMiddleware is present in Presenter with allow_credentials=True and explicit allow_origins (never "*"); cookie secure and samesite settings are driven by an ENVIRONMENT env var — dev: secure=False, samesite="lax"; prod: secure=True, samesite="strict"
   7. services/view test files are audited for window.sessionStorage mocks before auth.ts change lands; test suite passes after sessionStorage removal
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+- [ ] 16-01-PLAN.md — Python backend hard-fail: SECRET_KEY + INTERNAL_API_KEY + 30min expiry + Diagnosticer middleware (AUTH-01, AUTH-04)
+- [ ] 16-02-PLAN.md — JWT rotation runbook (AUTH-03)
+- [ ] 16-03-PLAN.md — Presenter refresh endpoint + CORS + diagnosis_service INTERNAL_API_KEY + docker-compose wiring (AUTH-02, AUTH-04)
+- [ ] 16-04-PLAN.md — Fix test suite for hard-fail env vars + new response shapes (AUTH-01, AUTH-04)
+- [ ] 16-05-PLAN.md — Next.js Route Handlers + auth.ts sessionStorage removal + api.ts 401 interceptor (AUTH-02)
 
 ### Phase 17: GDPR Data Deletion
 **Goal**: All data for a given tenant can be fully deleted in one operator command
@@ -138,6 +145,6 @@ Plans:
 | 12. Presenter Integration | v1.2 | 2/2 | Complete | 2026-04-23 |
 | 13. Frontend Diagnosis UI | v1.2 | 2/2 | Complete | 2026-04-25 |
 | 14. DB Foundation | v1.3 | 3/3 | Complete | 2026-04-29 |
-| 15. Secrets Hygiene | 3/3 | Complete    | 2026-04-29 | - |
-| 16. Auth Hardening | v1.3 | 0/TBD | Not started | - |
+| 15. Secrets Hygiene | v1.3 | 3/3 | Complete | 2026-04-29 |
+| 16. Auth Hardening | v1.3 | 0/5 | Not started | - |
 | 17. GDPR Data Deletion | v1.3 | 0/TBD | Not started | - |

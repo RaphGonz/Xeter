@@ -34,17 +34,17 @@ _OPENAI_TOOL = {
             "properties": {
                 "verdict": {
                     "type": "string",
-                    "enum": ["model", "architecture", "prompt", "undetermined"],
+                    "enum": ["model", "architecture", "prompt", "unknown"],
                     "description": (
                         "Root cause: 'model' = LLM capability/knowledge issue, "
                         "'architecture' = system design/tool schema issue, "
                         "'prompt' = instruction clarity/context issue, "
-                        "'undetermined' = insufficient signal"
+                        "'unknown' = insufficient signal"
                     ),
                 },
                 "severity": {
                     "type": "string",
-                    "enum": ["low", "medium", "high", "critical"],
+                    "enum": ["low", "medium", "high"],
                 },
                 "affected_field": {
                     "type": "string",

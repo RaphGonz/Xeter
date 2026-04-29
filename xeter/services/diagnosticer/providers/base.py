@@ -18,8 +18,8 @@ from typing import Literal, Protocol
 class DiagnosisResult:
     """Parsed output from the LLM diagnosis call."""
 
-    verdict: Literal["model", "architecture", "prompt", "undetermined"]
-    severity: Literal["low", "medium", "high", "critical"]
+    verdict: Literal["model", "architecture", "prompt", "unknown"]
+    severity: Literal["low", "medium", "high"]
     affected_field: str
     fix: str
 

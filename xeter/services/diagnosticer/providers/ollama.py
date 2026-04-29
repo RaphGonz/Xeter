@@ -26,8 +26,8 @@ from xeter.services.diagnosticer.providers.base import (
 class _DiagnosisOutput(BaseModel):
     """Pydantic model used to validate Ollama's structured JSON output."""
 
-    verdict: Literal["model", "architecture", "prompt", "undetermined"]
-    severity: Literal["low", "medium", "high", "critical"]
+    verdict: Literal["model", "architecture", "prompt", "unknown"]
+    severity: Literal["low", "medium", "high"]
     affected_field: str
     fix: str
 

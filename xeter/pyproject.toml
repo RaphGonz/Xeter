@@ -16,7 +16,7 @@ dependencies = [
     "alembic==1.18.4",
     "clickhouse-connect==0.15.0",
     "aioboto3==15.5.0",
-    "passlib[bcrypt]>=1.7",
+    "bcrypt>=4.0",
     "python-dotenv",
     "structlog",
     "httpx",

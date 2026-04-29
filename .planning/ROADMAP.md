@@ -50,7 +50,7 @@ See `.planning/milestones/v1.2-ROADMAP.md` for full phase details.
 
 **Milestone Goal:** Close all pre-launch security gaps — tenant isolation completion, DB-level validation, secrets hygiene, auth hardening, and GDPR data deletion.
 
-- [ ] **Phase 14: DB Foundation** — RLS on span_scores, FORCE RLS on all tables, CHECK constraints on diagnoses, S3 tenant key prefix
+- [x] **Phase 14: DB Foundation** — RLS on span_scores, FORCE RLS on all tables, CHECK constraints on diagnoses, S3 tenant key prefix (completed 2026-04-29)
 - [ ] **Phase 15: Secrets Hygiene** — docker-compose secrets cleanup, generate-secrets.sh, MinIO bucket assertion, bcrypt CI enforcement, passlib removal, Redis AUTH
 - [ ] **Phase 16: Auth Hardening** — JWT 30-min expiry, hard-fail on missing SECRET_KEY, httpOnly refresh token, JWT_SECRET runbook, internal API key, CORS
 - [ ] **Phase 17: GDPR Data Deletion** — delete_tenant.py covering ClickHouse, PostgreSQL, S3, and documented Redis flush
@@ -132,7 +132,7 @@ Plans:
 | 11. Diagnosticer Backend | v1.2 | 4/4 | Complete | 2026-04-22 |
 | 12. Presenter Integration | v1.2 | 2/2 | Complete | 2026-04-23 |
 | 13. Frontend Diagnosis UI | v1.2 | 2/2 | Complete | 2026-04-25 |
-| 14. DB Foundation | 2/3 | In Progress|  | - |
+| 14. DB Foundation | 3/3 | Complete   | 2026-04-29 | - |
 | 15. Secrets Hygiene | v1.3 | 0/TBD | Not started | - |
 | 16. Auth Hardening | v1.3 | 0/TBD | Not started | - |
 | 17. GDPR Data Deletion | v1.3 | 0/TBD | Not started | - |

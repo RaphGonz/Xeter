@@ -29,15 +29,22 @@ from xeter.shared.models import User
 TENANT_ID = uuid.uuid4()
 USER_EMAIL = "alice@example.com"
 USER_PASSWORD = "correct-horse-battery"
-PASSWORD_HASH = bcrypt.hashpw(USER_PASSWORD.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
-def _make_user() -> User:
+@pytest.fixture(scope="session")
+def password_hash_fixture() -> str:
+    """Pre-computed bcrypt hash with rounds=4 for test speed."""
+    return bcrypt.hashpw(
+        USER_PASSWORD.encode("utf-8"), bcrypt.gensalt(rounds=4)
+    ).decode("utf-8")
+
+
+def _make_user(password_hash: str) -> User:
     """Return a mock User instance with bcrypt-hashed password."""
     user = MagicMock(spec=User)
     user.tenant_id = TENANT_ID
     user.email = USER_EMAIL
-    user.password_hash = PASSWORD_HASH
+    user.password_hash = password_hash
     return user
 
 
@@ -55,11 +62,11 @@ def _make_mock_session(user: User | None) -> AsyncMock:
 # ---------------------------------------------------------------------------
 
 
-def test_login_valid_credentials_returns_token():
+def test_login_valid_credentials_returns_token(password_hash_fixture: str):
     """Valid email + password returns HTTP 200 with a decodeable JWT session_token."""
     from jose import jwt
 
-    user = _make_user()
+    user = _make_user(password_hash_fixture)
     mock_session = _make_mock_session(user)
 
     async def override_get_session():
@@ -82,9 +89,9 @@ def test_login_valid_credentials_returns_token():
         app.dependency_overrides.pop(get_session, None)
 
 
-def test_login_wrong_password_returns_401():
+def test_login_wrong_password_returns_401(password_hash_fixture: str):
     """Providing the wrong password returns HTTP 401."""
-    user = _make_user()
+    user = _make_user(password_hash_fixture)
     mock_session = _make_mock_session(user)
 
     async def override_get_session():

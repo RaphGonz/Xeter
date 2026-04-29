@@ -88,7 +88,12 @@ Plans:
   5. passlib[bcrypt] does not appear in pyproject.toml or any import
   6. Redis requires password authentication — REDIS_PASSWORD env var in docker-compose with no :- fallback; unauthenticated redis-cli ping to the Redis container returns NOAUTH Authentication required
   7. minio-init mc alias set command string references ${MINIO_ROOT_PASSWORD}, not a hardcoded literal
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 15-01-PLAN.md — Root .gitignore + generate-secrets.sh + .env.example update (OPS-01, OPS-02)
+- [ ] 15-02-PLAN.md — docker-compose hardening: Redis --requirepass, MinIO mc anonymous set none, all env var wiring (OPS-03, OPS-05)
+- [ ] 15-03-PLAN.md — Remove passlib + bcrypt cost-factor CI test + test fixture rounds=4 (OPS-04, DB-04)
 
 ### Phase 16: Auth Hardening
 **Goal**: Session tokens expire promptly, refresh is seamless and XSS-safe, internal service calls are authenticated, and the SECRET_KEY rotation procedure is documented
@@ -132,7 +137,7 @@ Plans:
 | 11. Diagnosticer Backend | v1.2 | 4/4 | Complete | 2026-04-22 |
 | 12. Presenter Integration | v1.2 | 2/2 | Complete | 2026-04-23 |
 | 13. Frontend Diagnosis UI | v1.2 | 2/2 | Complete | 2026-04-25 |
-| 14. DB Foundation | 3/3 | Complete    | 2026-04-29 | - |
-| 15. Secrets Hygiene | v1.3 | 0/TBD | Not started | - |
+| 14. DB Foundation | v1.3 | 3/3 | Complete | 2026-04-29 |
+| 15. Secrets Hygiene | v1.3 | 0/3 | Not started | - |
 | 16. Auth Hardening | v1.3 | 0/TBD | Not started | - |
 | 17. GDPR Data Deletion | v1.3 | 0/TBD | Not started | - |

@@ -146,5 +146,5 @@ Plans:
 | 13. Frontend Diagnosis UI | v1.2 | 2/2 | Complete | 2026-04-25 |
 | 14. DB Foundation | v1.3 | 3/3 | Complete | 2026-04-29 |
 | 15. Secrets Hygiene | v1.3 | 3/3 | Complete | 2026-04-29 |
-| 16. Auth Hardening | v1.3 | 0/5 | Not started | - |
+| 16. Auth Hardening | 2/5 | In Progress|  | - |
 | 17. GDPR Data Deletion | v1.3 | 0/TBD | Not started | - |

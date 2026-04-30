@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Security Hardening
 status: unknown
-last_updated: "2026-04-29T13:51:48.697Z"
+last_updated: "2026-04-30T06:43:35Z"
 progress:
   total_phases: 5
   completed_phases: 5
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-27)
 
 **Core value:** When a tool call fails, tell the developer whether it was the model, the architecture, or the prompt — and why.
-**Current focus:** v1.3 Security Hardening — Phase 15: Secrets Hygiene
+**Current focus:** v1.3 Security Hardening — Phase 16: Auth Hardening
 
 ## Current Position
 
-Phase: 15 of 16 (Secrets Hygiene) — IN PROGRESS
-Plan: 1 of 3 complete (15-01 .gitignore + generate-secrets.sh + .env.example)
-Status: 15-01 complete — ready for 15-02
-Last activity: 2026-04-29 — 15-01 complete: root .gitignore blocks .env, generate-secrets.sh writes cryptographic secrets, .env.example has 13 CHANGE_ME_BEFORE_DEPLOY entries
+Phase: 16 of 16 (Auth Hardening) — IN PROGRESS
+Plan: 1 of 5 complete (16-01 SECRET_KEY hard-fails, 30min token expiry, InternalApiKeyMiddleware)
+Status: 16-01 complete — ready for 16-02
+Last activity: 2026-04-30 — 16-01 complete: SECRET_KEY/INTERNAL_API_KEY hard-fails in presenter deps.py and diagnosticer main.py, TOKEN_EXPIRE_MINUTES=30, create_refresh_token() added, InternalApiKeyMiddleware on diagnosticer
 
-Progress: [████░░░░░░] ~40% (v1.3 — Phase 15 complete)
+Progress: [█████░░░░░] ~50% (v1.3 — Phase 16 plan 01 complete)
 
 ## Accumulated Context
 
@@ -48,6 +48,10 @@ v1.0–v1.2 retrospective in RETROSPECTIVE.md.
 - 15-02: mc anonymous set none runs on every docker compose up via minio-init (idempotent bucket privacy)
 - 15-03: Replaced passlib[bcrypt]>=1.7 with direct bcrypt>=4.0 — removes dead supply-chain dep (DB-04)
 - 15-03: rounds=4 in test fixtures only; cost-factor test uses unparameterised gensalt() to assert production minimum (OPS-04)
+- 16-01: SECRET_KEY uses os.environ[] hard-fail in both presenter and diagnosticer — eliminates dev-key silently deployed to production (AUTH-01)
+- 16-01: TOKEN_EXPIRE_MINUTES=30 replaces TOKEN_EXPIRE_HOURS=24 — access tokens now 30-minute lifetime
+- 16-01: InternalApiKeyMiddleware on diagnosticer establishes service trust boundary — Presenter must pass X-Internal-Api-Key (AUTH-04)
+- 16-01: verify_session_token kept in diagnosticer for backwards compat with existing test dependency_overrides
 
 ### Pending Todos
 
@@ -60,6 +64,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-29 — 15-01 complete: root .gitignore, generate-secrets.sh, .env.example with 13 CHANGE_ME_BEFORE_DEPLOY placeholders.
-Stopped at: Completed 15-01-PLAN.md
-Next: /gsd:execute-phase 15 (plans 02 and 03 remaining)
+Last session: 2026-04-30 — 16-01 complete: SECRET_KEY/INTERNAL_API_KEY hard-fails, TOKEN_EXPIRE_MINUTES=30, create_refresh_token(), InternalApiKeyMiddleware on diagnosticer, /diagnose reads X-Tenant-Id header.
+Stopped at: Completed 16-01-PLAN.md
+Next: /gsd:execute-phase 16 (plans 02-05 remaining)

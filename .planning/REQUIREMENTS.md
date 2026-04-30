@@ -20,10 +20,10 @@ Requirements for v1.3 Security Hardening. Each maps to roadmap phases.
 
 ### Authentication
 
-- [ ] **AUTH-01**: Session tokens expire after 30 minutes; server hard-fails on startup if SECRET_KEY env var is unset (no silent fallback to dev key)
+- [x] **AUTH-01**: Session tokens expire after 30 minutes; server hard-fails on startup if SECRET_KEY env var is unset (no silent fallback to dev key)
 - [ ] **AUTH-02**: User can silently refresh an expired access token via httpOnly refresh token cookie — Presenter POST /auth/refresh endpoint; Next.js Route Handlers for /api/login and /api/auth/refresh; sessionStorage removed from auth.ts
 - [ ] **AUTH-03**: Operator has a documented JWT_SECRET rotation runbook covering dual-secret window and service restart sequence
-- [ ] **AUTH-04**: Presenter-to-Diagnosticer calls are authenticated by a static internal API key — `INTERNAL_API_KEY` env var (required, no fallback) present in both services; Presenter includes it as `X-Internal-Api-Key` request header; Diagnosticer middleware rejects any request missing or providing a wrong value with 401
+- [x] **AUTH-04**: Presenter-to-Diagnosticer calls are authenticated by a static internal API key — `INTERNAL_API_KEY` env var (required, no fallback) present in both services; Presenter includes it as `X-Internal-Api-Key` request header; Diagnosticer middleware rejects any request missing or providing a wrong value with 401
 
 ### Operations & Secrets
 
@@ -87,10 +87,10 @@ Requirements for v1.3 Security Hardening. Each maps to roadmap phases.
 | OPS-03 | Phase 15 | Complete |
 | OPS-04 | Phase 15 | Complete |
 | OPS-05 | Phase 15 | Complete |
-| AUTH-01 | Phase 16 | Pending |
+| AUTH-01 | Phase 16 | Complete |
 | AUTH-02 | Phase 16 | Pending |
 | AUTH-03 | Phase 16 | Pending |
-| AUTH-04 | Phase 16 | Pending |
+| AUTH-04 | Phase 16 | Complete |
 | GDPR-01 | Phase 17 | Pending |
 
 **Coverage:**

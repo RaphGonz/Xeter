@@ -13,6 +13,7 @@ REDIS_PASS=$(openssl rand -hex 32)
 MINIO_PASS=$(openssl rand -hex 32)
 CH_PASS=$(openssl rand -hex 32)
 SECRET_KEY=$(openssl rand -hex 32)
+INTERNAL_API_KEY=$(openssl rand -hex 32)
 MINIO_USER=xeter
 
 cat > .env <<EOF
@@ -34,6 +35,7 @@ REDIS_PASSWORD=${REDIS_PASS}
 
 # MinIO / S3
 MINIO_ENDPOINT=http://localhost:9100
+S3_ENDPOINT_URL=http://localhost:9100
 MINIO_ROOT_USER=${MINIO_USER}
 MINIO_ROOT_PASSWORD=${MINIO_PASS}
 MINIO_ACCESS_KEY=${MINIO_USER}
@@ -51,6 +53,9 @@ DEV_USER_PASSWORD=$(openssl rand -hex 16)
 
 # App
 SECRET_KEY=${SECRET_KEY}
+INTERNAL_API_KEY=${INTERNAL_API_KEY}
+ENVIRONMENT=dev
+CORS_ALLOW_ORIGINS=http://localhost:3000
 
 # Diagnosticer LLM config
 DIAGNOSTICER_PROVIDER=anthropic

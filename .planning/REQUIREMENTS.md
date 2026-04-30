@@ -9,9 +9,9 @@ Requirements for v1.3 Security Hardening. Each maps to roadmap phases.
 
 ### Database Security
 
-- [ ] **DB-01**: Developer can rely on span_scores rows being tenant-isolated — RLS tenant_isolation policy added; score_writer.py uses SET LOCAL in transaction (matching flag_writer.py pattern)
-- [ ] **DB-02**: Developer can rely on all RLS policies being enforced even for the table owner role — FORCE ROW LEVEL SECURITY added retroactively to all existing RLS tables
-- [ ] **DB-03**: Developer can trust verdict and severity values are domain-valid at DB level — CHECK constraints added via NOT VALID + VALIDATE CONSTRAINT two-step, with pre-flight violation query before VALIDATE
+- [x] **DB-01**: Developer can rely on span_scores rows being tenant-isolated — RLS tenant_isolation policy added; score_writer.py uses SET LOCAL in transaction (matching flag_writer.py pattern)
+- [x] **DB-02**: Developer can rely on all RLS policies being enforced even for the table owner role — FORCE ROW LEVEL SECURITY added retroactively to all existing RLS tables
+- [x] **DB-03**: Developer can trust verdict and severity values are domain-valid at DB level — CHECK constraints added via NOT VALID + VALIDATE CONSTRAINT two-step, with pre-flight violation query before VALIDATE
 - [x] **DB-04**: Project has no dead passlib[bcrypt] dependency — removed from pyproject.toml
 
 ### Data Isolation
@@ -77,9 +77,9 @@ Requirements for v1.3 Security Hardening. Each maps to roadmap phases.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DB-01 | Phase 14 | Pending |
-| DB-02 | Phase 14 | Pending |
-| DB-03 | Phase 14 | Pending |
+| DB-01 | Phase 14 | Complete |
+| DB-02 | Phase 14 | Complete |
+| DB-03 | Phase 14 | Complete |
 | S3-01 | Phase 14 | Complete |
 | DB-04 | Phase 15 | Complete |
 | OPS-01 | Phase 15 | Complete |

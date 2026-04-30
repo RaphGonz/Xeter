@@ -144,6 +144,9 @@ services:
       S3_SECRET_KEY: ${MINIO_SECRET_KEY}
       S3_BUCKET: xeter-payloads
       DIAGNOSTICER_URL: http://diagnosticer:8001
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      ENVIRONMENT: ${ENVIRONMENT:-dev}
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:3000}
 
   embedder:
     build:
@@ -213,6 +216,7 @@ services:
       S3_SECRET_KEY: ${MINIO_SECRET_KEY}
       S3_BUCKET: xeter-payloads
       SECRET_KEY: ${SECRET_KEY}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
       DIAGNOSTICER_PROVIDER: ${DIAGNOSTICER_PROVIDER:-anthropic}
       DIAGNOSTICER_MODEL: ${DIAGNOSTICER_MODEL:-claude-haiku-4-5}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
@@ -229,6 +233,7 @@ services:
       - ../services/view/public:/app/public
     environment:
       PRESENTER_URL: http://presenter:8000
+      ENVIRONMENT: ${ENVIRONMENT:-dev}
     depends_on:
       presenter:
         condition: service_started

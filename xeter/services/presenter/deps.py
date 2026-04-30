@@ -45,9 +45,10 @@ def get_ch_client() -> Generator[clickhouse_connect.driver.Client, None, None]:
         client.close()
 
 
-SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key-change-in-production")
+SECRET_KEY = os.environ["SECRET_KEY"]  # KeyError on startup if unset
 ALGORITHM = "HS256"
-TOKEN_EXPIRE_HOURS = 24
+TOKEN_EXPIRE_MINUTES = 30
+REFRESH_TOKEN_EXPIRE_DAYS = 30
 
 # ---------------------------------------------------------------------------
 # Token helpers
@@ -63,8 +64,22 @@ def create_session_token(tenant_id: str) -> str:
     Returns:
         Signed JWT string.
     """
-    expire = datetime.now(tz=timezone.utc) + timedelta(hours=TOKEN_EXPIRE_HOURS)
+    expire = datetime.now(tz=timezone.utc) + timedelta(minutes=TOKEN_EXPIRE_MINUTES)
     payload = {"sub": tenant_id, "exp": expire}
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def create_refresh_token(tenant_id: str) -> str:
+    """Encode a long-lived JWT refresh token for the given tenant.
+
+    Args:
+        tenant_id: String representation of the tenant UUID.
+
+    Returns:
+        Signed JWT string valid for 30 days.
+    """
+    expire = datetime.now(tz=timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    payload = {"sub": tenant_id, "exp": expire, "type": "refresh"}
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 

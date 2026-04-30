@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Security Hardening
 status: unknown
-last_updated: "2026-04-30T06:43:35Z"
+last_updated: "2026-04-30T06:46:00Z"
 progress:
   total_phases: 5
   completed_phases: 5
@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 ## Current Position
 
 Phase: 16 of 16 (Auth Hardening) — IN PROGRESS
-Plan: 1 of 5 complete (16-01 SECRET_KEY hard-fails, 30min token expiry, InternalApiKeyMiddleware)
-Status: 16-01 complete — ready for 16-02
-Last activity: 2026-04-30 — 16-01 complete: SECRET_KEY/INTERNAL_API_KEY hard-fails in presenter deps.py and diagnosticer main.py, TOKEN_EXPIRE_MINUTES=30, create_refresh_token() added, InternalApiKeyMiddleware on diagnosticer
+Plan: 2 of 5 complete (16-01 SECRET_KEY hard-fails; 16-02 JWT_SECRET rotation runbook)
+Status: 16-02 complete — ready for 16-03
+Last activity: 2026-04-30 — 16-02 complete: docs/JWT_ROTATION_RUNBOOK.md with Option A (30-min gap), Option B (dual-secret try/except), Diagnosticer-first restart sequence, verification commands
 
-Progress: [█████░░░░░] ~50% (v1.3 — Phase 16 plan 01 complete)
+Progress: [██████░░░░] ~60% (v1.3 — Phase 16 plan 02 complete)
 
 ## Accumulated Context
 
@@ -52,6 +52,9 @@ v1.0–v1.2 retrospective in RETROSPECTIVE.md.
 - 16-01: TOKEN_EXPIRE_MINUTES=30 replaces TOKEN_EXPIRE_HOURS=24 — access tokens now 30-minute lifetime
 - 16-01: InternalApiKeyMiddleware on diagnosticer establishes service trust boundary — Presenter must pass X-Internal-Api-Key (AUTH-04)
 - 16-01: verify_session_token kept in diagnosticer for backwards compat with existing test dependency_overrides
+- 16-02: Recommend Option A (30-minute gap) for v1.3 — no temporary code changes; Option B documented for hard zero-re-auth requirements only
+- 16-02: python-jose HS256 requires manual try/except decode loop for dual-secret window — no built-in multi-secret support (unlike RS256 JWKS)
+- 16-02: Restart sequence is Diagnosticer-first — avoids window where Presenter issues new-key tokens that Diagnosticer still rejects
 
 ### Pending Todos
 
@@ -64,6 +67,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-30 — 16-01 complete: SECRET_KEY/INTERNAL_API_KEY hard-fails, TOKEN_EXPIRE_MINUTES=30, create_refresh_token(), InternalApiKeyMiddleware on diagnosticer, /diagnose reads X-Tenant-Id header.
-Stopped at: Completed 16-01-PLAN.md
-Next: /gsd:execute-phase 16 (plans 02-05 remaining)
+Last session: 2026-04-30 — 16-02 complete: docs/JWT_ROTATION_RUNBOOK.md — Option A (30-min re-login gap), Option B (dual-secret try/except decode loop), Diagnosticer-first restart sequence, verification commands.
+Stopped at: Completed 16-02-PLAN.md
+Next: /gsd:execute-phase 16 (plans 03-05 remaining)

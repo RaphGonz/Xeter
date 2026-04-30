@@ -125,7 +125,10 @@ Plans:
   2. Deletion covers all four data stores: ClickHouse (ALTER TABLE spans DELETE WHERE tenant_id = :id), PostgreSQL (flags, span_scores, diagnoses, users, api_keys, tenants), S3 (all objects under {tenant_id}/ prefix via aws s3 rm --recursive), and a documented Redis key flush procedure
   3. Script is idempotent — running it twice on the same tenant produces no error and no additional side effects
   4. GDPR Art. 17 deletion procedure is documented in the deployment guide with the exact command and expected output
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+- [ ] 17-01-PLAN.md — delete_tenant.py script + GDPR_DELETION_RUNBOOK.md (GDPR-01)
 
 ## Progress
 

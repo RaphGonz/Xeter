@@ -35,7 +35,7 @@ Requirements for v1.3 Security Hardening. Each maps to roadmap phases.
 
 ### GDPR & Data Retention
 
-- [ ] **GDPR-01**: Operator can delete all data for a given tenant in one command — `delete_tenant.py --tenant-id <id>` shows a dry-run summary of affected rows and S3 objects by default; `--confirm` flag required to execute; deletion covers ClickHouse spans (`ALTER TABLE spans DELETE WHERE tenant_id = :id`), all PostgreSQL tables (`flags`, `span_scores`, `diagnoses`, `users`, `api_keys`, `tenants`), all S3 objects under `{tenant_id}/` prefix, and a documented Redis key flush procedure; script is idempotent
+- [x] **GDPR-01**: Operator can delete all data for a given tenant in one command — `delete_tenant.py --tenant-id <id>` shows a dry-run summary of affected rows and S3 objects by default; `--confirm` flag required to execute; deletion covers ClickHouse spans (`ALTER TABLE spans DELETE WHERE tenant_id = :id`), all PostgreSQL tables (`flags`, `span_scores`, `diagnoses`, `users`, `api_keys`, `tenants`), all S3 objects under `{tenant_id}/` prefix, and a documented Redis key flush procedure; script is idempotent
 
 ## Future Requirements
 
@@ -91,7 +91,7 @@ Requirements for v1.3 Security Hardening. Each maps to roadmap phases.
 | AUTH-02 | Phase 16 | Complete |
 | AUTH-03 | Phase 16 | Complete |
 | AUTH-04 | Phase 16 | Complete |
-| GDPR-01 | Phase 17 | Pending |
+| GDPR-01 | Phase 17 | Complete |
 
 **Coverage:**
 - v1.3 requirements: 15 total

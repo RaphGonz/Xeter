@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Security Hardening
-status: unknown
-last_updated: "2026-04-30T08:07:57.750Z"
+status: complete
+last_updated: "2026-04-30T00:00:00Z"
 progress:
-  total_phases: 6
-  completed_phases: 6
-  total_plans: 19
-  completed_plans: 19
+  total_phases: 7
+  completed_phases: 7
+  total_plans: 20
+  completed_plans: 20
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-27)
 
 **Core value:** When a tool call fails, tell the developer whether it was the model, the architecture, or the prompt — and why.
-**Current focus:** v1.3 Security Hardening — Phase 16: Auth Hardening
+**Current focus:** v1.3 Security Hardening — COMPLETE (Phase 17: GDPR Data Deletion done)
 
 ## Current Position
 
-Phase: 16 of 16 (Auth Hardening) — COMPLETE
-Plan: 5 of 5 complete (16-01 SECRET_KEY hard-fails; 16-02 JWT_SECRET rotation runbook; 16-03 refresh token + INTERNAL_API_KEY + CORS; 16-04 test suite fixes; 16-05 frontend Route Handlers + sessionStorage removal)
-Status: Phase 16 complete — all auth hardening plans done
-Last activity: 2026-04-30 — 16-05 complete: /api/login and /api/auth/refresh Route Handlers, httpOnly xeter_refresh cookie, sessionStorage removed from auth.ts, 401 interceptor in api.ts
+Phase: 17 of 17 (GDPR Data Deletion) — COMPLETE
+Plan: 1 of 1 complete (17-01 GDPR Art. 17 delete_tenant.py + runbook)
+Status: Phase 17 complete — all v1.3 security hardening requirements done
+Last activity: 2026-04-30 — 17-01 complete: delete_tenant.py (302 lines) with dry-run + --confirm gate, GDPR_DELETION_RUNBOOK.md (216 lines), GDPR-01 satisfied
 
-Progress: [██████████] ~100% (v1.3 — Phase 16 complete)
+Progress: [██████████] 100% (v1.3 — all phases complete)
 
 ## Accumulated Context
 
@@ -62,6 +62,10 @@ v1.0–v1.2 retrospective in RETROSPECTIVE.md.
 - 16-05: auth.ts hydrate() sets hydrated:true immediately (no storage read) — eliminates infinite redirect loop on page reload; token comes from 401 interceptor retry
 - 16-05: 401 interceptor retries exactly once — no loop; on failed refresh, clears token and throws HTTP 401 so redirect fires
 - 16-05: refresh_token stripped at Route Handler boundary — only session_token reaches browser JS
+- 17-01: Redis flush for GDPR is documented procedure only — analysis_queue is global; no automated per-tenant LREM (FLUSHDB prohibited)
+- 17-01: ClickHouse ALTER TABLE spans DELETE is async MergeTree mutation — script submits and returns; verify after 30s via dry-run re-run
+- 17-01: PostgreSQL GDPR deletion uses single autocommit=False connection with commit() after all 7 DELETEs in FK order (span_scores → diagnostics → diagnoses → flags → api_keys → users → tenants)
+- 17-01: delete_tenant.py idempotent by construction — no tenant-existence pre-check; DELETE WHERE on absent rows is no-op
 
 ### Pending Todos
 
@@ -74,6 +78,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-30 — 16-05 complete: /api/login + /api/auth/refresh Route Handlers with httpOnly xeter_refresh cookie, sessionStorage removed from auth.ts, 401 interceptor added to api.ts. AUTH-02 complete. Phase 16 all 5 plans done.
-Stopped at: Completed 16-05-PLAN.md
-Next: Phase 16 auth hardening complete — v1.3 milestone reached
+Last session: 2026-04-30 — 17-01 complete: delete_tenant.py GDPR Art. 17 script + GDPR_DELETION_RUNBOOK.md. GDPR-01 satisfied. Phase 17 complete. v1.3 milestone fully reached.
+Stopped at: Completed 17-01-PLAN.md
+Next: v1.3 Security Hardening milestone complete — all requirements satisfied

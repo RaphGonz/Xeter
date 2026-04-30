@@ -12,18 +12,9 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set) => ({
   token: null,
   hydrated: false,
-  setToken: (t: string) => {
-    sessionStorage.setItem('xeter_token', t)
-    set({ token: t })
-  },
-  clearToken: () => {
-    sessionStorage.removeItem('xeter_token')
-    set({ token: null })
-  },
-  hydrate: () => {
-    const t = sessionStorage.getItem('xeter_token') ?? null
-    set({ token: t, hydrated: true })
-  },
+  setToken: (t: string) => set({ token: t }),
+  clearToken: () => set({ token: null }),
+  hydrate: () => set({ hydrated: true }),   // No storage read — token comes from API response
 }))
 
 export function useHydrateAuth() {

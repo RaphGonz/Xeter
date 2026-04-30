@@ -1,3 +1,5 @@
+import { useAuthStore } from '@/lib/auth'
+
 export interface LoginResponse {
   session_token: string
 }
@@ -7,6 +9,34 @@ async function request<T>(
   options: RequestInit = {},
 ): Promise<T> {
   const res = await fetch(path, options)
+
+  if (res.status === 401) {
+    // Attempt transparent token refresh via httpOnly cookie
+    const refreshRes = await fetch('/api/auth/refresh', { method: 'POST' })
+    if (!refreshRes.ok) {
+      // Refresh failed — clear token and let caller handle
+      useAuthStore.getState().clearToken()
+      throw new Error('HTTP 401')
+    }
+    const { session_token } = await refreshRes.json()
+    useAuthStore.getState().setToken(session_token)
+
+    // Retry the original request once with new token
+    const retryOptions: RequestInit = {
+      ...options,
+      headers: {
+        ...(options.headers as Record<string, string> ?? {}),
+        Authorization: `Bearer ${session_token}`,
+      },
+    }
+    const retry = await fetch(path, retryOptions)
+    if (!retry.ok) {
+      const body = await retry.json().catch(() => ({}))
+      throw new Error(body.message ?? `HTTP ${retry.status}`)
+    }
+    return retry.json() as Promise<T>
+  }
+
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new Error(body.message ?? `HTTP ${res.status}`)

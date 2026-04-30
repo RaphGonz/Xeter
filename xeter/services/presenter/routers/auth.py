@@ -29,7 +29,14 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Annotated
 
-from xeter.services.presenter.deps import create_session_token
+from jose import JWTError, jwt
+
+from xeter.services.presenter.deps import (
+    ALGORITHM,
+    SECRET_KEY,
+    create_refresh_token,
+    create_session_token,
+)
 from xeter.shared.dal.api_keys import ApiKeyRepository, generate_api_key
 from xeter.shared.dal.tenants import TenantRepository
 from xeter.shared.dal.users import UserRepository
@@ -194,6 +201,7 @@ class LoginResponse(BaseModel):
     """Response returned after successful login."""
 
     session_token: str
+    refresh_token: str
 
 
 # ---------------------------------------------------------------------------
@@ -233,10 +241,57 @@ async def login(
             raise _LOGIN_UNAUTHORIZED
 
         token = create_session_token(str(user.tenant_id))
-        return LoginResponse(session_token=token)
+        refresh = create_refresh_token(str(user.tenant_id))
+        return LoginResponse(session_token=token, refresh_token=refresh)
 
     except HTTPException:
         raise
     except Exception as exc:
         logger.error("login.failed", error=str(exc))
         raise HTTPException(status_code=500, detail="Login failed") from exc
+
+
+# ---------------------------------------------------------------------------
+# Refresh token request / response models
+# ---------------------------------------------------------------------------
+
+
+class RefreshRequest(BaseModel):
+    """Payload containing the long-lived refresh token."""
+
+    refresh_token: str
+
+
+class RefreshResponse(BaseModel):
+    """Response containing a new short-lived session token."""
+
+    session_token: str
+
+
+_REFRESH_UNAUTHORIZED = HTTPException(
+    status_code=401,
+    detail={"error": "unauthorized", "message": "Invalid or expired refresh token"},
+)
+
+
+# ---------------------------------------------------------------------------
+# Refresh route
+# ---------------------------------------------------------------------------
+
+
+@router.post("/auth/refresh", response_model=RefreshResponse, status_code=200)
+async def refresh_token(body: RefreshRequest) -> RefreshResponse:
+    """Issue a new access token from a valid refresh token.
+
+    Stateless — no DB lookup. Just verifies the refresh JWT and issues a new
+    short-lived session token. Refresh token revocation is deferred (AUTH-F01).
+    """
+    try:
+        payload = jwt.decode(body.refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        tenant_id: str | None = payload.get("sub")
+        if not tenant_id:
+            raise _REFRESH_UNAUTHORIZED
+    except JWTError:
+        raise _REFRESH_UNAUTHORIZED
+    new_token = create_session_token(tenant_id)
+    return RefreshResponse(session_token=new_token)

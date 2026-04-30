@@ -2,7 +2,7 @@
 Unit tests for POST /diagnose endpoint in the Diagnosticer service.
 
 Mocking strategy:
-  - verify_session_token overridden via app.dependency_overrides
+  - InternalApiKeyMiddleware is the auth gate — requests without X-Internal-Api-Key return 401
   - get_ch_client overridden via app.dependency_overrides (avoids real ClickHouse)
   - assemble_context patched via unittest.mock.patch
   - get_llm_client patched via unittest.mock.patch
@@ -12,7 +12,8 @@ Mocking strategy:
 
 Test cases:
   - 200: successful end-to-end flow (mocked LLM + mocked DB)
-  - 401: missing Authorization header
+  - 401: missing X-Internal-Api-Key header
+  - 401: wrong X-Internal-Api-Key header
   - 404: span not found (ValueError from assemble_context)
   - 502: LLM call fails (LLMError)
   - 422: LLM response unparseable (ParseError)
@@ -39,18 +40,15 @@ TENANT_ID = str(uuid.uuid4())
 SPAN_ID = "span-test-001"
 TRACE_ID = "trace-test-001"
 
-_AUTH_HEADER = {"Authorization": "Bearer test-token"}
+# Valid internal key matching conftest.py setdefault("INTERNAL_API_KEY", "test-internal-key")
+_INTERNAL_KEY_HEADER = {
+    "X-Internal-Api-Key": "test-internal-key",
+    "X-Tenant-Id": TENANT_ID,
+}
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _auth_override():
-    """Return a callable that overrides verify_session_token."""
-    def override():
-        return TENANT_ID
-    return override
 
 
 def _ch_client_override():
@@ -104,7 +102,7 @@ def patch_db(monkeypatch):
     with patch("xeter.services.diagnosticer.main.get_async_session_factory", return_value=mock_factory):
         yield mock_factory
 
-    # Clean up CH client override (auth override cleaned up per test)
+    # Clean up CH client override
     app.dependency_overrides.pop(get_ch_client, None)
 
 
@@ -117,18 +115,27 @@ class TestDiagnoseEndpoint:
     """Tests for POST /diagnose."""
 
     def setup_method(self):
-        """Override auth dependency before each test."""
-        app.dependency_overrides[verify_session_token] = _auth_override()
+        """No auth override needed — InternalApiKeyMiddleware controls access via X-Internal-Api-Key."""
+        pass
 
     def teardown_method(self):
-        """Clear auth dependency override after each test."""
-        app.dependency_overrides.pop(verify_session_token, None)
+        """No auth override to clean up."""
+        pass
 
     def test_missing_auth_returns_401(self):
-        """POST /diagnose without Authorization header returns 401."""
-        app.dependency_overrides.pop(verify_session_token, None)  # Use real auth
+        """POST /diagnose without X-Internal-Api-Key returns 401."""
         with TestClient(app) as client:
             response = client.post("/diagnose", json={"span_id": SPAN_ID})
+        assert response.status_code == 401
+
+    def test_wrong_internal_key_returns_401(self):
+        """POST /diagnose with wrong X-Internal-Api-Key returns 401."""
+        with TestClient(app) as client:
+            response = client.post(
+                "/diagnose",
+                json={"span_id": SPAN_ID},
+                headers={"X-Internal-Api-Key": "definitely-wrong-key"},
+            )
         assert response.status_code == 401
 
     def test_span_not_found_returns_404(self):
@@ -138,7 +145,7 @@ class TestDiagnoseEndpoint:
             new=AsyncMock(side_effect=ValueError(f"Span {SPAN_ID!r} not found")),
         ):
             with TestClient(app) as client:
-                response = client.post("/diagnose", json={"span_id": SPAN_ID}, headers=_AUTH_HEADER)
+                response = client.post("/diagnose", json={"span_id": SPAN_ID}, headers=_INTERNAL_KEY_HEADER)
         assert response.status_code == 404
         assert SPAN_ID in response.json()["detail"]
 
@@ -157,7 +164,7 @@ class TestDiagnoseEndpoint:
             ),
         ):
             with TestClient(app) as client:
-                response = client.post("/diagnose", json={"span_id": SPAN_ID}, headers=_AUTH_HEADER)
+                response = client.post("/diagnose", json={"span_id": SPAN_ID}, headers=_INTERNAL_KEY_HEADER)
         assert response.status_code == 502
         assert "LLM call failed" in response.json()["detail"]
 
@@ -176,7 +183,7 @@ class TestDiagnoseEndpoint:
             ),
         ):
             with TestClient(app) as client:
-                response = client.post("/diagnose", json={"span_id": SPAN_ID}, headers=_AUTH_HEADER)
+                response = client.post("/diagnose", json={"span_id": SPAN_ID}, headers=_INTERNAL_KEY_HEADER)
         assert response.status_code == 422
 
     def test_successful_diagnosis_returns_200(self):
@@ -220,7 +227,7 @@ class TestDiagnoseEndpoint:
             ),
         ):
             with TestClient(app) as client:
-                response = client.post("/diagnose", json={"span_id": SPAN_ID}, headers=_AUTH_HEADER)
+                response = client.post("/diagnose", json={"span_id": SPAN_ID}, headers=_INTERNAL_KEY_HEADER)
 
         assert response.status_code == 200
         body = response.json()

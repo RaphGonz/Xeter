@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Security Hardening
 status: unknown
-last_updated: "2026-04-30T06:46:00Z"
+last_updated: "2026-04-30T07:26:14Z"
 progress:
   total_phases: 5
   completed_phases: 5
@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 ## Current Position
 
 Phase: 16 of 16 (Auth Hardening) — IN PROGRESS
-Plan: 3 of 5 complete (16-01 SECRET_KEY hard-fails; 16-02 JWT_SECRET rotation runbook; 16-03 refresh token + INTERNAL_API_KEY + CORS)
-Status: 16-03 complete — ready for 16-04
-Last activity: 2026-04-30 — 16-03 complete: POST /auth/refresh, LoginResponse.refresh_token, INTERNAL_API_KEY forwarding in diagnosis_service, CORSMiddleware, docker-compose + .env.example wiring
+Plan: 4 of 5 complete (16-01 SECRET_KEY hard-fails; 16-02 JWT_SECRET rotation runbook; 16-03 refresh token + INTERNAL_API_KEY + CORS; 16-04 test suite fixes)
+Status: 16-04 complete — ready for 16-05
+Last activity: 2026-04-30 — 16-04 complete: conftest.py env defaults, test_auth_login refresh_token assertions, test_diagnose_endpoint InternalApiKeyMiddleware tests, test_diagnose X-Internal-Api-Key header assertions
 
-Progress: [███████░░░] ~65% (v1.3 — Phase 16 plan 03 complete)
+Progress: [████████░░] ~80% (v1.3 — Phase 16 plan 04 complete)
 
 ## Accumulated Context
 
@@ -58,6 +58,7 @@ v1.0–v1.2 retrospective in RETROSPECTIVE.md.
 - 16-03: POST /auth/refresh is stateless — no DB revocation table; refresh token revocation deferred to AUTH-F01 (accepted v1.3 tradeoff)
 - 16-03: CORS_ALLOW_ORIGINS env var split on comma at startup — supports multi-origin without code change; never wildcard with allow_credentials=True
 - 16-03: auth_header parameter removed from DiagnosisService.trigger(); Presenter now sends X-Internal-Api-Key + X-Tenant-Id to Diagnosticer (AUTH-04 complete)
+- 16-04: conftest.py setdefault before imports — prevents KeyError at pytest collection; test_diagnose_endpoint uses X-Internal-Api-Key not verify_session_token overrides
 
 ### Pending Todos
 
@@ -70,6 +71,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-30 — 16-03 complete: POST /auth/refresh (stateless HS256 JWT verify), LoginResponse.refresh_token, INTERNAL_API_KEY forwarding replacing auth_header in diagnosis_service, CORSMiddleware with explicit allow_origins, docker-compose + .env.example wiring.
-Stopped at: Completed 16-03-PLAN.md
-Next: /gsd:execute-phase 16 (plans 04-05 remaining)
+Last session: 2026-04-30 — 16-04 complete: conftest.py setdefault SECRET_KEY/INTERNAL_API_KEY, test_auth_login refresh_token assertion, test_diagnose_endpoint InternalApiKeyMiddleware tests (missing/wrong/correct key), test_diagnose X-Internal-Api-Key forwarding assertion. 44 presenter+diagnosticer tests pass.
+Stopped at: Completed 16-04-PLAN.md
+Next: /gsd:execute-phase 16 (plan 05 remaining — frontend)

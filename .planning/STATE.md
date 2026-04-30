@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 ## Current Position
 
 Phase: 16 of 16 (Auth Hardening) — IN PROGRESS
-Plan: 2 of 5 complete (16-01 SECRET_KEY hard-fails; 16-02 JWT_SECRET rotation runbook)
-Status: 16-02 complete — ready for 16-03
-Last activity: 2026-04-30 — 16-02 complete: docs/JWT_ROTATION_RUNBOOK.md with Option A (30-min gap), Option B (dual-secret try/except), Diagnosticer-first restart sequence, verification commands
+Plan: 3 of 5 complete (16-01 SECRET_KEY hard-fails; 16-02 JWT_SECRET rotation runbook; 16-03 refresh token + INTERNAL_API_KEY + CORS)
+Status: 16-03 complete — ready for 16-04
+Last activity: 2026-04-30 — 16-03 complete: POST /auth/refresh, LoginResponse.refresh_token, INTERNAL_API_KEY forwarding in diagnosis_service, CORSMiddleware, docker-compose + .env.example wiring
 
-Progress: [██████░░░░] ~60% (v1.3 — Phase 16 plan 02 complete)
+Progress: [███████░░░] ~65% (v1.3 — Phase 16 plan 03 complete)
 
 ## Accumulated Context
 
@@ -55,6 +55,9 @@ v1.0–v1.2 retrospective in RETROSPECTIVE.md.
 - 16-02: Recommend Option A (30-minute gap) for v1.3 — no temporary code changes; Option B documented for hard zero-re-auth requirements only
 - 16-02: python-jose HS256 requires manual try/except decode loop for dual-secret window — no built-in multi-secret support (unlike RS256 JWKS)
 - 16-02: Restart sequence is Diagnosticer-first — avoids window where Presenter issues new-key tokens that Diagnosticer still rejects
+- 16-03: POST /auth/refresh is stateless — no DB revocation table; refresh token revocation deferred to AUTH-F01 (accepted v1.3 tradeoff)
+- 16-03: CORS_ALLOW_ORIGINS env var split on comma at startup — supports multi-origin without code change; never wildcard with allow_credentials=True
+- 16-03: auth_header parameter removed from DiagnosisService.trigger(); Presenter now sends X-Internal-Api-Key + X-Tenant-Id to Diagnosticer (AUTH-04 complete)
 
 ### Pending Todos
 
@@ -67,6 +70,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-30 — 16-02 complete: docs/JWT_ROTATION_RUNBOOK.md — Option A (30-min re-login gap), Option B (dual-secret try/except decode loop), Diagnosticer-first restart sequence, verification commands.
-Stopped at: Completed 16-02-PLAN.md
-Next: /gsd:execute-phase 16 (plans 03-05 remaining)
+Last session: 2026-04-30 — 16-03 complete: POST /auth/refresh (stateless HS256 JWT verify), LoginResponse.refresh_token, INTERNAL_API_KEY forwarding replacing auth_header in diagnosis_service, CORSMiddleware with explicit allow_origins, docker-compose + .env.example wiring.
+Stopped at: Completed 16-03-PLAN.md
+Next: /gsd:execute-phase 16 (plans 04-05 remaining)

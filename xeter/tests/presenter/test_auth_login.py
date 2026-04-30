@@ -63,7 +63,7 @@ def _make_mock_session(user: User | None) -> AsyncMock:
 
 
 def test_login_valid_credentials_returns_token(password_hash_fixture: str):
-    """Valid email + password returns HTTP 200 with a decodeable JWT session_token."""
+    """Valid email + password returns HTTP 200 with both session_token and refresh_token."""
     from jose import jwt
 
     user = _make_user(password_hash_fixture)
@@ -82,9 +82,14 @@ def test_login_valid_credentials_returns_token(password_hash_fixture: str):
         assert response.status_code == 200, response.text
         data = response.json()
         assert "session_token" in data
+        assert "refresh_token" in data, "LoginResponse must include refresh_token (AUTH-02)"
 
         payload = jwt.decode(data["session_token"], SECRET_KEY, algorithms=[ALGORITHM])
         assert payload["sub"] == str(TENANT_ID)
+
+        refresh_payload = jwt.decode(data["refresh_token"], SECRET_KEY, algorithms=[ALGORITHM])
+        assert refresh_payload["sub"] == str(TENANT_ID)
+        assert refresh_payload.get("type") == "refresh"
     finally:
         app.dependency_overrides.pop(get_session, None)
 

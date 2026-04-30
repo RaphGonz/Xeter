@@ -168,6 +168,10 @@ def test_post_diagnose_always_calls_diagnosticer_even_when_prior_diagnosis_exist
         assert response.status_code == 200, response.text
         # Diagnosticer MUST have been called — no idempotency short-circuit
         http_client_mock.post.assert_called_once()
+        # Presenter must forward INTERNAL_API_KEY and tenant_id (not raw Authorization header)
+        call_kwargs = http_client_mock.post.call_args.kwargs
+        assert "X-Internal-Api-Key" in call_kwargs.get("headers", {}), "Must send X-Internal-Api-Key"
+        assert "X-Tenant-Id" in call_kwargs.get("headers", {}), "Must send X-Tenant-Id"
     finally:
         _cleanup()
 

@@ -150,4 +150,4 @@ Plans:
 | 14. DB Foundation | v1.3 | 3/3 | Complete | 2026-04-29 |
 | 15. Secrets Hygiene | v1.3 | 3/3 | Complete | 2026-04-29 |
 | 16. Auth Hardening | 5/5 | Complete    | 2026-04-30 | - |
-| 17. GDPR Data Deletion | 1/1 | Complete   | 2026-04-30 | - |
+| 17. GDPR Data Deletion | 1/1 | Complete    | 2026-04-30 | - |

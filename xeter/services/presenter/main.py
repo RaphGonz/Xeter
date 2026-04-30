@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from xeter.services.presenter.routers import auth, diagnose, spans
 
@@ -34,6 +35,17 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Xeter Presenter", version="0.1.0", lifespan=lifespan)
+
+ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
+ALLOW_ORIGINS = os.environ.get("CORS_ALLOW_ORIGINS", "http://localhost:3000").split(",")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOW_ORIGINS,   # never "*" — explicit list always
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(auth.router, prefix="", tags=["auth"])
 app.include_router(spans.router, prefix="", tags=["spans"])

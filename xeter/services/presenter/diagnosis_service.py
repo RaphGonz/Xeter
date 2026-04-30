@@ -32,6 +32,8 @@ from xeter.shared.dal.diagnoses import DiagnosisRepository
 from xeter.shared.db.postgres import tenant_session
 from xeter.shared.models import Diagnosis
 
+INTERNAL_API_KEY = os.environ["INTERNAL_API_KEY"]  # KeyError on startup if unset
+
 
 # ---------------------------------------------------------------------------
 # Response model
@@ -122,7 +124,6 @@ class DiagnosisService:
         session: AsyncSession,
         http_client: httpx.AsyncClient,
         ch_client,  # clickhouse_connect.driver.Client
-        auth_header: str,
     ) -> DiagnosisResponse:
         """Trigger a diagnosis or return a cached result.
 
@@ -139,6 +140,7 @@ class DiagnosisService:
             session: Open AsyncSession (not in a transaction yet).
             http_client: Shared httpx.AsyncClient pointed at Diagnosticer.
             ch_client: ClickHouse client for span ownership check.
+            (auth_header removed — Presenter now uses INTERNAL_API_KEY + X-Tenant-Id)
 
         Returns:
             DiagnosisResponse with diagnosis fields.
@@ -174,7 +176,10 @@ class DiagnosisService:
             resp = await http_client.post(
                 "/diagnose",
                 json={"span_id": span_id},
-                headers={"Authorization": auth_header},
+                headers={
+                    "X-Internal-Api-Key": INTERNAL_API_KEY,
+                    "X-Tenant-Id": tenant_id,
+                },
                 timeout=timeout,  # per-request override of client default 30s
             )
         except httpx.TimeoutException:

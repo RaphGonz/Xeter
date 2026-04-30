@@ -52,7 +52,7 @@ See `.planning/milestones/v1.2-ROADMAP.md` for full phase details.
 
 - [x] **Phase 14: DB Foundation** — RLS on span_scores, FORCE RLS on all tables, CHECK constraints on diagnoses, S3 tenant key prefix (completed 2026-04-29)
 - [x] **Phase 15: Secrets Hygiene** — docker-compose secrets cleanup, generate-secrets.sh, MinIO bucket assertion, bcrypt CI enforcement, passlib removal, Redis AUTH (completed 2026-04-29)
-- [ ] **Phase 16: Auth Hardening** — JWT 30-min expiry, hard-fail on missing SECRET_KEY, httpOnly refresh token, JWT_SECRET runbook, internal API key, CORS
+- [x] **Phase 16: Auth Hardening** — JWT 30-min expiry, hard-fail on missing SECRET_KEY, httpOnly refresh token, JWT_SECRET runbook, internal API key, CORS (completed 2026-04-30)
 - [ ] **Phase 17: GDPR Data Deletion** — delete_tenant.py covering ClickHouse, PostgreSQL, S3, and documented Redis flush
 
 ## Phase Details
@@ -146,5 +146,5 @@ Plans:
 | 13. Frontend Diagnosis UI | v1.2 | 2/2 | Complete | 2026-04-25 |
 | 14. DB Foundation | v1.3 | 3/3 | Complete | 2026-04-29 |
 | 15. Secrets Hygiene | v1.3 | 3/3 | Complete | 2026-04-29 |
-| 16. Auth Hardening | 4/5 | In Progress|  | - |
+| 16. Auth Hardening | 5/5 | Complete   | 2026-04-30 | - |
 | 17. GDPR Data Deletion | v1.3 | 0/TBD | Not started | - |

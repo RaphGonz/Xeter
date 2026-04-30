@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Security Hardening
 status: unknown
-last_updated: "2026-04-30T07:26:14Z"
+last_updated: "2026-04-30T07:49:00Z"
 progress:
   total_phases: 5
   completed_phases: 5
-  total_plans: 14
-  completed_plans: 14
+  total_plans: 15
+  completed_plans: 15
 ---
 
 # Project State
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 
 ## Current Position
 
-Phase: 16 of 16 (Auth Hardening) — IN PROGRESS
-Plan: 4 of 5 complete (16-01 SECRET_KEY hard-fails; 16-02 JWT_SECRET rotation runbook; 16-03 refresh token + INTERNAL_API_KEY + CORS; 16-04 test suite fixes)
-Status: 16-04 complete — ready for 16-05
-Last activity: 2026-04-30 — 16-04 complete: conftest.py env defaults, test_auth_login refresh_token assertions, test_diagnose_endpoint InternalApiKeyMiddleware tests, test_diagnose X-Internal-Api-Key header assertions
+Phase: 16 of 16 (Auth Hardening) — COMPLETE
+Plan: 5 of 5 complete (16-01 SECRET_KEY hard-fails; 16-02 JWT_SECRET rotation runbook; 16-03 refresh token + INTERNAL_API_KEY + CORS; 16-04 test suite fixes; 16-05 frontend Route Handlers + sessionStorage removal)
+Status: Phase 16 complete — all auth hardening plans done
+Last activity: 2026-04-30 — 16-05 complete: /api/login and /api/auth/refresh Route Handlers, httpOnly xeter_refresh cookie, sessionStorage removed from auth.ts, 401 interceptor in api.ts
 
-Progress: [████████░░] ~80% (v1.3 — Phase 16 plan 04 complete)
+Progress: [██████████] ~100% (v1.3 — Phase 16 complete)
 
 ## Accumulated Context
 
@@ -59,6 +59,9 @@ v1.0–v1.2 retrospective in RETROSPECTIVE.md.
 - 16-03: CORS_ALLOW_ORIGINS env var split on comma at startup — supports multi-origin without code change; never wildcard with allow_credentials=True
 - 16-03: auth_header parameter removed from DiagnosisService.trigger(); Presenter now sends X-Internal-Api-Key + X-Tenant-Id to Diagnosticer (AUTH-04 complete)
 - 16-04: conftest.py setdefault before imports — prevents KeyError at pytest collection; test_diagnose_endpoint uses X-Internal-Api-Key not verify_session_token overrides
+- 16-05: auth.ts hydrate() sets hydrated:true immediately (no storage read) — eliminates infinite redirect loop on page reload; token comes from 401 interceptor retry
+- 16-05: 401 interceptor retries exactly once — no loop; on failed refresh, clears token and throws HTTP 401 so redirect fires
+- 16-05: refresh_token stripped at Route Handler boundary — only session_token reaches browser JS
 
 ### Pending Todos
 
@@ -71,6 +74,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-30 — 16-04 complete: conftest.py setdefault SECRET_KEY/INTERNAL_API_KEY, test_auth_login refresh_token assertion, test_diagnose_endpoint InternalApiKeyMiddleware tests (missing/wrong/correct key), test_diagnose X-Internal-Api-Key forwarding assertion. 44 presenter+diagnosticer tests pass.
-Stopped at: Completed 16-04-PLAN.md
-Next: /gsd:execute-phase 16 (plan 05 remaining — frontend)
+Last session: 2026-04-30 — 16-05 complete: /api/login + /api/auth/refresh Route Handlers with httpOnly xeter_refresh cookie, sessionStorage removed from auth.ts, 401 interceptor added to api.ts. AUTH-02 complete. Phase 16 all 5 plans done.
+Stopped at: Completed 16-05-PLAN.md
+Next: Phase 16 auth hardening complete — v1.3 milestone reached

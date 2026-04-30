@@ -18,9 +18,10 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import clickhouse_connect
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 from jose import JWTError, jwt
+from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -49,8 +50,25 @@ app = FastAPI(title="Xeter Diagnosticer", version="0.2.0", lifespan=lifespan)
 # Configuration
 # ---------------------------------------------------------------------------
 
-SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key-change-in-production")
+SECRET_KEY = os.environ["SECRET_KEY"]  # KeyError on startup if unset
+INTERNAL_API_KEY = os.environ["INTERNAL_API_KEY"]  # KeyError on startup if unset
 ALGORITHM = "HS256"
+
+
+class InternalApiKeyMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if request.url.path == "/healthz":
+            return await call_next(request)
+        key = request.headers.get("X-Internal-Api-Key")
+        if key != INTERNAL_API_KEY:
+            return JSONResponse(
+                status_code=401,
+                content={"error": "unauthorized", "message": "Invalid or missing internal API key"},
+            )
+        return await call_next(request)
+
+
+app.add_middleware(InternalApiKeyMiddleware)
 
 # ---------------------------------------------------------------------------
 # Dependencies
@@ -121,7 +139,7 @@ async def healthz():
 @app.post("/diagnose", response_model=DiagnoseResponse)
 async def diagnose(
     body: DiagnoseRequest,
-    tenant_id: str = Depends(verify_session_token),
+    x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
     ch_client: clickhouse_connect.driver.Client = Depends(get_ch_client),
 ):
     """Diagnose a span synchronously.
@@ -132,6 +150,12 @@ async def diagnose(
 
     Fail-clean: if the LLM call or parse fails, no DB row is written.
     """
+    if not x_tenant_id:
+        return JSONResponse(
+            status_code=401,
+            content={"error": "unauthorized", "message": "Missing X-Tenant-Id header"},
+        )
+    tenant_id = x_tenant_id
     provider_name = os.environ.get("DIAGNOSTICER_PROVIDER", "anthropic").lower().strip()
     model_name = os.environ.get(
         "DIAGNOSTICER_MODEL",

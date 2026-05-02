@@ -1,24 +1,24 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
+milestone: v1.3
 milestone_name: Security Hardening
-status: unknown
-last_updated: "2026-04-30T12:32:10.476Z"
+status: complete
+last_updated: "2026-05-02"
 progress:
-  total_phases: 7
-  completed_phases: 7
-  total_plans: 20
-  completed_plans: 20
+  total_phases: 4
+  completed_phases: 4
+  total_plans: 12
+  completed_plans: 12
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-27)
+See: .planning/PROJECT.md (updated 2026-05-02)
 
 **Core value:** When a tool call fails, tell the developer whether it was the model, the architecture, or the prompt — and why.
-**Current focus:** v1.3 Security Hardening — COMPLETE (Phase 17: GDPR Data Deletion done)
+**Current focus:** Planning next milestone — run `/gsd:new-milestone` to start v1.4
 
 ## Current Position
 

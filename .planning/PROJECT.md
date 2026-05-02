@@ -4,7 +4,7 @@
 
 Xeter is a B2B SaaS observability platform that debugs AI agent tool-calling failures. It ingests OpenTelemetry spans from instrumented agent code via a Python SDK, applies heuristic analysis (vector similarity between prompt and tool fields) to flag anomalous tool calls, and exposes a dashboard where developers can see what went wrong and why. Unlike existing tools that show traces, Xeter isolates root cause — model, architecture, or prompt — via on-demand LLM diagnosis.
 
-v1.0 shipped: full pipeline from SDK to dashboard running locally via Docker Compose. v1.1 shipped: all four analyser check methods rewritten with research-backed implementations. v1.2 shipped: LLM-powered Diagnosticer active end-to-end.
+v1.0 shipped: full pipeline from SDK to dashboard running locally via Docker Compose. v1.1 shipped: all four analyser check methods rewritten with research-backed implementations. v1.2 shipped: LLM-powered Diagnosticer active end-to-end. v1.3 shipped: full security hardening — tenant isolation, auth hardening, secrets hygiene, and GDPR deletion.
 
 ## Core Value
 
@@ -37,32 +37,27 @@ When a tool call fails, tell the developer whether it was the model, the archite
 - ✓ LLM-powered Diagnosticer: on-demand root cause analysis per span — verdict (model/architecture/prompt) + severity + affected field + recommended fix — v1.2
 - ✓ Configurable LLM provider + model via env vars (Anthropic / OpenAI / Ollama) — v1.2
 - ✓ Diagnosis results stored in PostgreSQL (`diagnoses` table with RLS) and rendered in SpanDetailPanel (DiagnosisCard with auto-load) — v1.2
-
-## Current Milestone: v1.3 Security Hardening
-
-**Goal:** Close all pre-launch security gaps — auth hardening, RLS coverage, DB-level validation, secrets hygiene, and deployment documentation.
-
-**Target features:**
-- JWT expiry (30 min access token) + refresh token endpoint (httpOnly) + JWT_SECRET rotation runbook
-- span_scores RLS policy mirroring flags table; Worker BYPASSRLS scoped to inserts only
-- PostgreSQL CHECK constraints: `verdict IN ('model','architecture','prompt','unknown')`, `severity IN ('low','medium','high')`
-- bcrypt cost factor ≥ 12 verified; CI test that fails if it drops below 12
-- docker-compose default passwords → CHANGE_ME_BEFORE_DEPLOY; generate-secrets.sh for random `.env`
-- xeter-payloads S3/MinIO bucket policy documented (private ACL, mc policy set + IAM JSON)
+- ✓ span_scores RLS policy (tenant_isolation); FORCE RLS on all 7 PostgreSQL tables; score_writer SET LOCAL in explicit transaction — v1.3
+- ✓ diagnoses CHECK constraints: verdict IN ('model','architecture','prompt','unknown'), severity IN ('low','medium','high') — v1.3
+- ✓ S3 payload keys scoped to tenant prefix ({tenant_id}/...); Presenter asserts key ownership before serving content (403 on cross-tenant) — v1.3
+- ✓ passlib removed; bcrypt CI cost-factor guard (≥12); test fixtures use rounds=4 session-scoped — v1.3
+- ✓ Secrets hygiene: root .gitignore, generate-secrets.sh one-command .env, no :- fallbacks for secrets in docker-compose — v1.3
+- ✓ MinIO xeter-payloads bucket asserted private (mc anonymous set none) on every docker-compose up — v1.3
+- ✓ Redis requirepass enforced; REDIS_PASSWORD with no :- fallback — v1.3
+- ✓ JWT 30-min expiry; SECRET_KEY hard-fail on startup in Presenter and Diagnosticer (no dev-key fallback) — v1.3
+- ✓ httpOnly refresh token; silent 401 interceptor in Next.js api.ts; Route Handler owns cookie lifecycle — v1.3
+- ✓ JWT_SECRET rotation runbook (docs/JWT_ROTATION_RUNBOOK.md) covering dual-secret window and service restart sequence — v1.3
+- ✓ INTERNAL_API_KEY hard-fail + InternalApiKeyMiddleware on Diagnosticer; service trust boundary established — v1.3
+- ✓ GDPR Art. 17: delete_tenant.py dry-run + --confirm, covering ClickHouse / PostgreSQL / S3 / Redis — v1.3
 
 ### Active
 
-<!-- v1.3 Security Hardening -->
+<!-- v1.4 candidates — define requirements in /gsd:new-milestone -->
 
-- [ ] JWT access token expires in 30 min; refresh token endpoint issues long-lived token stored httpOnly
-- [ ] JWT_SECRET rotation runbook documented
-- [ ] span_scores table has tenant_isolation RLS policy; Worker BYPASSRLS scoped to insert paths only
-- [ ] verdict column has CHECK constraint: IN ('model','architecture','prompt','unknown')
-- [ ] severity column has CHECK constraint: IN ('low','medium','high')
-- [ ] bcrypt rounds ≥ 12 enforced; CI test added
-- [ ] docker-compose default passwords replaced with CHANGE_ME_BEFORE_DEPLOY placeholders
-- [ ] generate-secrets.sh script writes .env with random secrets
-- [ ] xeter-payloads bucket policy documented: private ACL, mc policy set command + S3 IAM JSON
+- [ ] python-jose → PyJWT migration — python-jose near-abandoned; migrate before CVE liability (AUTH-F02)
+- [ ] Refresh token revocation store — server-side blacklist for stolen token detection (AUTH-F01)
+- [ ] Rate limiting on Analyser ingestion — per-API-key sliding window, Redis, 429 with Retry-After (OPS-F01)
+- [ ] TypeScript/Node.js SDK for instrumenting JS-based agents (SDK-F01)
 
 ### Out of Scope
 
@@ -74,17 +69,20 @@ When a tool call fails, tell the developer whether it was the model, the archite
 - LLM-as-a-judge eval pipelines — HoneyHive and LangSmith have mature offerings
 - On-premise distribution — SaaS only per constraints
 - Clerk auth migration — future; schema supports it, deferred to when multi-member tenants are needed
-- TypeScript SDK — deferred to v1.3+; Python SDK covers current customer base
+- TypeScript SDK — deferred to v1.4+; Python SDK covers current customer base
+- Per-service MinIO IAM accounts — single bucket policy sufficient for current threat model (ACL-F01)
+- ClickHouse per-service read-only users + row policies — Python DAL is the v1.3 enforcement layer (DB-F01)
+- Per-tenant Redis queue keys — Worker refactor independent from current priorities (OPS-F02)
 
 ## Context
 
-- v1.0 shipped 2026-04-04, v1.1 shipped 2026-04-18, v1.2 shipped 2026-04-25: full pipeline + LLM diagnosis active locally via Docker Compose
-- ~13,398 LOC Python + 2,619 TypeScript; flag types: `wrong_tool_called`, `wrong_tool_args`, `no_tool_used`, `unnecessary_tool_call`, `tool_not_available`, `parsing_error`, `response_anomaly`
-- Tech stack: Python 3.12, FastAPI, ClickHouse, PostgreSQL (RLS), Redis, MinIO (S3), Next.js 15, sentence-transformers (all-MiniLM-L6-v2), Anthropic/OpenAI/Ollama (Diagnosticer)
+- v1.0 shipped 2026-04-04, v1.1 shipped 2026-04-18, v1.2 shipped 2026-04-25, v1.3 shipped 2026-05-02: full pipeline + LLM diagnosis + security hardening running locally via Docker Compose
+- ~14,500 LOC Python + 3,000 TypeScript; flag types: `wrong_tool_called`, `wrong_tool_args`, `no_tool_used`, `unnecessary_tool_call`, `tool_not_available`, `parsing_error`, `response_anomaly`
+- Tech stack: Python 3.12, FastAPI, ClickHouse, PostgreSQL (RLS + CHECK constraints), Redis (requirepass), MinIO (S3, private ACL), Next.js 15, sentence-transformers (all-MiniLM-L6-v2), Anthropic/OpenAI/Ollama (Diagnosticer)
 - Architecture: Analyser (ingestion) → Redis queue → Worker (embedding+flagging) → Presenter (read/auth/diagnosis trigger) → Diagnosticer (LLM root cause) → View (Next.js)
 - Calibration: precision target 80%; `wrong_tool_called` is binary (no threshold sweep); full-suite mean precision ≥ 95%
 - Main adversary: Langfuse — open-source, self-hostable, but doesn't diagnose root cause
-- Solo developer; Python primary language; 112 tests passing
+- Solo developer; Python primary language; 112+ tests passing
 
 ## Constraints
 
@@ -125,6 +123,11 @@ When a tool call fails, tell the developer whether it was the model, the archite
 | getDiagnosis 404 suppressed in frontend | No prior diagnosis is normal initial state; surfacing 404 would confuse users | ✓ Good — clean UX on first visit |
 | LLM provider lazy imports in factory | Only selected provider SDK imported at runtime — avoids ImportError when other SDKs absent | ✓ Good — Ollama works without anthropic installed |
 | Structured output via vendor tool/function calling | No free-text parsing; Anthropic tool_choice force, OpenAI strict=True, Ollama format= schema | ✓ Good — eliminated free-text parsing failure mode |
+| SET LOCAL for RLS in score_writer | No BYPASSRLS role; app.current_tenant_id SET LOCAL in explicit transaction mirrors flag_writer.py | ✓ Good — consistent writer pattern, simpler than a BYPASSRLS grant |
+| httpOnly cookie via Next.js Route Handler | Presenter rewrites strip upstream Set-Cookie; Route Handler owns cookie lifecycle cleanly | ✓ Good — no Presenter direct cookie writes, clean boundary |
+| CHECK constraints with NOT VALID + pre-flight audit | Avoids ACCESS EXCLUSIVE lock; pre-flight script exits non-zero if violating rows exist before VALIDATE | ✓ Good — zero-downtime constraint migration pattern, reusable |
+| INTERNAL_API_KEY middleware + hard-fail startup | Explicit service trust boundary; dead verify_session_token in Diagnosticer is tech debt (never wired to Depends()) | ⚠ Revisit — remove dead verify_session_token before v1.4 |
+| GDPR Redis flush as documented procedure | analysis_queue is global; automated LREM unsafe (FLUSHDB prohibited); runbook covers operator steps | ✓ Good — accepted v1.3 tradeoff, documented in GDPR_DELETION_RUNBOOK.md |
 
 ---
-*Last updated: 2026-04-27 after v1.3 Security Hardening milestone started*
+*Last updated: 2026-05-02 after v1.3 Security Hardening milestone*

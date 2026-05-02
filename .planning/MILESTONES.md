@@ -66,3 +66,31 @@
 
 ---
 
+
+## v1.3 Security Hardening (Shipped: 2026-05-02)
+
+**Phases completed:** 4 phases (Phases 14–17), 12 plans
+**Timeline:** 2026-04-27 → 2026-04-30 (3 days)
+**Code:** ~14,500 LOC Python + 3,000 TypeScript; 78 files changed (+11,019 / -1,239 lines)
+
+**Key accomplishments:**
+- PostgreSQL tenant isolation completed: span_scores RLS policy added; FORCE RLS enforced on all 7 tables; score_writer.py uses SET LOCAL in explicit transaction (mirrors flag_writer.py pattern)
+- DB-level domain validation: CHECK constraints on `diagnoses.verdict` and `diagnoses.severity` added via NOT VALID + pre-flight audit script (zero-downtime migration); provider Literals aligned before migration
+- S3 tenant-prefix assertion: Presenter rejects cross-tenant key fetch with HTTP 403 before calling GetObject — defence-in-depth independent of ClickHouse tenant filter
+- Secrets hardening: root .gitignore, one-command generate-secrets.sh with shared-password reuse pattern, no `:-` fallbacks for secrets in docker-compose, Redis requirepass enforced, MinIO bucket asserted private on every startup
+- Full auth hardening: JWT 30-min expiry, SECRET_KEY hard-fail on startup (both services), INTERNAL_API_KEY service trust boundary via middleware, httpOnly refresh token with silent 401 interceptor in Next.js, JWT_SECRET rotation runbook
+- GDPR Art. 17: delete_tenant.py dry-run + --confirm covering ClickHouse async mutation, FK-ordered PostgreSQL DELETEs, S3 paginated batch delete, and documented Redis flush procedure
+
+**Tech debt (no blockers):**
+- Dead `verify_session_token()` in `diagnosticer/main.py` (lines 78–94) — never wired to any `Depends()`, should be removed before v1.4
+- Stale "NO PostgreSQL RLS" comment in `spans.py` lines 9/442 — stale after migration 004 added RLS
+- `delete_tenant.py --confirm` completion message omits Redis store from output (runbook covers it)
+- Phase 13 (v1.2) missing VERIFICATION.md — should be addressed when archiving v1.2 phases
+
+**Archive:**
+- Roadmap: `.planning/milestones/v1.3-ROADMAP.md`
+- Requirements: `.planning/milestones/v1.3-REQUIREMENTS.md`
+- Audit: `.planning/milestones/v1.3-MILESTONE-AUDIT.md`
+
+---
+

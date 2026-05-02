@@ -146,6 +146,53 @@
 
 ---
 
+## Milestone: v1.3 — Security Hardening
+
+**Shipped:** 2026-05-02
+**Phases:** 4 (Phases 14–17) | **Plans:** 12 | **Timeline:** 3 days (2026-04-27 → 2026-04-30)
+
+### What Was Built
+
+- Phase 14 (DB Foundation): Provider Literals aligned to DB vocabulary; pre-flight audit script (exit 0/1 pattern); migration 004 with FORCE RLS on all 7 tables, span_scores tenant_isolation policy, score_writer SET LOCAL, and diagnoses CHECK constraints via NOT VALID + VALIDATE; S3 tenant-prefix assertion with 403 guard
+- Phase 15 (Secrets Hygiene): Root .gitignore, generate-secrets.sh with shared-password reuse pattern, .env.example with 13 CHANGE_ME_BEFORE_DEPLOY fields; Redis --requirepass, MinIO mc anonymous set none on every up, no :- fallbacks for any secret; passlib removed; bcrypt cost-factor CI guard
+- Phase 16 (Auth Hardening): SECRET_KEY + INTERNAL_API_KEY hard-fail startup in both services; InternalApiKeyMiddleware on Diagnosticer; 30-min JWT expiry; POST /auth/refresh + httpOnly cookie via Next.js Route Handler; 401 interceptor with single retry; CORS with env-var origin list; JWT_SECRET rotation runbook
+- Phase 17 (GDPR Data Deletion): delete_tenant.py with dry-run + --confirm gate; ClickHouse async mutation; FK-ordered PostgreSQL DELETEs; S3 paginated batch delete; documented Redis flush procedure; GDPR_DELETION_RUNBOOK.md
+
+### What Worked
+
+- **Pre-flight audit pattern**: aligning provider Literals before running VALIDATE CONSTRAINT (Phase 14-01) meant migration 004 ran clean the first time — no rollback needed
+- **Strict no-:- rule in docker-compose**: enforcing hard-fail for all secrets eliminated the entire class of "silently deployed dev credentials" bugs before they could manifest
+- **Next.js Route Handler for cookie lifecycle**: recognising that Presenter's proxy rewrites strip Set-Cookie and routing cookie ownership to the Route Handler was the right call — clean boundary, no Presenter cookie writes
+- **Dry-run-first GDPR pattern**: delete_tenant.py defaulting to read-only with --confirm required made the deletion safe to run speculatively; operators can audit before committing
+- **Phase dependency discipline**: Phase 14 → 15 → 16 → 17 execution order was respected strictly — checking spans.py RLS existed before score_writer SET LOCAL was meaningful
+
+### What Was Inefficient
+
+- **STATE.md frontmatter shows stale counts (7 phases, 20 plans)**: the state tracker carried forward phase counts from v1.2 phases; milestone-scoped tracking needs a reset point at milestone boundary
+- **Dead verify_session_token in Diagnosticer**: created during 16-01 for backwards-compat with existing test overrides, but was never wired to Depends() — a TODO was noted but not addressed before milestone close; requires cleanup in v1.4
+- **generate-secrets.sh missing vars discovered at audit**: INTERNAL_API_KEY, S3_ENDPOINT_URL, ENVIRONMENT, CORS_ALLOW_ORIGINS were missing from the initial implementation; found and fixed during audit, not during Phase 15 execution — better integration tests for the script would have caught this
+
+### Patterns Established
+
+- **Pre-flight audit script**: `exit 0 = safe to migrate, exit 1 = violations with repair SQL` — reusable for any future NOT VALID constraint migration
+- **Route Handler cookie boundary**: Next.js Route Handler owns httpOnly cookie lifecycle; Presenter never writes cookies directly
+- **GDPR dry-run-first**: operator deletion scripts always default read-only; --confirm required to execute; completion message lists all stores touched
+- **No :- fallbacks convention**: all security-critical env vars in docker-compose use `${VAR}` with no :- fallback — fail-loud on startup
+
+### Key Lessons
+
+- Wire all env vars for a feature in the same commit that activates it — not at scaffold time or verification time (same lesson as v1.2, still recurring)
+- Integration tests for infra scripts (generate-secrets.sh output, .gitignore coverage) would catch gaps before audit phase
+- Dead code that requires env var provisioning (verify_session_token needing SECRET_KEY) is a hidden operational cost — remove it at the same PR that makes it dead
+
+### Cost Observations
+
+- 3 days, 4 phases, 12 plans — fastest milestone to date per-plan (avg ~15 min/plan)
+- 58 commits across 78 files
+- Audit discovered and fixed generate-secrets.sh gaps inline — saved a gap-closure phase
+
+---
+
 ## Cross-Milestone Trends
 
 | Milestone | Phases | Plans | Days | LOC | Key Pattern |
@@ -153,3 +200,4 @@
 | v1.0 MVP | 6 | 21 | 12 | ~12,660 | Bottom-up strict ordering |
 | v1.1 Analyser Accuracy | 4 | 10 | 12 | ~11,148 Py | One method at a time, calibrate before next |
 | v1.2 Diagnosticer | 3 | 8 | 4 | ~16,017 (+4,869) | Fail-clean service activation; verification plan as integration testbed |
+| v1.3 Security Hardening | 4 | 12 | 3 | ~14,500 Py + 3,000 TS | Pre-flight audit before migration; hard-fail secrets; Route Handler cookie boundary |

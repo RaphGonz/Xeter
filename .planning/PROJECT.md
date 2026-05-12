@@ -4,7 +4,7 @@
 
 Xeter is a B2B SaaS observability platform that debugs AI agent tool-calling failures. It ingests OpenTelemetry spans from instrumented agent code via a Python SDK, applies heuristic analysis (vector similarity between prompt and tool fields) to flag anomalous tool calls, and exposes a dashboard where developers can see what went wrong and why. Unlike existing tools that show traces, Xeter isolates root cause — model, architecture, or prompt — via on-demand LLM diagnosis.
 
-v1.0 shipped: full pipeline from SDK to dashboard running locally via Docker Compose. v1.1 shipped: all four analyser check methods rewritten with research-backed implementations. v1.2 shipped: LLM-powered Diagnosticer active end-to-end. v1.3 shipped: full security hardening — tenant isolation, auth hardening, secrets hygiene, and GDPR deletion.
+v1.0 shipped: full pipeline from SDK to dashboard running locally via Docker Compose. v1.1 shipped: all four analyser check methods rewritten with research-backed implementations. v1.2 shipped: LLM-powered Diagnosticer active end-to-end. v1.3 shipped: full security hardening — tenant isolation, auth hardening, secrets hygiene, and GDPR deletion. v1.4 in progress: trace hierarchy (API + UI), TraceAnalyzer foundation (BaseSpanAnalyzer/BaseTraceAnalyzer refactor), and v1.3 tech debt cleanup.
 
 ## Core Value
 
@@ -52,12 +52,28 @@ When a tool call fails, tell the developer whether it was the model, the archite
 
 ### Active
 
-<!-- v1.4 candidates — define requirements in /gsd:new-milestone -->
+<!-- v1.4 scope -->
+
+- [ ] CLEAN-01: Dead `verify_session_token()` removed from `diagnosticer/main.py`
+- [ ] CLEAN-02: Stale "NO PostgreSQL RLS" comments corrected in `spans.py`
+- [ ] CLEAN-03: Env var defaults audit completed
+- [ ] TRACE-01: `GET /traces` endpoint — spans grouped by trace_id, with flag/span counts
+- [ ] TRACE-02: `GET /traces/{trace_id}` endpoint — full trace with flags and scores
+- [ ] UI-01: Traces list page in dashboard
+- [ ] UI-02: Trace detail page with collapsible span tree (parent_span_id hierarchy, flag badges)
+- [ ] UI-03: Span detail navigation back to parent trace
+- [ ] TANA-01: BaseAnalyzer refactored into generic root + BaseSpanAnalyzer + BaseTraceAnalyzer; ToolCallAnalyzer updated
+- [ ] TANA-02: TraceAnalyzer(BaseTraceAnalyzer) scaffold wired into worker
+- [ ] TANA-03: Worker accumulates spans by trace_id; triggers TraceAnalyzer via flush timeout
+- [ ] TANA-04: flags table extended — span_id nullable, trace_id non-nullable; migration covers existing rows
+
+<!-- v1.5 candidates -->
 
 - [ ] python-jose → PyJWT migration — python-jose near-abandoned; migrate before CVE liability (AUTH-F02)
 - [ ] Refresh token revocation store — server-side blacklist for stolen token detection (AUTH-F01)
 - [ ] Rate limiting on Analyser ingestion — per-API-key sliding window, Redis, 429 with Retry-After (OPS-F01)
 - [ ] TypeScript/Node.js SDK for instrumenting JS-based agents (SDK-F01)
+- [ ] New analyser checks: B1–B4, C3–C4, D1–D3, D5, E3, F1–F2, F4–F5, G1–G2, H2 (see documentation/silent_failures_ai_agents.md)
 
 ### Out of Scope
 

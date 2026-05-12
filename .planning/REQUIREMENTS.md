@@ -1,65 +1,55 @@
-# Requirements: Xeter
+# Requirements: Xeter v1.4
 
-**Defined:** 2026-04-27
+**Defined:** 2026-05-12
 **Core Value:** When a tool call fails, tell the developer whether it was the model, the architecture, or the prompt — and why.
 
-## v1.3 Requirements
+## v1.4 Requirements
 
-Requirements for v1.3 Security Hardening. Each maps to roadmap phases.
+### Cleanup (CLEAN) — v1.3 Tech Debt
 
-### Database Security
+- [ ] **CLEAN-01**: Dead `verify_session_token()` function removed from `diagnosticer/main.py` (lines 78–94); INTERNAL_API_KEY middleware via `InternalApiKeyMiddleware` is the sole auth boundary on Diagnosticer
+- [ ] **CLEAN-02**: Stale "NO PostgreSQL RLS" comments corrected in `spans.py` (lines 9/442); comments updated to reflect migration 004 which added RLS
+- [ ] **CLEAN-03**: Env var defaults audit completed — all `:- fallback` patterns and development defaults reviewed against production requirements; dangerous defaults documented or removed
 
-- [x] **DB-01**: Developer can rely on span_scores rows being tenant-isolated — RLS tenant_isolation policy added; score_writer.py uses SET LOCAL in transaction (matching flag_writer.py pattern)
-- [x] **DB-02**: Developer can rely on all RLS policies being enforced even for the table owner role — FORCE ROW LEVEL SECURITY added retroactively to all existing RLS tables
-- [x] **DB-03**: Developer can trust verdict and severity values are domain-valid at DB level — CHECK constraints added via NOT VALID + VALIDATE CONSTRAINT two-step, with pre-flight violation query before VALIDATE
-- [x] **DB-04**: Project has no dead passlib[bcrypt] dependency — removed from pyproject.toml
+### Trace API (TRACE) — Presenter Endpoints
 
-### Data Isolation
+- [ ] **TRACE-01**: Operator can list all traces for their tenant via `GET /traces` — response includes trace_id, span count, flag count, time_begin, time_end per trace; results ordered by time_begin descending; scoped to authenticated tenant via RLS
+- [ ] **TRACE-02**: Operator can fetch a full trace via `GET /traces/{trace_id}` — response includes all spans in the trace with their flags and scores, assembled from ClickHouse (spans) + PostgreSQL (flags, scores); returns 404 if trace_id not found or belongs to another tenant
 
-- [x] **S3-01**: All S3 payload keys are prefixed with the tenant ID — key format is `{tenant_id}/{span_id}/prompt` (and `/response`, `/raw_response`, `/available_tools`); Presenter asserts the fetched key starts with the requesting tenant's ID before returning content; a unit test confirms a cross-tenant key fetch returns 403
+### Trace UI (UI) — Dashboard Views
 
-### Authentication
+- [ ] **UI-01**: Dashboard includes a Traces list page — shows all traces with span count, flag count, and time range; accessible from main navigation
+- [ ] **UI-02**: Trace detail page renders a collapsible span tree using `parent_span_id` — spans with no parent rendered at root level; children nested beneath parent; each span row shows flag type badges
+- [ ] **UI-03**: Span detail view includes a "Back to trace" link — navigates to the parent `GET /traces/{trace_id}` view with the span highlighted or scrolled into view
 
-- [x] **AUTH-01**: Session tokens expire after 30 minutes; server hard-fails on startup if SECRET_KEY env var is unset (no silent fallback to dev key)
-- [x] **AUTH-02**: User can silently refresh an expired access token via httpOnly refresh token cookie — Presenter POST /auth/refresh endpoint; Next.js Route Handlers for /api/login and /api/auth/refresh; sessionStorage removed from auth.ts
-- [x] **AUTH-03**: Operator has a documented JWT_SECRET rotation runbook covering dual-secret window and service restart sequence
-- [x] **AUTH-04**: Presenter-to-Diagnosticer calls are authenticated by a static internal API key — `INTERNAL_API_KEY` env var (required, no fallback) present in both services; Presenter includes it as `X-Internal-Api-Key` request header; Diagnosticer middleware rejects any request missing or providing a wrong value with 401
+### TraceAnalyzer Foundation (TANA) — Worker Infrastructure
 
-### Operations & Secrets
+- [ ] **TANA-01**: `BaseAnalyzer` in `worker/base.py` refactored into: (a) generic `BaseAnalyzer` root retaining `name`, `embed`, `compare`, `log_score`, `flush_scores`; (b) `BaseSpanAnalyzer(BaseAnalyzer)` with abstract `analyze(span: SpanData) -> list[Flag]`; (c) `BaseTraceAnalyzer(BaseAnalyzer)` with abstract `analyze(spans: list[SpanData]) -> list[Flag]`; `ToolCallAnalyzer` updated to inherit `BaseSpanAnalyzer`; all import paths updated
+- [ ] **TANA-02**: `TraceAnalyzer(BaseTraceAnalyzer)` scaffold created in `worker/trace_analyzer.py` — implements `analyze(spans)` returning `[]`; registered in worker alongside span analyzers
+- [ ] **TANA-03**: Worker accumulates processed spans by `trace_id` in an in-memory buffer; after each span is processed, checks whether the flush timeout has elapsed for that trace_id; invokes `TraceAnalyzer.analyze(spans)` and writes any returned flags; timeout duration configurable via `WORKER_TRACE_FLUSH_TIMEOUT_S` env var (default: 30s)
+- [ ] **TANA-04**: PostgreSQL `flags` table extended via migration — `span_id` column made nullable (trace-level flags have no single span); `trace_id` column made non-nullable (all flags, span-level and trace-level, reference their trace); existing rows migrated with `trace_id` backfilled from ClickHouse spans table; flag_writer.py and score_writer.py updated
 
-- [x] **OPS-01**: Developer cannot accidentally commit secrets — root .gitignore excludes .env; docker-compose uses env var refs with CHANGE_ME_BEFORE_DEPLOY defaults
-- [x] **OPS-02**: Operator can generate a valid random .env in one command via generate-secrets.sh (uses openssl rand)
-- [x] **OPS-03**: xeter-payloads MinIO bucket is asserted private on every startup (mc anonymous set none in minio-init container); deployment guide documents mc policy set and S3 IAM JSON
-- [x] **OPS-04**: CI fails if bcrypt cost factor drops below 12; test fixtures use rounds=4 with session scope to avoid CI slowdown
-- [x] **OPS-05**: Redis requires password authentication — `REDIS_PASSWORD` env var in docker-compose with no `:-` fallback; Redis started with `--requirepass ${REDIS_PASSWORD}`; an unauthenticated `redis-cli ping` returns `NOAUTH Authentication required`
+## v2 Requirements (Deferred to v1.5+)
 
-### GDPR & Data Retention
+### New Analyser Checks
 
-- [x] **GDPR-01**: Operator can delete all data for a given tenant in one command — `delete_tenant.py --tenant-id <id>` shows a dry-run summary of affected rows and S3 objects by default; `--confirm` flag required to execute; deletion covers ClickHouse spans (`ALTER TABLE spans DELETE WHERE tenant_id = :id`), all PostgreSQL tables (`flags`, `span_scores`, `diagnoses`, `users`, `api_keys`, `tenants`), all S3 objects under `{tenant_id}/` prefix, and a documented Redis key flush procedure; script is idempotent
+- **B1–B4**: Output/Schema Failures — free text vs schema, missing fields, truncated output, type mismatches
+- **C3–C4**: Reasoning/Planning — step repetition, unaware of termination condition
+- **D1–D3, D5**: Context/Memory — context propagation failure, conversation history loss, prompt overflow, stale context
+- **E3**: Instruction Following — prompt injection in tool output
+- **F1–F2, F4–F5**: Multi-Agent/Handoff — wrong agent, information withholding, conversation reset, fail to clarify
+- **G1–G2**: Verification — no verification span, incomplete verification
+- **H2**: Output Content — missing details
 
-## Future Requirements
+### Auth & Security
 
-### Authentication
+- **AUTH-F01**: Refresh token revocation store — server-side blacklist for stolen token detection
+- **AUTH-F02**: python-jose → PyJWT migration — python-jose near-abandoned, CVE risk
+- **OPS-F01**: Rate limiting on Analyser ingestion — per-API-key sliding window, Redis, 429 with Retry-After
 
-- **AUTH-F01**: Refresh token revocation store — server-side blacklist for stolen token detection (deferred; httpOnly cookie + client-side clear sufficient for v1.3 threat model)
-- **AUTH-F02**: python-jose → PyJWT migration — python-jose is near-abandoned; migrate before it becomes a CVE liability (v1.4)
+### SDK Expansion
 
-### SDK
-
-- **SDK-F01**: TypeScript/Node.js SDK for instrumenting JS-based agents (deferred to v1.4+)
-
-### Access Control
-
-- **ACL-F01**: Per-service MinIO IAM service accounts (deferred; single bucket policy sufficient for v1.3)
-
-### Data Isolation
-
-- **DB-F01**: ClickHouse per-service read-only users and row-level policies — ClickHouse cannot enforce tenant isolation at the DB layer; create a read-only ClickHouse user per service scoped to the `xeter` database and document this as an architectural constraint requiring ClickHouse Cloud row policies for full enforcement (deferred; Python DAL + integration test is the v1.3 enforcement layer)
-
-### Operations
-
-- **OPS-F01**: Rate limiting on Analyser ingestion — per-API-key sliding window using Redis; configurable `RATE_LIMIT_SPANS_PER_MINUTE` env var; HTTP 429 with `Retry-After` header; maximum payload size rejection before S3 touch (deferred to v1.4; B2B customer set mitigates runaway-agent risk for v1.3)
-- **OPS-F02**: Per-tenant Redis queue keys — replace global `analysis_queue` list with `analysis_queue:{tenant_id}` keys; Worker pops in round-robin across tenant queues to prevent starvation (deferred to v1.4; Worker refactor independent from v1.3 security surface)
+- **SDK-F01**: TypeScript/Node.js SDK for instrumenting JS-based agents
 
 ## Out of Scope
 
@@ -70,34 +60,34 @@ Requirements for v1.3 Security Hardening. Each maps to roadmap phases.
 | Multi-model A/B comparison | Established players own this |
 | LLM-as-a-judge eval pipelines | HoneyHive and LangSmith have mature offerings |
 | On-premise distribution | SaaS only per constraints |
-| Clerk auth migration | Schema supports it; deferred to when multi-member tenants are needed |
-| Refresh token DB revocation table | httpOnly cookie + client-side clear is sufficient for current threat model |
+| Clerk auth migration | Deferred; schema supports it; needed when multi-member tenants required |
+| Per-service MinIO IAM accounts | Single bucket policy sufficient for current threat model |
+| ClickHouse per-service read-only users + row policies | Python DAL is enforcement layer |
+| Per-tenant Redis queue keys | Worker refactor independent from current priorities |
+| Real-time SSE for trace streaming | Deferred; REST polling sufficient for v1.4 scale |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DB-01 | Phase 14 | Complete |
-| DB-02 | Phase 14 | Complete |
-| DB-03 | Phase 14 | Complete |
-| S3-01 | Phase 14 | Complete |
-| DB-04 | Phase 15 | Complete |
-| OPS-01 | Phase 15 | Complete |
-| OPS-02 | Phase 15 | Complete |
-| OPS-03 | Phase 15 | Complete |
-| OPS-04 | Phase 15 | Complete |
-| OPS-05 | Phase 15 | Complete |
-| AUTH-01 | Phase 16 | Complete |
-| AUTH-02 | Phase 16 | Complete |
-| AUTH-03 | Phase 16 | Complete |
-| AUTH-04 | Phase 16 | Complete |
-| GDPR-01 | Phase 17 | Complete |
+| CLEAN-01 | Phase 18 | Pending |
+| CLEAN-02 | Phase 18 | Pending |
+| CLEAN-03 | Phase 18 | Pending |
+| TANA-01 | Phase 18 | Pending |
+| TANA-02 | Phase 19 | Pending |
+| TANA-03 | Phase 19 | Pending |
+| TANA-04 | Phase 19 | Pending |
+| TRACE-01 | Phase 20 | Pending |
+| TRACE-02 | Phase 20 | Pending |
+| UI-01 | Phase 21 | Pending |
+| UI-02 | Phase 21 | Pending |
+| UI-03 | Phase 21 | Pending |
 
 **Coverage:**
-- v1.3 requirements: 15 total
-- Mapped to phases: 15
+- v1.4 requirements: 12 total
+- Mapped to phases: 12
 - Unmapped: 0 ✓
 
 ---
-*Requirements defined: 2026-04-27*
-*Last updated: 2026-04-27 — traceability updated after v1.3 roadmap creation*
+*Requirements defined: 2026-05-12*
+*Last updated: 2026-05-12 after v1.4 milestone initialization*

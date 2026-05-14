@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Trace Hierarchy + TraceAnalyzer Foundation
 status: in_progress
-last_updated: "2026-05-12"
+last_updated: "2026-05-14"
 progress:
   total_phases: 4
   completed_phases: 0
@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-05-12)
 ## Current Position
 
 Phase: 18 of 21 (Cleanup + BaseAnalyzer Refactor)
-Plan: 18-02 complete (BaseAnalyzer hierarchy refactor)
-Status: In progress — plan 02 of phase 18 complete
-Last activity: 2026-05-14 — 18-02 BaseAnalyzer refactor executed
+Plan: 18-01 and 18-02 complete
+Status: In progress — plans 01 and 02 of phase 18 complete
+Last activity: 2026-05-14 — 18-01 cleanup executed (dead code, stale comments, env var audit)
 
 Progress: [██░░░░░░░░] ~17%
 
@@ -43,9 +43,15 @@ All decisions logged in PROJECT.md Key Decisions table.
 - BaseAnalyzer root keeps name abstract property but no analyze() — each subclass defines its own analyze() signature (18-02)
 - BaseTraceAnalyzer added as stub in 18-02; Phase 19 provides concrete TraceAnalyzer implementation
 
+### Key Decisions (v1.4 continued — 18-01)
+
+- verify_session_token deleted from diagnosticer/main.py — InternalApiKeyMiddleware is the sole auth boundary; JWT auth was dead code
+- Env var safety annotation pattern established: [safe-default] and [must-set-in-prod] inline tags on all os.environ.get() calls across 9 service files
+- span_scores belt-and-suspenders (RLS + explicit WHERE) confirmed intentional; stale "NO RLS" comments corrected
+
 ### Pending Todos
 
-- Audit env var defaults before going live (2026-04-24) — addressed by CLEAN-03 in Phase 18
+None — audit env var defaults (2026-04-24) resolved by CLEAN-03 in 18-01
 
 ### Blockers/Concerns
 
@@ -53,6 +59,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-14 — 18-02 BaseAnalyzer hierarchy refactor executed. 3-class hierarchy in base.py; ToolCallAnalyzer re-parented to BaseSpanAnalyzer.
-Stopped at: 18-02-PLAN.md complete
-Next: Run /gsd:execute-phase 18 plan 03 (or next plan in phase 18)
+Last session: 2026-05-14 — 18-01 cleanup plan executed. Dead verify_session_token removed, stale RLS comments corrected, env var defaults annotated across 9 service files.
+Stopped at: 18-01-PLAN.md complete
+Next: Phase 18 plans 01 and 02 both complete; proceed to phase 19 or remaining phase 18 plans

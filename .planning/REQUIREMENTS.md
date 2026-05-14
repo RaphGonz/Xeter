@@ -7,9 +7,9 @@
 
 ### Cleanup (CLEAN) — v1.3 Tech Debt
 
-- [ ] **CLEAN-01**: Dead `verify_session_token()` function removed from `diagnosticer/main.py` (lines 78–94); INTERNAL_API_KEY middleware via `InternalApiKeyMiddleware` is the sole auth boundary on Diagnosticer
-- [ ] **CLEAN-02**: Stale "NO PostgreSQL RLS" comments corrected in `spans.py` (lines 9/442); comments updated to reflect migration 004 which added RLS
-- [ ] **CLEAN-03**: Env var defaults audit completed — all `:- fallback` patterns and development defaults reviewed against production requirements; dangerous defaults documented or removed
+- [x] **CLEAN-01**: Dead `verify_session_token()` function removed from `diagnosticer/main.py` (lines 78–94); INTERNAL_API_KEY middleware via `InternalApiKeyMiddleware` is the sole auth boundary on Diagnosticer
+- [x] **CLEAN-02**: Stale "NO PostgreSQL RLS" comments corrected in `spans.py` (lines 9/442); comments updated to reflect migration 004 which added RLS
+- [x] **CLEAN-03**: Env var defaults audit completed — all `:- fallback` patterns and development defaults reviewed against production requirements; dangerous defaults documented or removed
 
 ### Trace API (TRACE) — Presenter Endpoints
 
@@ -70,9 +70,9 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CLEAN-01 | Phase 18 | Pending |
-| CLEAN-02 | Phase 18 | Pending |
-| CLEAN-03 | Phase 18 | Pending |
+| CLEAN-01 | Phase 18 | Complete |
+| CLEAN-02 | Phase 18 | Complete |
+| CLEAN-03 | Phase 18 | Complete |
 | TANA-01 | Phase 18 | Complete |
 | TANA-02 | Phase 19 | Pending |
 | TANA-03 | Phase 19 | Pending |

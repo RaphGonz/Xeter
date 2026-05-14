@@ -23,6 +23,9 @@ Environment variables:
   WORKER_THRESHOLD_EXCESSIVE_TOOL   — cosine threshold, default 0.3
   WORKER_THRESHOLD_PARSING_ERROR    — cosine threshold, default 0.5
   WORKER_THRESHOLD_RESPONSE_ANOMALY — cosine threshold, default 0.4
+  WORKER_TRACE_FLUSH_TIMEOUT_S      — seconds of inactivity before a trace is
+                                      flushed to TraceAnalyzer (default: 30).
+                                      Tune based on expected inter-span latency.
 """
 
 from __future__ import annotations
@@ -34,11 +37,12 @@ import time
 
 import redis
 
-from xeter.services.worker.base import EmbedderClient
+from xeter.services.worker.base import EmbedderClient, SpanData
 from xeter.services.worker.flag_writer import write_flags
 from xeter.services.worker.score_writer import write_scores
 from xeter.services.worker.span_fetcher import fetch_span
 from xeter.services.worker.tool_call_analyzer import ToolCallAnalyzer
+from xeter.services.worker.trace_analyzer import TraceAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +56,10 @@ THRESHOLDS: dict[str, float] = {
     "no_tool": float(os.environ.get("WORKER_THRESHOLD_NO_TOOL", "0.6")),  # [safe-default] calibration value; tune via calibration scripts
     "response_anomaly": float(os.environ.get("WORKER_THRESHOLD_RESPONSE_ANOMALY", "0.4")),  # [safe-default] calibration value; tune via calibration scripts
 }
+
+WORKER_TRACE_FLUSH_TIMEOUT_S: float = float(
+    os.environ.get("WORKER_TRACE_FLUSH_TIMEOUT_S", "30")  # [safe-default] 30s window; tune for your trace latency
+)
 
 # ---- signal handling --------------------------------------------------------
 
@@ -67,7 +75,7 @@ def _handle_signal(signum, frame) -> None:  # noqa: ANN001
 # ---- span dispatch ----------------------------------------------------------
 
 
-def process_span(span_id: str, analyzers: list) -> None:
+def process_span(span_id: str, analyzers: list) -> SpanData:
     """Fetch a span and dispatch it to all registered analyzers.
 
     Designed to accept an ``analyzers`` parameter (not a global) so integration
@@ -80,6 +88,9 @@ def process_span(span_id: str, analyzers: list) -> None:
     Args:
         span_id:   The span_id consumed from the Redis queue.
         analyzers: List of BaseAnalyzer instances to dispatch.
+
+    Returns:
+        The SpanData fetched for this span_id, for use by the trace buffer.
 
     Raises:
         ValueError: If the span does not exist in ClickHouse (fetch_span raises).
@@ -102,6 +113,8 @@ def process_span(span_id: str, analyzers: list) -> None:
     if all_flags:
         write_flags(span_id, span.tenant_id, span.trace_id, all_flags)
 
+    return span
+
 
 # ---- entry point ------------------------------------------------------------
 
@@ -120,6 +133,13 @@ def main() -> None:
 
     analyzers = [ToolCallAnalyzer(embedder, THRESHOLDS)]
 
+    trace_analyzer = TraceAnalyzer(embedder, THRESHOLDS)
+
+    # Trace buffer: accumulate processed spans by trace_id for trace-level analysis.
+    # trace_last_seen tracks time.monotonic() of the last span arrival per trace.
+    trace_buffer: dict[str, list] = {}       # trace_id -> list[SpanData]
+    trace_last_seen: dict[str, float] = {}   # trace_id -> last arrival time
+
     r = redis.Redis.from_url(os.environ["REDIS_URL"], decode_responses=True)
 
     signal.signal(signal.SIGTERM, _handle_signal)
@@ -136,8 +156,36 @@ def main() -> None:
         # flushed the span to ClickHouse yet when Redis delivers the id.
         for attempt in range(3):
             try:
-                process_span(span_id, analyzers)
+                span = process_span(span_id, analyzers)
                 logger.info("worker: processed span_id=%s", span_id)
+
+                # Accumulate span in trace buffer
+                trace_buffer.setdefault(span.trace_id, []).append(span)
+                trace_last_seen[span.trace_id] = time.monotonic()
+
+                # Check all traces for flush timeout
+                now = time.monotonic()
+                ready_trace_ids = [
+                    tid for tid, last in trace_last_seen.items()
+                    if now - last >= WORKER_TRACE_FLUSH_TIMEOUT_S
+                ]
+                for tid in ready_trace_ids:
+                    spans_for_trace = trace_buffer[tid]
+                    tenant_id_for_trace = spans_for_trace[0].tenant_id
+                    try:
+                        trace_flags = trace_analyzer.analyze(spans_for_trace)
+                        if trace_flags:
+                            write_flags(None, tenant_id_for_trace, tid, trace_flags)
+                        logger.info(
+                            "worker: flushed trace trace_id=%s spans=%d flags=%d",
+                            tid, len(spans_for_trace), len(trace_flags),
+                        )
+                    except Exception as exc:
+                        logger.error("worker: failed to flush trace trace_id=%s: %s", tid, exc)
+                    finally:
+                        trace_buffer.pop(tid, None)
+                        trace_last_seen.pop(tid, None)
+
                 break
             except ValueError as exc:
                 # "span not found" — likely batcher hasn't flushed yet

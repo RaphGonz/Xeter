@@ -46,11 +46,11 @@ QUEUE_KEY = "analysis_queue"
 BRPOP_TIMEOUT = 2  # seconds — allows SIGTERM response within ~2 s
 
 THRESHOLDS: dict[str, float] = {
-    "tool_coherence_threshold": float(os.environ.get("WORKER_THRESHOLD_TOOL_COHERENCE", "0.15")),
-    "unnecessary_tool_call": float(os.environ.get("WORKER_THRESHOLD_UNNECESSARY_TOOL_CALL", "0.15")),
-    "wrong_tool_args": float(os.environ.get("WORKER_THRESHOLD_WRONG_TOOL_ARGS", "0.4")),
-    "no_tool": float(os.environ.get("WORKER_THRESHOLD_NO_TOOL", "0.6")),
-    "response_anomaly": float(os.environ.get("WORKER_THRESHOLD_RESPONSE_ANOMALY", "0.4")),
+    "tool_coherence_threshold": float(os.environ.get("WORKER_THRESHOLD_TOOL_COHERENCE", "0.15")),  # [safe-default] calibration value; tune via calibration scripts
+    "unnecessary_tool_call": float(os.environ.get("WORKER_THRESHOLD_UNNECESSARY_TOOL_CALL", "0.15")),  # [safe-default] calibration value; tune via calibration scripts
+    "wrong_tool_args": float(os.environ.get("WORKER_THRESHOLD_WRONG_TOOL_ARGS", "0.4")),  # [safe-default] calibration value; tune via calibration scripts
+    "no_tool": float(os.environ.get("WORKER_THRESHOLD_NO_TOOL", "0.6")),  # [safe-default] calibration value; tune via calibration scripts
+    "response_anomaly": float(os.environ.get("WORKER_THRESHOLD_RESPONSE_ANOMALY", "0.4")),  # [safe-default] calibration value; tune via calibration scripts
 }
 
 # ---- signal handling --------------------------------------------------------
@@ -113,7 +113,7 @@ def main() -> None:
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
 
-    embedder_url = os.environ.get("EMBEDDER_URL", "http://embedder:8002")
+    embedder_url = os.environ.get("EMBEDDER_URL", "http://embedder:8002")  # [safe-default] docker-compose value
     logger.info("worker: connecting to embedder at %s", embedder_url)
     embedder = EmbedderClient(embedder_url)
     logger.info("worker: embedder client ready")

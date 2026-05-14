@@ -79,8 +79,8 @@ class SpanBatcher:
         """
         self._ch = ch_client
         self._queue: asyncio.Queue = asyncio.Queue()
-        self._batch_size = int(os.environ.get("XETER_BATCH_SIZE", "100"))
-        self._flush_interval = float(os.environ.get("XETER_FLUSH_INTERVAL", "5"))
+        self._batch_size = int(os.environ.get("XETER_BATCH_SIZE", "100"))  # [safe-default] docker-compose value
+        self._flush_interval = float(os.environ.get("XETER_FLUSH_INTERVAL", "5"))  # [safe-default] docker-compose value
         self._task: asyncio.Task | None = None
 
     async def start(self) -> None:
@@ -198,9 +198,9 @@ def get_clickhouse_client():
     import clickhouse_connect
 
     return clickhouse_connect.get_client(
-        host=os.environ.get("CLICKHOUSE_HOST", "clickhouse"),
-        port=int(os.environ.get("CLICKHOUSE_PORT", "8123")),
-        database=os.environ.get("CLICKHOUSE_DB", "default"),
-        username=os.environ.get("CLICKHOUSE_USER", "default"),
-        password=os.environ.get("CLICKHOUSE_PASSWORD", ""),
+        host=os.environ.get("CLICKHOUSE_HOST", "clickhouse"),  # [safe-default] docker-compose value
+        port=int(os.environ.get("CLICKHOUSE_PORT", "8123")),  # [safe-default] docker-compose value
+        database=os.environ.get("CLICKHOUSE_DB", "default"),  # [safe-default] docker-compose value
+        username=os.environ.get("CLICKHOUSE_USER", "default"),  # [safe-default] docker-compose value
+        password=os.environ.get("CLICKHOUSE_PASSWORD", ""),  # [must-set-in-prod] empty default; override with real password
     )

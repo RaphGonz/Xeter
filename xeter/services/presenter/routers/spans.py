@@ -358,10 +358,10 @@ async def _fetch_all_s3_payloads(
         asyncio.TimeoutError: If the combined fetch exceeds 5 seconds.
         Exception: For any other S3 error.
     """
-    bucket = os.environ.get("S3_BUCKET", "xeter-payloads")
-    endpoint_url = os.environ.get("S3_ENDPOINT_URL", "http://minio:9000")
-    access_key = os.environ.get("S3_ACCESS_KEY", "")
-    secret_key = os.environ.get("S3_SECRET_KEY", "")
+    bucket = os.environ.get("S3_BUCKET", "xeter-payloads")  # [safe-default]
+    endpoint_url = os.environ.get("S3_ENDPOINT_URL", "http://minio:9000")  # [safe-default] docker-compose value
+    access_key = os.environ.get("S3_ACCESS_KEY", "")  # [must-set-in-prod] empty default; must be set in production
+    secret_key = os.environ.get("S3_SECRET_KEY", "")  # [must-set-in-prod] empty default; must be set in production
 
     session = aioboto3.Session(
         aws_access_key_id=access_key,

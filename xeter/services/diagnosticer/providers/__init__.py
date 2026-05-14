@@ -33,13 +33,13 @@ def get_llm_client() -> LLMProvider:
     Raises:
         ValueError: If DIAGNOSTICER_PROVIDER is set to an unsupported value.
     """
-    provider = os.environ.get("DIAGNOSTICER_PROVIDER", "anthropic").lower().strip()
+    provider = os.environ.get("DIAGNOSTICER_PROVIDER", "anthropic").lower().strip()  # [safe-default]
     defaults = {
         "anthropic": "claude-haiku-4-5",
         "openai": "gpt-4o-mini",
         "ollama": "llama3.2",
     }
-    model = os.environ.get("DIAGNOSTICER_MODEL", defaults.get(provider, ""))
+    model = os.environ.get("DIAGNOSTICER_MODEL", defaults.get(provider, ""))  # [safe-default]
 
     if provider == "anthropic":
         from xeter.services.diagnosticer.providers.anthropic import AnthropicProvider

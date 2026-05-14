@@ -171,7 +171,7 @@ class DiagnosisService:
             )
 
         # Step 3 — HTTP forward to Diagnosticer
-        timeout = float(os.environ.get("DIAGNOSTICER_TIMEOUT_SECONDS", 60.0))
+        timeout = float(os.environ.get("DIAGNOSTICER_TIMEOUT_SECONDS", 60.0))  # [safe-default]
         try:
             resp = await http_client.post(
                 "/diagnose",

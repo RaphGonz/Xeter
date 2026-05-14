@@ -27,7 +27,7 @@ async def lifespan(app: FastAPI):
     to avoid concurrent-session errors when multiple requests arrive at once.
     """
     app.state.http_client = httpx.AsyncClient(
-        base_url=os.environ.get("DIAGNOSTICER_URL", "http://diagnosticer:8001"),
+        base_url=os.environ.get("DIAGNOSTICER_URL", "http://diagnosticer:8001"),  # [safe-default] docker-compose value
         timeout=30.0,
     )
     yield
@@ -36,8 +36,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Xeter Presenter", version="0.1.0", lifespan=lifespan)
 
-ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
-ALLOW_ORIGINS = os.environ.get("CORS_ALLOW_ORIGINS", "http://localhost:3000").split(",")
+ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")  # [must-set-in-prod] must be 'production' in production
+ALLOW_ORIGINS = os.environ.get("CORS_ALLOW_ORIGINS", "http://localhost:3000").split(",")  # [must-set-in-prod] restrict to actual frontend origin
 
 app.add_middleware(
     CORSMiddleware,

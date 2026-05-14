@@ -142,6 +142,6 @@ def get_s3_client() -> S3Client:
             aws_access_key_id=os.environ["S3_ACCESS_KEY"],
             aws_secret_access_key=os.environ["S3_SECRET_KEY"],
         ),
-        bucket=os.environ.get("S3_BUCKET", "xeter-payloads"),
+        bucket=os.environ.get("S3_BUCKET", "xeter-payloads"),  # [safe-default] bucket name only, not a secret
         endpoint_url=os.environ["S3_ENDPOINT_URL"],
     )

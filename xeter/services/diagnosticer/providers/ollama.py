@@ -37,7 +37,7 @@ class OllamaProvider:
 
     def __init__(self, model: str) -> None:
         self._model = model
-        host = os.environ.get("OLLAMA_HOST", "http://ollama:11434")
+        host = os.environ.get("OLLAMA_HOST", "http://ollama:11434")  # [safe-default] docker-compose value
         self._client = ollama.AsyncClient(host=host)
 
     async def diagnose(self, context: str) -> tuple[DiagnosisResult, str]:

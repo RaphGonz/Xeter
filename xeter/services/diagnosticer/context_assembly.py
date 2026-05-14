@@ -70,11 +70,11 @@ async def _fetch_s3_payloads(
     On asyncio.TimeoutError (5s), returns '[S3 fetch timed out]' for both fields.
     On missing ref (None), returns '[not available]'.
     """
-    bucket = os.environ.get("S3_BUCKET", "xeter-payloads")
-    endpoint_url = os.environ.get("S3_ENDPOINT_URL", "http://minio:9000")
+    bucket = os.environ.get("S3_BUCKET", "xeter-payloads")  # [safe-default]
+    endpoint_url = os.environ.get("S3_ENDPOINT_URL", "http://minio:9000")  # [safe-default] docker-compose value
     s3_session = aioboto3.Session(
-        aws_access_key_id=os.environ.get("S3_ACCESS_KEY"),
-        aws_secret_access_key=os.environ.get("S3_SECRET_KEY"),
+        aws_access_key_id=os.environ.get("S3_ACCESS_KEY"),  # [must-set-in-prod] returns None silently; use os.environ[] for fail-fast
+        aws_secret_access_key=os.environ.get("S3_SECRET_KEY"),  # [must-set-in-prod] returns None silently; use os.environ[] for fail-fast
     )
 
     async def _fetch(key: str | None) -> str:

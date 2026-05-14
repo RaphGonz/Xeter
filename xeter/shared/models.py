@@ -78,11 +78,15 @@ class ApiKey(Base):
 
 class Flag(Base):
     """
-    Anomaly flag raised by an analyser for a specific span.
+    Anomaly flag raised by an analyser for a specific span or trace.
 
     flag_type is a plain VARCHAR string, never a PostgreSQL enum type.
     This allows future analysers to introduce new flag types (e.g. "tool_injection",
     "hallucination", "prompt_leak") without any schema migration — per FLAG-03.
+
+    span_id is nullable — trace-level flags produced by TraceAnalyzer have no
+    single span. Span-level flags (from ToolCallAnalyzer etc.) continue to
+    populate span_id as before.
     """
 
     __tablename__ = "flags"
@@ -96,7 +100,7 @@ class Flag(Base):
         UUID(as_uuid=True),
         nullable=False,
     )
-    span_id: Mapped[str] = mapped_column(String, nullable=False)
+    span_id: Mapped[str | None] = mapped_column(String, nullable=True)
     trace_id: Mapped[str] = mapped_column(String, nullable=False)
     # Open string, NOT enum — per FLAG-03. Never change to Enum.
     flag_type: Mapped[str] = mapped_column(String, nullable=False)

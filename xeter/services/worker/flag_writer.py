@@ -49,19 +49,21 @@ def _get_dsn() -> str:
 
 
 def write_flags(
-    span_id: str,
+    span_id: str | None,
     tenant_id: str,
     trace_id: str,
     flags: list[Flag],
 ) -> None:
-    """Insert all Flag instances for a span into the flags table.
+    """Insert all Flag instances for a span or trace into the flags table.
 
     Sets SET LOCAL app.current_tenant_id inside the transaction so the RLS
     policy is satisfied. Uses manual transaction management (autocommit=False)
     to ensure the SET LOCAL and INSERTs run in the same transaction scope.
 
     Args:
-        span_id: The span that triggered the flags.
+        span_id: The span that triggered the flags, or None for trace-level
+                 flags produced by TraceAnalyzer (which analyze a full trace,
+                 not a single span). psycopg2 maps None to SQL NULL automatically.
         tenant_id: The owning tenant (used for RLS and the tenant_id column).
         trace_id: The trace the span belongs to.
         flags: List of Flag instances. If empty, returns immediately without

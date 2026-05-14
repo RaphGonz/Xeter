@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-05-12)
 ## Current Position
 
 Phase: 19 of 21 (TraceAnalyzer Scaffold + DB Migration)
-Plan: 19-02 complete (plans 01 and 02 of phase 19 complete)
-Status: In progress — plans 01 and 02 of phase 19 complete
-Last activity: 2026-05-14 — 19-02 DB migration executed (migration 005, nullable span_id, updated ORM + flag_writer)
+Plan: 19-03 complete (all 3 plans of phase 19 complete)
+Status: In progress — phase 19 complete
+Last activity: 2026-05-14 — 19-03 trace buffer + flush-timeout wired into worker; 21 worker tests pass
 
 Progress: [██░░░░░░░░] ~17%
 
@@ -43,6 +43,12 @@ All decisions logged in PROJECT.md Key Decisions table.
 - BaseAnalyzer root keeps name abstract property but no analyze() — each subclass defines its own analyze() signature (18-02)
 - BaseTraceAnalyzer added as stub in 18-02; Phase 19 provides concrete TraceAnalyzer implementation
 - TraceAnalyzer scaffold (19-01): analyze() returns [] unconditionally; name="trace_analyzer"; v1.5 adds B/C/D/E/F/G/H checks
+
+### Key Decisions (v1.4 continued — 19-03)
+
+- process_span() returns SpanData (Option A): minimal extension; existing callers ignore return value
+- Flush loop evicts trace from buffer unconditionally (finally block) — prevents unbounded buffer growth on TraceAnalyzer error
+- WORKER_TRACE_FLUSH_TIMEOUT_S default 30s; configurable per deployment
 
 ### Key Decisions (v1.4 continued — 19-02)
 
@@ -66,6 +72,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-14 — 19-02 DB migration executed. Migration 005 adds DROP NOT NULL on span_id; Flag ORM model and flag_writer updated; 11 worker tests pass.
-Stopped at: 19-02-PLAN.md complete
-Next: Phase 19 plan 03 (wire TraceAnalyzer into worker flush path)
+Last session: 2026-05-14 — 19-03 complete. Trace buffer + flush-timeout logic wired into worker main.py; process_span returns SpanData; 5 new trace buffer tests; 21/21 worker tests pass.
+Stopped at: 19-03-PLAN.md complete
+Next: Phase 20 or v1.5 checks (real TraceAnalyzer analysis)

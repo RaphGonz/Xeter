@@ -26,7 +26,7 @@
 
 - [x] **TANA-01**: `BaseAnalyzer` in `worker/base.py` refactored into: (a) generic `BaseAnalyzer` root retaining `name`, `embed`, `compare`, `log_score`, `flush_scores`; (b) `BaseSpanAnalyzer(BaseAnalyzer)` with abstract `analyze(span: SpanData) -> list[Flag]`; (c) `BaseTraceAnalyzer(BaseAnalyzer)` with abstract `analyze(spans: list[SpanData]) -> list[Flag]`; `ToolCallAnalyzer` updated to inherit `BaseSpanAnalyzer`; all import paths updated
 - [x] **TANA-02**: `TraceAnalyzer(BaseTraceAnalyzer)` scaffold created in `worker/trace_analyzer.py` — implements `analyze(spans)` returning `[]`; registered in worker alongside span analyzers
-- [ ] **TANA-03**: Worker accumulates processed spans by `trace_id` in an in-memory buffer; after each span is processed, checks whether the flush timeout has elapsed for that trace_id; invokes `TraceAnalyzer.analyze(spans)` and writes any returned flags; timeout duration configurable via `WORKER_TRACE_FLUSH_TIMEOUT_S` env var (default: 30s)
+- [x] **TANA-03**: Worker accumulates processed spans by `trace_id` in an in-memory buffer; after each span is processed, checks whether the flush timeout has elapsed for that trace_id; invokes `TraceAnalyzer.analyze(spans)` and writes any returned flags; timeout duration configurable via `WORKER_TRACE_FLUSH_TIMEOUT_S` env var (default: 30s)
 - [x] **TANA-04**: PostgreSQL `flags` table extended via migration — `span_id` column made nullable (trace-level flags have no single span); `trace_id` column made non-nullable (all flags, span-level and trace-level, reference their trace); existing rows migrated with `trace_id` backfilled from ClickHouse spans table; flag_writer.py and score_writer.py updated
 
 ## v2 Requirements (Deferred to v1.5+)
@@ -75,7 +75,7 @@
 | CLEAN-03 | Phase 18 | Complete |
 | TANA-01 | Phase 18 | Complete |
 | TANA-02 | Phase 19 | Complete |
-| TANA-03 | Phase 19 | Pending |
+| TANA-03 | Phase 19 | Complete |
 | TANA-04 | Phase 19 | Complete |
 | TRACE-01 | Phase 20 | Pending |
 | TRACE-02 | Phase 20 | Pending |

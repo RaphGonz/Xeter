@@ -158,7 +158,7 @@ async def list_spans(
       1. Query ClickHouse for spans matching tenant_id, applying cursor and
          agent_name / from_time / to_time filters in the WHERE clause when provided.
       2. Query PostgreSQL flags for those span_ids, optionally filtering by flag_type.
-      3. Query PostgreSQL span_scores for those span_ids (no RLS — explicit tenant_id filter).
+      3. Query PostgreSQL span_scores for those span_ids (RLS via migration 004 + explicit tenant_id filter).
       4. If flag_type is set, keep only spans that have at least one matching flag.
       5. Merge results: attach flag summaries, derive status, compute duration_ms.
       6. Compute next_cursor from last span's time_begin if result count == limit.
@@ -244,7 +244,7 @@ async def list_spans(
             return SpanListResponse(spans=[], next_cursor=None)
         span_ids = [row[0] for row in rows]
 
-    # --- Step 3: span_scores query (NO RLS — must include tenant_id filter) ---
+    # --- Step 3: span_scores query (RLS via migration 004 + explicit tenant_id filter) ---
     # Use raw text query since span_scores is not an ORM model
     scores_result = await session.execute(
         text(

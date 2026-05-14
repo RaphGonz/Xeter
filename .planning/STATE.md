@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Trace Hierarchy + TraceAnalyzer Foundation
 status: unknown
-last_updated: "2026-05-14T12:34:35.728Z"
+last_updated: "2026-05-14T14:05:59Z"
 progress:
   total_phases: 8
   completed_phases: 8
@@ -18,14 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-12)
 
 **Core value:** When a tool call fails, tell the developer whether it was the model, the architecture, or the prompt — and why.
-**Current focus:** Phase 18 — Cleanup + BaseAnalyzer Refactor
+**Current focus:** Phase 19 — TraceAnalyzer Scaffold + DB Migration
 
 ## Current Position
 
-Phase: 18 of 21 (Cleanup + BaseAnalyzer Refactor)
-Plan: 18-01 and 18-02 complete
-Status: In progress — plans 01 and 02 of phase 18 complete
-Last activity: 2026-05-14 — 18-01 cleanup executed (dead code, stale comments, env var audit)
+Phase: 19 of 21 (TraceAnalyzer Scaffold + DB Migration)
+Plan: 19-02 complete (plans 01 and 02 of phase 19 complete)
+Status: In progress — plans 01 and 02 of phase 19 complete
+Last activity: 2026-05-14 — 19-02 DB migration executed (migration 005, nullable span_id, updated ORM + flag_writer)
 
 Progress: [██░░░░░░░░] ~17%
 
@@ -42,6 +42,13 @@ All decisions logged in PROJECT.md Key Decisions table.
 - v1.5 will cover 20 new checks across B/C/D/E/F/G/H categories (see documentation/silent_failures_ai_agents.md)
 - BaseAnalyzer root keeps name abstract property but no analyze() — each subclass defines its own analyze() signature (18-02)
 - BaseTraceAnalyzer added as stub in 18-02; Phase 19 provides concrete TraceAnalyzer implementation
+- TraceAnalyzer scaffold (19-01): analyze() returns [] unconditionally; name="trace_analyzer"; v1.5 adds B/C/D/E/F/G/H checks
+
+### Key Decisions (v1.4 continued — 19-02)
+
+- Migration 005: span_id DROP NOT NULL (trace-level flags have no single span); trace_id backfill is a no-op (already NOT NULL since migration 001)
+- Flag.span_id: Mapped[str | None] with nullable=True in ORM model; write_flags() span_id param: str | None
+- psycopg2 None -> SQL NULL automatically; _INSERT_SQL string unchanged
 
 ### Key Decisions (v1.4 continued — 18-01)
 
@@ -59,6 +66,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-14 — 18-01 cleanup plan executed. Dead verify_session_token removed, stale RLS comments corrected, env var defaults annotated across 9 service files.
-Stopped at: 18-01-PLAN.md complete
-Next: Phase 18 plans 01 and 02 both complete; proceed to phase 19 or remaining phase 18 plans
+Last session: 2026-05-14 — 19-02 DB migration executed. Migration 005 adds DROP NOT NULL on span_id; Flag ORM model and flag_writer updated; 11 worker tests pass.
+Stopped at: 19-02-PLAN.md complete
+Next: Phase 19 plan 03 (wire TraceAnalyzer into worker flush path)

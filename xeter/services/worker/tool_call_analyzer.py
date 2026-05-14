@@ -28,7 +28,7 @@ from typing import Optional
 
 import numpy as np
 
-from xeter.services.worker.base import BaseAnalyzer, Flag, SpanData, bow_score, hybrid_score
+from xeter.services.worker.base import BaseSpanAnalyzer, Flag, SpanData, bow_score, hybrid_score
 from xeter.services.worker.tool_call_registry import (
     TOOL_CALL_REGISTRY,
     FORMAT_GROUPS,
@@ -132,7 +132,7 @@ def _strip_punctuation(token: str) -> str:
     return _STRIP_PUNCT_RE.sub('', token.lower())
 
 
-class ToolCallAnalyzer(BaseAnalyzer):
+class ToolCallAnalyzer(BaseSpanAnalyzer):
     """Analyze SpanData for tool-call anomalies using embedding similarity."""
 
     def __init__(self, embedder, thresholds: dict[str, float]) -> None:

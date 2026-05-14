@@ -93,7 +93,11 @@ Plans:
   2. TraceAnalyzer scaffold runs without error and produces no flags (no checks implemented yet)
   3. flags table migration applies cleanly: span_id is nullable, trace_id is non-nullable, and all pre-existing rows have trace_id backfilled from the ClickHouse span record
   4. All existing flag-write and flag-read paths continue to function correctly after the schema change
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 19-01-PLAN.md — TraceAnalyzer scaffold class + unit tests (TANA-02)
+- [ ] 19-02-PLAN.md — Migration 005 + Flag ORM update + flag_writer nullable span_id (TANA-04)
+- [ ] 19-03-PLAN.md — Worker trace buffer + flush-timeout wiring + tests (TANA-03)
 
 ### Phase 20: Trace API
 **Goal**: Add GET /traces and GET /traces/{trace_id} endpoints to the Presenter with tenant RLS, assembling trace data from ClickHouse (spans) and PostgreSQL (flags, scores)
@@ -136,7 +140,7 @@ Plans:
 | 15. Secrets Hygiene | v1.3 | 3/3 | Complete | 2026-04-29 |
 | 16. Auth Hardening | v1.3 | 5/5 | Complete | 2026-04-30 |
 | 17. GDPR Data Deletion | v1.3 | 1/1 | Complete | 2026-04-30 |
-| 18. Cleanup + BaseAnalyzer Refactor | 2/2 | Complete    | 2026-05-14 | - |
-| 19. TraceAnalyzer Scaffold + DB Migration | v1.4 | 0/TBD | Not started | - |
+| 18. Cleanup + BaseAnalyzer Refactor | v1.4 | 2/2 | Complete | 2026-05-14 |
+| 19. TraceAnalyzer Scaffold + DB Migration | v1.4 | 0/3 | Not started | - |
 | 20. Trace API | v1.4 | 0/TBD | Not started | - |
 | 21. Trace UI | v1.4 | 0/TBD | Not started | - |

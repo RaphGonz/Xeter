@@ -79,7 +79,10 @@ See `.planning/milestones/v1.3-ROADMAP.md` for full phase details.
   2. Stale "NO PostgreSQL RLS" comments are absent from `spans.py`
   3. All env var defaults have been audited and any unsafe fallbacks removed or documented
   4. `BaseAnalyzer`, `BaseSpanAnalyzer`, and `BaseTraceAnalyzer` exist as distinct classes; `ToolCallAnalyzer` inherits from `BaseSpanAnalyzer`; existing analyzer tests pass unchanged
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 18-01-PLAN.md — Dead code removal + stale comment correction + env var audit (CLEAN-01, CLEAN-02, CLEAN-03)
+- [ ] 18-02-PLAN.md — BaseAnalyzer 3-class hierarchy refactor (TANA-01)
 
 ### Phase 19: TraceAnalyzer Scaffold + DB Migration
 **Goal**: Wire a TraceAnalyzer scaffold into the worker with a flush-timeout trigger; extend the flags table so span_id is nullable and trace_id is non-nullable, with backfill of existing rows
@@ -133,7 +136,7 @@ See `.planning/milestones/v1.3-ROADMAP.md` for full phase details.
 | 15. Secrets Hygiene | v1.3 | 3/3 | Complete | 2026-04-29 |
 | 16. Auth Hardening | v1.3 | 5/5 | Complete | 2026-04-30 |
 | 17. GDPR Data Deletion | v1.3 | 1/1 | Complete | 2026-04-30 |
-| 18. Cleanup + BaseAnalyzer Refactor | v1.4 | 0/TBD | Not started | - |
+| 18. Cleanup + BaseAnalyzer Refactor | v1.4 | 0/2 | Not started | - |
 | 19. TraceAnalyzer Scaffold + DB Migration | v1.4 | 0/TBD | Not started | - |
 | 20. Trace API | v1.4 | 0/TBD | Not started | - |
 | 21. Trace UI | v1.4 | 0/TBD | Not started | - |

@@ -29,7 +29,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from xeter.services.diagnosticer.main import app, get_ch_client, verify_session_token
+from xeter.services.diagnosticer.main import app, get_ch_client
 from xeter.services.diagnosticer.providers.base import DiagnosisResult, LLMError, ParseError
 
 # ---------------------------------------------------------------------------

@@ -20,7 +20,6 @@ from typing import Any
 import clickhouse_connect
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
-from jose import JWTError, jwt
 from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -50,11 +49,10 @@ app = FastAPI(title="Xeter Diagnosticer", version="0.2.0", lifespan=lifespan)
 # Configuration
 # ---------------------------------------------------------------------------
 
-SECRET_KEY = os.environ["SECRET_KEY"]  # KeyError on startup if unset
 INTERNAL_API_KEY = os.environ["INTERNAL_API_KEY"]  # KeyError on startup if unset
-ALGORITHM = "HS256"
 
 
+# Sole auth boundary for Diagnosticer — all routes require X-Internal-Api-Key
 class InternalApiKeyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         if request.url.path == "/healthz":
@@ -73,25 +71,6 @@ app.add_middleware(InternalApiKeyMiddleware)
 # ---------------------------------------------------------------------------
 # Dependencies
 # ---------------------------------------------------------------------------
-
-
-def verify_session_token(authorization: str | None = Header(default=None)) -> str:
-    """Validate Authorization: Bearer <token> header. Returns tenant_id string."""
-    _unauthorized = HTTPException(
-        status_code=401,
-        detail={"error": "unauthorized", "message": "Invalid or missing session token"},
-    )
-    if not authorization or not authorization.startswith("Bearer "):
-        raise _unauthorized
-    token = authorization.removeprefix("Bearer ").strip()
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        tenant_id: str | None = payload.get("sub")
-        if not tenant_id:
-            raise _unauthorized
-        return tenant_id
-    except JWTError:
-        raise _unauthorized
 
 
 def get_ch_client():

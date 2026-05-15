@@ -7,6 +7,8 @@ Routes:
   POST /login         — session login (returns JWT token)
   GET  /spans         — span list with flag summaries and scores (auth required)
   POST /diagnose      — proxy to Diagnosticer service (auth required)
+  GET  /traces        — trace list with span and flag counts (auth required)
+  GET  /traces/{id}   — full trace detail with spans, flags, scores (auth required)
 """
 
 import os
@@ -16,7 +18,7 @@ import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from xeter.services.presenter.routers import auth, diagnose, spans
+from xeter.services.presenter.routers import auth, diagnose, spans, traces
 
 
 @asynccontextmanager
@@ -50,6 +52,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="", tags=["auth"])
 app.include_router(spans.router, prefix="", tags=["spans"])
 app.include_router(diagnose.router, prefix="", tags=["diagnose"])
+app.include_router(traces.router, prefix="", tags=["traces"])
 
 
 @app.get("/healthz")

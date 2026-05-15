@@ -256,7 +256,7 @@ export function SpanDetailPanel({ spanId, open, onClose }: SpanDetailPanelProps)
               <span>Traces</span>
               <span className="mx-0.5">›</span>
               <Link
-                href={`/traces/${detail.trace_id}`}
+                href={`/traces/${detail.trace_id}?span=${detail.span_id}`}
                 className="hover:text-zinc-900 dark:hover:text-zinc-50 transition-colors"
                 onClick={(e) => e.stopPropagation()}
               >

@@ -75,6 +75,12 @@ All decisions logged in PROJECT.md Key Decisions table.
 - SpanDetailPanel breadcrumb always shown (trace_id non-nullable on SpanDetail — no conditional); old "trace: {full trace_id}" paragraph removed
 - Breadcrumb Link uses onClick stopPropagation to prevent Sheet drawer from intercepting click
 
+### Key Decisions (v1.4 continued — 21-02)
+
+- use(params) unwraps Promise<params> in client components per Next.js 16 docs — confirmed correct pattern
+- Orphaned spans (parent_span_id points to non-existent span_id) resolved to null bucket and treated as roots via byId Map validation
+- Flag badge hidden at count=0 on SpanTree rows; pill only appears when flags exist
+
 ### Key Decisions (v1.4 continued — 21-01)
 
 - trace_id displayed as 8-char truncation with full ID in title tooltip (vs 20-char for span_id in SpanTable)
@@ -98,6 +104,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-15 — 21-03 complete. Breadcrumb added to SpanDetailPanel: Traces › {trace_id[:8]} › {span_id[:8]}, clickable trace_id navigates to /traces/{full trace_id}; zero TS errors.
-Stopped at: 21-03-PLAN.md complete
-Next: Phase 21 remaining plans
+Last session: 2026-05-15 — 21-02 complete. SpanTree collapsible component + /traces/[trace_id] detail page: VS Code-style chevron tree, orphan-safe buildTree, flag badges, SpanDetailPanel drill-down; zero TS errors.
+Stopped at: 21-02-PLAN.md complete
+Next: Phase 21 plan 03 (or remaining plans)

@@ -20,7 +20,7 @@
 
 - [x] **UI-01**: Dashboard includes a Traces list page — shows all traces with span count, flag count, and time range; accessible from main navigation
 - [ ] **UI-02**: Trace detail page renders a collapsible span tree using `parent_span_id` — spans with no parent rendered at root level; children nested beneath parent; each span row shows flag type badges
-- [ ] **UI-03**: Span detail view includes a "Back to trace" link — navigates to the parent `GET /traces/{trace_id}` view with the span highlighted or scrolled into view
+- [x] **UI-03**: Span detail view includes a "Back to trace" link — navigates to the parent `GET /traces/{trace_id}` view with the span highlighted or scrolled into view
 
 ### TraceAnalyzer Foundation (TANA) — Worker Infrastructure
 
@@ -81,7 +81,7 @@
 | TRACE-02 | Phase 20 | Complete |
 | UI-01 | Phase 21 | Complete |
 | UI-02 | Phase 21 | Pending |
-| UI-03 | Phase 21 | Pending |
+| UI-03 | Phase 21 | Complete |
 
 **Coverage:**
 - v1.4 requirements: 12 total

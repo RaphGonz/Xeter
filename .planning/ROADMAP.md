@@ -150,4 +150,4 @@ Plans:
 | 18. Cleanup + BaseAnalyzer Refactor | v1.4 | 2/2 | Complete | 2026-05-14 |
 | 19. TraceAnalyzer Scaffold + DB Migration | v1.4 | 3/3 | Complete | 2026-05-14 |
 | 20. Trace API | 2/2 | Complete    | 2026-05-15 | - |
-| 21. Trace UI | 1/3 | In Progress|  | - |
+| 21. Trace UI | 2/3 | In Progress|  | - |

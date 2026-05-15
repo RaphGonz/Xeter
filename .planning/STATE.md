@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-05-12)
 ## Current Position
 
 Phase: 21 of 21 (Trace UI)
-Plan: 21-01 complete (1 of N plans in phase 21)
-Status: In progress — phase 21 plan 01 complete
-Last activity: 2026-05-15 — 21-01 traces list page: NavBar Spans+Traces links, TraceTable component, /traces route + auth layout, api.ts trace types and functions
+Plan: 21-03 complete (3 of N plans in phase 21)
+Status: In progress — phase 21 plan 03 complete
+Last activity: 2026-05-15 — 21-03 breadcrumb in SpanDetailPanel: Traces › {trace_id[:8]} › {span_id[:8]} with clickable trace_id link to /traces/{trace_id}
 
-Progress: [██░░░░░░░░] ~17%
+Progress: [███░░░░░░░] ~30%
 
 ## Accumulated Context
 
@@ -70,6 +70,11 @@ All decisions logged in PROJECT.md Key Decisions table.
 - Missing-auth tests retain get_session and get_ch_client overrides while removing verify_session_token — FastAPI resolves all deps concurrently before raising 401
 - No-spans-yet test exercises both PG calls (existence probe + trace-level flags fetch) via side_effect; asserts 200 and spans==[]
 
+### Key Decisions (v1.4 continued — 21-03)
+
+- SpanDetailPanel breadcrumb always shown (trace_id non-nullable on SpanDetail — no conditional); old "trace: {full trace_id}" paragraph removed
+- Breadcrumb Link uses onClick stopPropagation to prevent Sheet drawer from intercepting click
+
 ### Key Decisions (v1.4 continued — 21-01)
 
 - trace_id displayed as 8-char truncation with full ID in title tooltip (vs 20-char for span_id in SpanTable)
@@ -93,6 +98,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-15 — 21-01 complete. Traces list page: NavBar Spans+Traces links, TraceTable component, /traces auth layout, api.ts trace types/functions; zero TS errors.
-Stopped at: 21-01-PLAN.md complete
-Next: Phase 21 plan 02 — /traces/{trace_id} detail page (TraceDetailPanel or similar)
+Last session: 2026-05-15 — 21-03 complete. Breadcrumb added to SpanDetailPanel: Traces › {trace_id[:8]} › {span_id[:8]}, clickable trace_id navigates to /traces/{full trace_id}; zero TS errors.
+Stopped at: 21-03-PLAN.md complete
+Next: Phase 21 remaining plans

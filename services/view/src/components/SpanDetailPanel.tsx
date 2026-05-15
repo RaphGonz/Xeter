@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   Sheet,
@@ -250,6 +251,21 @@ export function SpanDetailPanel({ spanId, open, onClose }: SpanDetailPanelProps)
 
         {detail && !loading && (
           <div className="flex flex-col gap-5 p-4 pb-8">
+            {/* Breadcrumb — always shown when span has trace_id */}
+            <nav className="flex items-center gap-1 font-mono text-xs text-zinc-400 dark:text-zinc-500">
+              <span>Traces</span>
+              <span className="mx-0.5">›</span>
+              <Link
+                href={`/traces/${detail.trace_id}`}
+                className="hover:text-zinc-900 dark:hover:text-zinc-50 transition-colors"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {detail.trace_id.slice(0, 8)}
+              </Link>
+              <span className="mx-0.5">›</span>
+              <span>{detail.span_id.slice(0, 8)}</span>
+            </nav>
+
             {/* Header */}
             <SheetHeader className="p-0">
               <SheetTitle className="font-mono text-sm">
@@ -257,9 +273,6 @@ export function SpanDetailPanel({ spanId, open, onClose }: SpanDetailPanelProps)
                   ? `${detail.span_id.slice(0, 40)}…`
                   : detail.span_id}
               </SheetTitle>
-              <p className="font-mono text-xs text-zinc-400 dark:text-zinc-500">
-                trace: {detail.trace_id}
-              </p>
             </SheetHeader>
 
             {/* Flag section + diagnosis */}

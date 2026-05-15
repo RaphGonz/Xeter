@@ -107,7 +107,10 @@ Plans:
   1. GET /traces returns a list of traces for the authenticated tenant, each with trace_id, span count, and flag count
   2. GET /traces/{trace_id} returns the full trace: all spans in hierarchy order with their flags and scores; cross-tenant requests are rejected
   3. Both endpoints enforce tenant RLS — a request authenticated as tenant A cannot retrieve traces belonging to tenant B
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 20-01-PLAN.md — GET /traces + GET /traces/{trace_id} router implementation + wire into main.py (TRACE-01, TRACE-02)
+- [ ] 20-02-PLAN.md — Unit tests for both trace endpoints (TRACE-01, TRACE-02)
 
 ### Phase 21: Trace UI
 **Goal**: Add a Traces list page and a collapsible trace detail tree to the dashboard; enable back-navigation from span detail to parent trace
@@ -141,6 +144,6 @@ Plans:
 | 16. Auth Hardening | v1.3 | 5/5 | Complete | 2026-04-30 |
 | 17. GDPR Data Deletion | v1.3 | 1/1 | Complete | 2026-04-30 |
 | 18. Cleanup + BaseAnalyzer Refactor | v1.4 | 2/2 | Complete | 2026-05-14 |
-| 19. TraceAnalyzer Scaffold + DB Migration | 3/3 | Complete    | 2026-05-14 | - |
-| 20. Trace API | v1.4 | 0/TBD | Not started | - |
+| 19. TraceAnalyzer Scaffold + DB Migration | v1.4 | 3/3 | Complete | 2026-05-14 |
+| 20. Trace API | v1.4 | 0/2 | Not started | - |
 | 21. Trace UI | v1.4 | 0/TBD | Not started | - |

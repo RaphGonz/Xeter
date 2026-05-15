@@ -145,5 +145,5 @@ Plans:
 | 17. GDPR Data Deletion | v1.3 | 1/1 | Complete | 2026-04-30 |
 | 18. Cleanup + BaseAnalyzer Refactor | v1.4 | 2/2 | Complete | 2026-05-14 |
 | 19. TraceAnalyzer Scaffold + DB Migration | v1.4 | 3/3 | Complete | 2026-05-14 |
-| 20. Trace API | v1.4 | 0/2 | Not started | - |
+| 20. Trace API | 1/2 | In Progress|  | - |
 | 21. Trace UI | v1.4 | 0/TBD | Not started | - |

@@ -13,8 +13,8 @@
 
 ### Trace API (TRACE) — Presenter Endpoints
 
-- [ ] **TRACE-01**: Operator can list all traces for their tenant via `GET /traces` — response includes trace_id, span count, flag count, time_begin, time_end per trace; results ordered by time_begin descending; scoped to authenticated tenant via RLS
-- [ ] **TRACE-02**: Operator can fetch a full trace via `GET /traces/{trace_id}` — response includes all spans in the trace with their flags and scores, assembled from ClickHouse (spans) + PostgreSQL (flags, scores); returns 404 if trace_id not found or belongs to another tenant
+- [x] **TRACE-01**: Operator can list all traces for their tenant via `GET /traces` — response includes trace_id, span count, flag count, time_begin, time_end per trace; results ordered by time_begin descending; scoped to authenticated tenant via RLS
+- [x] **TRACE-02**: Operator can fetch a full trace via `GET /traces/{trace_id}` — response includes all spans in the trace with their flags and scores, assembled from ClickHouse (spans) + PostgreSQL (flags, scores); returns 404 if trace_id not found or belongs to another tenant
 
 ### Trace UI (UI) — Dashboard Views
 
@@ -77,8 +77,8 @@
 | TANA-02 | Phase 19 | Complete |
 | TANA-03 | Phase 19 | Complete |
 | TANA-04 | Phase 19 | Complete |
-| TRACE-01 | Phase 20 | Pending |
-| TRACE-02 | Phase 20 | Pending |
+| TRACE-01 | Phase 20 | Complete |
+| TRACE-02 | Phase 20 | Complete |
 | UI-01 | Phase 21 | Pending |
 | UI-02 | Phase 21 | Pending |
 | UI-03 | Phase 21 | Pending |

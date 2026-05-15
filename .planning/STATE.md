@@ -18,14 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-12)
 
 **Core value:** When a tool call fails, tell the developer whether it was the model, the architecture, or the prompt — and why.
-**Current focus:** Phase 19 — TraceAnalyzer Scaffold + DB Migration
+**Current focus:** Phase 20 — Trace API
 
 ## Current Position
 
-Phase: 19 of 21 (TraceAnalyzer Scaffold + DB Migration)
-Plan: 19-03 complete (all 3 plans of phase 19 complete)
-Status: In progress — phase 19 complete
-Last activity: 2026-05-14 — 19-03 trace buffer + flush-timeout wired into worker; 21 worker tests pass
+Phase: 20 of 21 (Trace API)
+Plan: 20-01 complete (1 of N plans in phase 20)
+Status: In progress — phase 20 plan 01 complete
+Last activity: 2026-05-15 — 20-01 GET /traces and GET /traces/{trace_id} implemented in presenter; routes verified
 
 Progress: [██░░░░░░░░] ~17%
 
@@ -56,6 +56,14 @@ All decisions logged in PROJECT.md Key Decisions table.
 - Flag.span_id: Mapped[str | None] with nullable=True in ORM model; write_flags() span_id param: str | None
 - psycopg2 None -> SQL NULL automatically; _INSERT_SQL string unchanged
 
+### Key Decisions (v1.4 continued — 20-01)
+
+- GET /traces and GET /traces/{trace_id} implemented with two-phase 404 (CH then PG): no-spans-yet returns 200 with spans=[]
+- Cross-tenant stealth 404 via WHERE tenant_id on both CH and PG — requesting tenant's filter makes other tenant data invisible
+- Trace-level flags (span_id IS NULL) on trace.flags; span-level flags inline on SpanInTrace
+- PG queries sequential on shared AsyncSession (concurrent execute causes IllegalStateChangeError)
+- TRACE-01 and TRACE-02 satisfied
+
 ### Key Decisions (v1.4 continued — 18-01)
 
 - verify_session_token deleted from diagnosticer/main.py — InternalApiKeyMiddleware is the sole auth boundary; JWT auth was dead code
@@ -72,6 +80,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-14 — 19-03 complete. Trace buffer + flush-timeout logic wired into worker main.py; process_span returns SpanData; 5 new trace buffer tests; 21/21 worker tests pass.
-Stopped at: 19-03-PLAN.md complete
-Next: Phase 20 or v1.5 checks (real TraceAnalyzer analysis)
+Last session: 2026-05-15 — 20-01 complete. GET /traces and GET /traces/{trace_id} implemented in presenter; two-phase 404, no-spans-yet 200, trace-level flag separation; both routes registered; TRACE-01/02 satisfied.
+Stopped at: 20-01-PLAN.md complete
+Next: Phase 20 remaining plans or v1.5 checks (real TraceAnalyzer analysis)

@@ -65,7 +65,7 @@ See `.planning/milestones/v1.3-ROADMAP.md` for full phase details.
 
 - [x] **Phase 18: Cleanup + BaseAnalyzer Refactor** — Remove v1.3 dead code and restructure analyzer hierarchy into generic root + BaseSpanAnalyzer + BaseTraceAnalyzer (completed 2026-05-14)
 - [x] **Phase 19: TraceAnalyzer Scaffold + DB Migration** — Wire TraceAnalyzer into worker with flush-timeout trigger; extend flags table schema for trace-level flags (completed 2026-05-14)
-- [ ] **Phase 20: Trace API** — Add GET /traces and GET /traces/{trace_id} endpoints with tenant RLS, assembling data from ClickHouse and PostgreSQL
+- [x] **Phase 20: Trace API** — Add GET /traces and GET /traces/{trace_id} endpoints with tenant RLS, assembling data from ClickHouse and PostgreSQL (completed 2026-05-15)
 - [ ] **Phase 21: Trace UI** — Add Traces list page and collapsible trace detail tree to dashboard; back-navigation from span detail
 
 ## Phase Details
@@ -145,5 +145,5 @@ Plans:
 | 17. GDPR Data Deletion | v1.3 | 1/1 | Complete | 2026-04-30 |
 | 18. Cleanup + BaseAnalyzer Refactor | v1.4 | 2/2 | Complete | 2026-05-14 |
 | 19. TraceAnalyzer Scaffold + DB Migration | v1.4 | 3/3 | Complete | 2026-05-14 |
-| 20. Trace API | 1/2 | In Progress|  | - |
+| 20. Trace API | 2/2 | Complete   | 2026-05-15 | - |
 | 21. Trace UI | v1.4 | 0/TBD | Not started | - |

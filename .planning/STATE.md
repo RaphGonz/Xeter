@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-05-12)
 ## Current Position
 
 Phase: 20 of 21 (Trace API)
-Plan: 20-01 complete (1 of N plans in phase 20)
-Status: In progress — phase 20 plan 01 complete
-Last activity: 2026-05-15 — 20-01 GET /traces and GET /traces/{trace_id} implemented in presenter; routes verified
+Plan: 20-02 complete (2 of N plans in phase 20)
+Status: In progress — phase 20 plan 02 complete
+Last activity: 2026-05-15 — 20-02 unit tests for GET /traces and GET /traces/{trace_id}; 14 tests pass, 51 presenter tests total
 
 Progress: [██░░░░░░░░] ~17%
 
@@ -64,6 +64,12 @@ All decisions logged in PROJECT.md Key Decisions table.
 - PG queries sequential on shared AsyncSession (concurrent execute causes IllegalStateChangeError)
 - TRACE-01 and TRACE-02 satisfied
 
+### Key Decisions (v1.4 continued — 20-02)
+
+- CH side_effect list simulates asyncio.gather two-query pattern in tests (list + count calls in order)
+- Missing-auth tests retain get_session and get_ch_client overrides while removing verify_session_token — FastAPI resolves all deps concurrently before raising 401
+- No-spans-yet test exercises both PG calls (existence probe + trace-level flags fetch) via side_effect; asserts 200 and spans==[]
+
 ### Key Decisions (v1.4 continued — 18-01)
 
 - verify_session_token deleted from diagnosticer/main.py — InternalApiKeyMiddleware is the sole auth boundary; JWT auth was dead code
@@ -80,6 +86,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-15 — 20-01 complete. GET /traces and GET /traces/{trace_id} implemented in presenter; two-phase 404, no-spans-yet 200, trace-level flag separation; both routes registered; TRACE-01/02 satisfied.
-Stopped at: 20-01-PLAN.md complete
+Last session: 2026-05-15 — 20-02 complete. 14 unit tests for GET /traces and GET /traces/{trace_id}: all pass, no regressions; 51 presenter tests total.
+Stopped at: 20-02-PLAN.md complete
 Next: Phase 20 remaining plans or v1.5 checks (real TraceAnalyzer analysis)

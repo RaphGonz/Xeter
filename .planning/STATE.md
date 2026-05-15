@@ -18,14 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-12)
 
 **Core value:** When a tool call fails, tell the developer whether it was the model, the architecture, or the prompt — and why.
-**Current focus:** Phase 20 — Trace API
+**Current focus:** Phase 21 — Trace UI
 
 ## Current Position
 
-Phase: 20 of 21 (Trace API)
-Plan: 20-02 complete (2 of N plans in phase 20)
-Status: In progress — phase 20 plan 02 complete
-Last activity: 2026-05-15 — 20-02 unit tests for GET /traces and GET /traces/{trace_id}; 14 tests pass, 51 presenter tests total
+Phase: 21 of 21 (Trace UI)
+Plan: 21-01 complete (1 of N plans in phase 21)
+Status: In progress — phase 21 plan 01 complete
+Last activity: 2026-05-15 — 21-01 traces list page: NavBar Spans+Traces links, TraceTable component, /traces route + auth layout, api.ts trace types and functions
 
 Progress: [██░░░░░░░░] ~17%
 
@@ -70,6 +70,13 @@ All decisions logged in PROJECT.md Key Decisions table.
 - Missing-auth tests retain get_session and get_ch_client overrides while removing verify_session_token — FastAPI resolves all deps concurrently before raising 401
 - No-spans-yet test exercises both PG calls (existence probe + trace-level flags fetch) via side_effect; asserts 200 and spans==[]
 
+### Key Decisions (v1.4 continued — 21-01)
+
+- trace_id displayed as 8-char truncation with full ID in title tooltip (vs 20-char for span_id in SpanTable)
+- NavBar now has explicit Spans link alongside new Traces link; brand "Xeter" still points to /spans
+- flag_count=0 renders em-dash instead of "0 flags" badge for visual clarity
+- TracesLayout mirrors SpansLayout exactly — hydration gate + useEffect redirect pattern
+
 ### Key Decisions (v1.4 continued — 18-01)
 
 - verify_session_token deleted from diagnosticer/main.py — InternalApiKeyMiddleware is the sole auth boundary; JWT auth was dead code
@@ -86,6 +93,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-15 — 20-02 complete. 14 unit tests for GET /traces and GET /traces/{trace_id}: all pass, no regressions; 51 presenter tests total.
-Stopped at: 20-02-PLAN.md complete
-Next: Phase 20 remaining plans or v1.5 checks (real TraceAnalyzer analysis)
+Last session: 2026-05-15 — 21-01 complete. Traces list page: NavBar Spans+Traces links, TraceTable component, /traces auth layout, api.ts trace types/functions; zero TS errors.
+Stopped at: 21-01-PLAN.md complete
+Next: Phase 21 plan 02 — /traces/{trace_id} detail page (TraceDetailPanel or similar)

@@ -18,7 +18,7 @@
 
 ### Trace UI (UI) — Dashboard Views
 
-- [ ] **UI-01**: Dashboard includes a Traces list page — shows all traces with span count, flag count, and time range; accessible from main navigation
+- [x] **UI-01**: Dashboard includes a Traces list page — shows all traces with span count, flag count, and time range; accessible from main navigation
 - [ ] **UI-02**: Trace detail page renders a collapsible span tree using `parent_span_id` — spans with no parent rendered at root level; children nested beneath parent; each span row shows flag type badges
 - [ ] **UI-03**: Span detail view includes a "Back to trace" link — navigates to the parent `GET /traces/{trace_id}` view with the span highlighted or scrolled into view
 
@@ -79,7 +79,7 @@
 | TANA-04 | Phase 19 | Complete |
 | TRACE-01 | Phase 20 | Complete |
 | TRACE-02 | Phase 20 | Complete |
-| UI-01 | Phase 21 | Pending |
+| UI-01 | Phase 21 | Complete |
 | UI-02 | Phase 21 | Pending |
 | UI-03 | Phase 21 | Pending |
 

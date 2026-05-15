@@ -94,3 +94,27 @@
 
 ---
 
+
+## v1.4 Trace Hierarchy + TraceAnalyzer Foundation (Shipped: 2026-05-15)
+
+**Phases completed:** 4 phases (Phases 18–21), 11 plans
+**Timeline:** 2026-05-14 → 2026-05-15 (2 days)
+**Code:** 57 files changed (+6,772 / -129 lines)
+
+**Key accomplishments:**
+- Eliminated v1.3 tech debt: dead `verify_session_token()` removed from Diagnosticer, stale "NO RLS" comments corrected, all `os.environ.get()` defaults annotated `[safe-default]`/`[must-set-in-prod]` across 9 service files
+- Refactored monolithic `BaseAnalyzer` into 3-class hierarchy: generic root + `BaseSpanAnalyzer` + `BaseTraceAnalyzer`; `ToolCallAnalyzer` re-parented — extensible contract for future trace-level checks
+- `TraceAnalyzer(BaseTraceAnalyzer)` scaffold wired into worker with flush-timeout trigger (WORKER_TRACE_FLUSH_TIMEOUT_S, default 30s); `flags.span_id` made nullable via migration 005 to support trace-level flags
+- `GET /traces` and `GET /traces/{trace_id}` FastAPI endpoints with two-phase 404 logic (CH then PG), no-spans-yet 200 case, and belt-and-suspenders tenant isolation; 14-test suite passing
+- Traces list page (TraceTable + auth-guarded layout) and collapsible SpanTree trace detail view shipped in Next.js dashboard; breadcrumb with `?span=` URL deep-link auto-opens SpanDetailPanel on back-navigation; human browser tests verified
+
+**Tech debt (no blockers):**
+- `useSearchParams()` in `traces/[trace_id]/page.tsx` runs without explicit Suspense boundary — acceptable because `use(params)` makes page dynamically rendered; human verification confirmed correct in production build
+
+**Archive:**
+- Roadmap: `.planning/milestones/v1.4-ROADMAP.md`
+- Requirements: `.planning/milestones/v1.4-REQUIREMENTS.md`
+- Audit: `.planning/milestones/v1.4-MILESTONE-AUDIT.md`
+
+---
+

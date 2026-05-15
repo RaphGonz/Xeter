@@ -1,115 +1,40 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
+milestone: v1.4
 milestone_name: Trace Hierarchy + TraceAnalyzer Foundation
-status: unknown
-last_updated: "2026-05-15T17:55:21.535Z"
+status: complete
+last_updated: "2026-05-15T19:22:21.131Z"
 progress:
-  total_phases: 11
-  completed_phases: 11
-  total_plans: 31
-  completed_plans: 31
+  total_phases: 4
+  completed_phases: 4
+  total_plans: 11
+  completed_plans: 11
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-05-12)
+See: .planning/PROJECT.md (updated 2026-05-15)
 
 **Core value:** When a tool call fails, tell the developer whether it was the model, the architecture, or the prompt — and why.
-**Current focus:** Phase 21 — Trace UI
+**Current focus:** Planning next milestone (v1.5)
 
 ## Current Position
 
-Phase: 21 of 21 (Trace UI)
-Plan: 21-04 complete (4 of N plans in phase 21)
-Status: In progress — phase 21 plan 04 complete
-Last activity: 2026-05-15 — 21-04 span URL deep-link: breadcrumb href gains ?span param; trace detail page reads ?span and initialises selectedSpanId, auto-opening SpanDetailPanel on back-navigation (UI-03 closed)
-
-Progress: [███░░░░░░░] ~30%
+Phase: 21 of 21 — complete
+Status: Milestone v1.4 shipped 2026-05-15
+Last activity: 2026-05-15 — v1.4 complete (phases 18–21, 11 plans); archived to .planning/milestones/
 
 ## Accumulated Context
 
 All decisions logged in PROJECT.md Key Decisions table.
 
-### Key Decisions (v1.4)
-
-- Option B hierarchy: BaseAnalyzer (generic root) → BaseSpanAnalyzer + BaseTraceAnalyzer; ToolCallAnalyzer moves to BaseSpanAnalyzer
-- TraceAnalyzer scaffold in v1.4 (no checks yet); actual checks land in v1.5
-- Worker flush timeout triggers TraceAnalyzer — configurable window (WORKER_TRACE_FLUSH_TIMEOUT_S, default 30s), not per-span
-- flags table extended: span_id nullable, trace_id non-nullable — supports both span-level and trace-level flags
-- v1.5 will cover 20 new checks across B/C/D/E/F/G/H categories (see documentation/silent_failures_ai_agents.md)
-- BaseAnalyzer root keeps name abstract property but no analyze() — each subclass defines its own analyze() signature (18-02)
-- BaseTraceAnalyzer added as stub in 18-02; Phase 19 provides concrete TraceAnalyzer implementation
-- TraceAnalyzer scaffold (19-01): analyze() returns [] unconditionally; name="trace_analyzer"; v1.5 adds B/C/D/E/F/G/H checks
-
-### Key Decisions (v1.4 continued — 19-03)
-
-- process_span() returns SpanData (Option A): minimal extension; existing callers ignore return value
-- Flush loop evicts trace from buffer unconditionally (finally block) — prevents unbounded buffer growth on TraceAnalyzer error
-- WORKER_TRACE_FLUSH_TIMEOUT_S default 30s; configurable per deployment
-
-### Key Decisions (v1.4 continued — 19-02)
-
-- Migration 005: span_id DROP NOT NULL (trace-level flags have no single span); trace_id backfill is a no-op (already NOT NULL since migration 001)
-- Flag.span_id: Mapped[str | None] with nullable=True in ORM model; write_flags() span_id param: str | None
-- psycopg2 None -> SQL NULL automatically; _INSERT_SQL string unchanged
-
-### Key Decisions (v1.4 continued — 20-01)
-
-- GET /traces and GET /traces/{trace_id} implemented with two-phase 404 (CH then PG): no-spans-yet returns 200 with spans=[]
-- Cross-tenant stealth 404 via WHERE tenant_id on both CH and PG — requesting tenant's filter makes other tenant data invisible
-- Trace-level flags (span_id IS NULL) on trace.flags; span-level flags inline on SpanInTrace
-- PG queries sequential on shared AsyncSession (concurrent execute causes IllegalStateChangeError)
-- TRACE-01 and TRACE-02 satisfied
-
-### Key Decisions (v1.4 continued — 20-02)
-
-- CH side_effect list simulates asyncio.gather two-query pattern in tests (list + count calls in order)
-- Missing-auth tests retain get_session and get_ch_client overrides while removing verify_session_token — FastAPI resolves all deps concurrently before raising 401
-- No-spans-yet test exercises both PG calls (existence probe + trace-level flags fetch) via side_effect; asserts 200 and spans==[]
-
-### Key Decisions (v1.4 continued — 21-04)
-
-- useState(spanFromUrl) initialiser used for selectedSpanId — synchronous param read makes useEffect unnecessary for span deep-link auto-open
-- No Suspense boundary added — page is already dynamically rendered via use(params); useSearchParams is safe without extra wrapper
-- No scrollIntoView/ref logic — auto-open via open={selectedSpanId !== null} is sufficient
-
-### Key Decisions (v1.4 continued — 21-03)
-
-- SpanDetailPanel breadcrumb always shown (trace_id non-nullable on SpanDetail — no conditional); old "trace: {full trace_id}" paragraph removed
-- Breadcrumb Link uses onClick stopPropagation to prevent Sheet drawer from intercepting click
-
-### Key Decisions (v1.4 continued — 21-02)
-
-- use(params) unwraps Promise<params> in client components per Next.js 16 docs — confirmed correct pattern
-- Orphaned spans (parent_span_id points to non-existent span_id) resolved to null bucket and treated as roots via byId Map validation
-- Flag badge hidden at count=0 on SpanTree rows; pill only appears when flags exist
-
-### Key Decisions (v1.4 continued — 21-01)
-
-- trace_id displayed as 8-char truncation with full ID in title tooltip (vs 20-char for span_id in SpanTable)
-- NavBar now has explicit Spans link alongside new Traces link; brand "Xeter" still points to /spans
-- flag_count=0 renders em-dash instead of "0 flags" badge for visual clarity
-- TracesLayout mirrors SpansLayout exactly — hydration gate + useEffect redirect pattern
-
-### Key Decisions (v1.4 continued — 18-01)
-
-- verify_session_token deleted from diagnosticer/main.py — InternalApiKeyMiddleware is the sole auth boundary; JWT auth was dead code
-- Env var safety annotation pattern established: [safe-default] and [must-set-in-prod] inline tags on all os.environ.get() calls across 9 service files
-- span_scores belt-and-suspenders (RLS + explicit WHERE) confirmed intentional; stale "NO RLS" comments corrected
-
-### Pending Todos
-
-None — audit env var defaults (2026-04-24) resolved by CLEAN-03 in 18-01
-
-### Blockers/Concerns
+### Open Blockers
 
 None.
 
 ## Session Continuity
 
-Last session: 2026-05-15 — 21-04 complete. Span URL deep-link: SpanDetailPanel breadcrumb href gains ?span param; trace detail page reads useSearchParams().get('span') and initialises selectedSpanId from it, auto-opening panel on back-navigation. UI-03 fully satisfied.
-Stopped at: 21-04-PLAN.md complete
-Next: Phase 21 plan 05 (or remaining plans)
+Last session: 2026-05-15 — v1.4 milestone complete and archived.
+Next: `/gsd:new-milestone` to plan v1.5

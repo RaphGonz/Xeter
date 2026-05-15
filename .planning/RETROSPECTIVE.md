@@ -193,6 +193,53 @@
 
 ---
 
+## Milestone: v1.4 — Trace Hierarchy + TraceAnalyzer Foundation
+
+**Shipped:** 2026-05-15
+**Phases:** 4 (Phases 18–21) | **Plans:** 11 | **Timeline:** 2 days (2026-05-14 → 2026-05-15)
+
+### What Was Built
+
+- Phase 18 (Cleanup + BaseAnalyzer Refactor): Deleted dead `verify_session_token()` from Diagnosticer (InternalApiKeyMiddleware is sole auth boundary); corrected stale "NO RLS" comments post-migration-004; annotated all `os.environ.get()` defaults with `[safe-default]`/`[must-set-in-prod]` across 9 files; split `BaseAnalyzer` into 3-class hierarchy (generic root + `BaseSpanAnalyzer` + `BaseTraceAnalyzer`); `ToolCallAnalyzer` re-parented
+- Phase 19 (TraceAnalyzer Scaffold + DB Migration): Concrete `TraceAnalyzer(BaseTraceAnalyzer)` scaffold with stub `analyze() → []`; Alembic migration 005 (flags.span_id nullable); worker trace buffer accumulates SpanData by trace_id; flush-timeout invokes TraceAnalyzer after WORKER_TRACE_FLUSH_TIMEOUT_S inactivity
+- Phase 20 (Trace API): `GET /traces` (concurrent CH aggregation + asyncio.gather) and `GET /traces/{trace_id}` (two-phase 404, no-spans-yet 200, trace-level flags via span_id IS NULL); 14-test suite; 51 presenter tests passing
+- Phase 21 (Trace UI): Traces list page + auth-guarded layout; NavBar Spans + Traces links; collapsible SpanTree with buildTree O(n) from parent_span_id; SpanDetailPanel breadcrumb with `?span=` URL deep-link; useState(spanFromUrl) initialiser auto-opens panel on back-navigation; human browser tests verified
+
+### What Worked
+
+- **Clearing v1.3 tech debt first (Phase 18)**: starting the milestone with cleanup instead of new features left the codebase in a clean state before adding complexity; env var annotations are embedded in code as future-proof documentation
+- **Scaffold-first for TraceAnalyzer**: shipping a stub `analyze() → []` with full infrastructure (flush-timeout, nullable span_id, buffer eviction) meant the API and UI could be built without any trace-level flag data — v1.5 can add real checks with zero rearchitecting
+- **Two-phase 404 for trace detail**: the CH-then-PG fallback pattern correctly handles the race where flags may exist before ClickHouse has flushed spans — discovered during planning, not during debugging
+- **useState initialiser for span deep-link**: using `useState(spanFromUrl)` instead of a `useEffect` was the right call — synchronous, no re-render cycle, clean
+- **Human browser verification for UI-03 deep-link**: caught that the disputed Suspense issue was a non-issue in practice — better than shipping with an open audit flag
+
+### What Was Inefficient
+
+- **Archived roadmap plan checkboxes wrong ([ ] instead of [x])**: CLI's milestone-complete command archived the ROADMAP.md snapshot before plans were marked complete in the roadmap (plans section checkboxes were still `[ ]` from the template); required manual post-archive fix — CLI should mark plans complete before archiving
+- **STATE.md phase/plan counts wrong in CLI**: gsd-tools counted cumulative phases (11) and plans (31) instead of milestone-scoped (4 / 11); required manual correction of STATE.md and MILESTONES.md
+- **19-01-SUMMARY.md frontmatter requirements-completed field was empty despite TANA-02 being verified**: doc gap noted in audit; requirements_completed field not populated at plan write time; low-cost fix is to fill this field at plan completion
+
+### Patterns Established
+
+- **Env var safety annotation pattern**: every `os.environ.get()` in service files now carries `[safe-default]` or `[must-set-in-prod]` inline comment — production deployment checklist embedded in the code
+- **Trace-level flag write**: `write_flags(span_id=None, trace_id=..., ...)` — span_id=None denotes trace-level; span-level writes unchanged
+- **Buffer eviction finally block**: trace evicted from both `trace_buffer` and `trace_last_seen` unconditionally in finally, even on TraceAnalyzer error — prevents unbounded growth
+- **SpanTree buildTree pattern**: `Map<string|null, SpanInTrace[]>` bucketing by parent_span_id (null = root) in O(n) — reusable pattern for any tree UI component
+
+### Key Lessons
+
+- **The audit file is worth reading before milestone-complete**: the v1.4 audit flagged the Suspense boundary concern before close; human browser verification resolved it definitively — don't proceed blind on audit tech_debt items, verify them
+- **Infrastructure before analysis**: scaffolding TraceAnalyzer with an empty analyze() was the correct v1.4 decision — the buffer, schema, API, and UI are all load-bearing; real checks are additive
+- **CLI milestone archive should mark phase plans complete**: the current CLI archives the roadmap before updating plan status, leaving checkboxes in wrong state in the archive
+
+### Cost Observations
+
+- 2 days, 4 phases, 11 plans, 42 commits — fastest milestone by day count
+- Average plan: ~11 min (range 5–18 min)
+- Phase 18-01 (env var audit) was the longest at 18 min; Phase 21-03 (breadcrumb) was the shortest at 5 min
+
+---
+
 ## Cross-Milestone Trends
 
 | Milestone | Phases | Plans | Days | LOC | Key Pattern |
@@ -201,3 +248,4 @@
 | v1.1 Analyser Accuracy | 4 | 10 | 12 | ~11,148 Py | One method at a time, calibrate before next |
 | v1.2 Diagnosticer | 3 | 8 | 4 | ~16,017 (+4,869) | Fail-clean service activation; verification plan as integration testbed |
 | v1.3 Security Hardening | 4 | 12 | 3 | ~14,500 Py + 3,000 TS | Pre-flight audit before migration; hard-fail secrets; Route Handler cookie boundary |
+| v1.4 Trace Hierarchy | 4 | 11 | 2 | +6,772 / -129 lines | Cleanup-first; scaffold-then-checks; URL-driven UI state |

@@ -4,7 +4,7 @@
 
 Xeter is a B2B SaaS observability platform that debugs AI agent tool-calling failures. It ingests OpenTelemetry spans from instrumented agent code via a Python SDK, applies heuristic analysis (vector similarity between prompt and tool fields) to flag anomalous tool calls, and exposes a dashboard where developers can see what went wrong and why. Unlike existing tools that show traces, Xeter isolates root cause — model, architecture, or prompt — via on-demand LLM diagnosis.
 
-v1.0 shipped: full pipeline from SDK to dashboard running locally via Docker Compose. v1.1 shipped: all four analyser check methods rewritten with research-backed implementations. v1.2 shipped: LLM-powered Diagnosticer active end-to-end. v1.3 shipped: full security hardening — tenant isolation, auth hardening, secrets hygiene, and GDPR deletion. v1.4 in progress: trace hierarchy (API + UI), TraceAnalyzer foundation (BaseSpanAnalyzer/BaseTraceAnalyzer refactor), and v1.3 tech debt cleanup.
+v1.0 shipped: full pipeline from SDK to dashboard running locally via Docker Compose. v1.1 shipped: all four analyser check methods rewritten with research-backed implementations. v1.2 shipped: LLM-powered Diagnosticer active end-to-end. v1.3 shipped: full security hardening — tenant isolation, auth hardening, secrets hygiene, and GDPR deletion. v1.4 shipped: trace hierarchy (GET /traces + GET /traces/{trace_id} API + collapsible trace UI), TraceAnalyzer foundation (3-class analyzer hierarchy, flush-timeout worker wiring, flags.span_id nullable), and v1.3 tech debt cleanup.
 
 ## Core Value
 
@@ -49,23 +49,13 @@ When a tool call fails, tell the developer whether it was the model, the archite
 - ✓ JWT_SECRET rotation runbook (docs/JWT_ROTATION_RUNBOOK.md) covering dual-secret window and service restart sequence — v1.3
 - ✓ INTERNAL_API_KEY hard-fail + InternalApiKeyMiddleware on Diagnosticer; service trust boundary established — v1.3
 - ✓ GDPR Art. 17: delete_tenant.py dry-run + --confirm, covering ClickHouse / PostgreSQL / S3 / Redis — v1.3
+- ✓ Dead `verify_session_token()` removed; stale "NO RLS" comments corrected; all `os.environ.get()` defaults annotated `[safe-default]`/`[must-set-in-prod]` — v1.4
+- ✓ `BaseAnalyzer` refactored into 3-class hierarchy: generic root + `BaseSpanAnalyzer` + `BaseTraceAnalyzer`; `ToolCallAnalyzer` re-parented to `BaseSpanAnalyzer` — v1.4
+- ✓ `TraceAnalyzer(BaseTraceAnalyzer)` scaffold wired into worker with flush-timeout trigger (WORKER_TRACE_FLUSH_TIMEOUT_S, default 30s); `flags.span_id` made nullable via migration 005 for trace-level flags — v1.4
+- ✓ `GET /traces` and `GET /traces/{trace_id}` with two-phase 404, no-spans-yet 200, and belt-and-suspenders tenant isolation (CH + PG); 14-test suite — v1.4
+- ✓ Traces list page (TraceTable), collapsible SpanTree trace detail, breadcrumb with `?span=` URL deep-link auto-opening SpanDetailPanel on back-navigation — v1.4
 
 ### Active
-
-<!-- v1.4 scope -->
-
-- [ ] CLEAN-01: Dead `verify_session_token()` removed from `diagnosticer/main.py`
-- [ ] CLEAN-02: Stale "NO PostgreSQL RLS" comments corrected in `spans.py`
-- [ ] CLEAN-03: Env var defaults audit completed
-- [ ] TRACE-01: `GET /traces` endpoint — spans grouped by trace_id, with flag/span counts
-- [ ] TRACE-02: `GET /traces/{trace_id}` endpoint — full trace with flags and scores
-- [ ] UI-01: Traces list page in dashboard
-- [ ] UI-02: Trace detail page with collapsible span tree (parent_span_id hierarchy, flag badges)
-- [ ] UI-03: Span detail navigation back to parent trace
-- [ ] TANA-01: BaseAnalyzer refactored into generic root + BaseSpanAnalyzer + BaseTraceAnalyzer; ToolCallAnalyzer updated
-- [ ] TANA-02: TraceAnalyzer(BaseTraceAnalyzer) scaffold wired into worker
-- [ ] TANA-03: Worker accumulates spans by trace_id; triggers TraceAnalyzer via flush timeout
-- [ ] TANA-04: flags table extended — span_id nullable, trace_id non-nullable; migration covers existing rows
 
 <!-- v1.5 candidates -->
 
@@ -74,6 +64,7 @@ When a tool call fails, tell the developer whether it was the model, the archite
 - [ ] Rate limiting on Analyser ingestion — per-API-key sliding window, Redis, 429 with Retry-After (OPS-F01)
 - [ ] TypeScript/Node.js SDK for instrumenting JS-based agents (SDK-F01)
 - [ ] New analyser checks: B1–B4, C3–C4, D1–D3, D5, E3, F1–F2, F4–F5, G1–G2, H2 (see documentation/silent_failures_ai_agents.md)
+- [ ] TraceAnalyzer real checks — implement actual B/C/D/E/F/G/H category detections in `trace_analyzer.py`
 
 ### Out of Scope
 
@@ -92,8 +83,8 @@ When a tool call fails, tell the developer whether it was the model, the archite
 
 ## Context
 
-- v1.0 shipped 2026-04-04, v1.1 shipped 2026-04-18, v1.2 shipped 2026-04-25, v1.3 shipped 2026-05-02: full pipeline + LLM diagnosis + security hardening running locally via Docker Compose
-- ~14,500 LOC Python + 3,000 TypeScript; flag types: `wrong_tool_called`, `wrong_tool_args`, `no_tool_used`, `unnecessary_tool_call`, `tool_not_available`, `parsing_error`, `response_anomaly`
+- v1.0 shipped 2026-04-04, v1.1 shipped 2026-04-18, v1.2 shipped 2026-04-25, v1.3 shipped 2026-05-02, v1.4 shipped 2026-05-15: full pipeline + LLM diagnosis + security hardening + trace hierarchy running locally via Docker Compose
+- ~14,500 LOC Python + ~3,700 TypeScript (est.); flag types: `wrong_tool_called`, `wrong_tool_args`, `no_tool_used`, `unnecessary_tool_call`, `tool_not_available`, `parsing_error`, `response_anomaly`
 - Tech stack: Python 3.12, FastAPI, ClickHouse, PostgreSQL (RLS + CHECK constraints), Redis (requirepass), MinIO (S3, private ACL), Next.js 15, sentence-transformers (all-MiniLM-L6-v2), Anthropic/OpenAI/Ollama (Diagnosticer)
 - Architecture: Analyser (ingestion) → Redis queue → Worker (embedding+flagging) → Presenter (read/auth/diagnosis trigger) → Diagnosticer (LLM root cause) → View (Next.js)
 - Calibration: precision target 80%; `wrong_tool_called` is binary (no threshold sweep); full-suite mean precision ≥ 95%
@@ -142,8 +133,14 @@ When a tool call fails, tell the developer whether it was the model, the archite
 | SET LOCAL for RLS in score_writer | No BYPASSRLS role; app.current_tenant_id SET LOCAL in explicit transaction mirrors flag_writer.py | ✓ Good — consistent writer pattern, simpler than a BYPASSRLS grant |
 | httpOnly cookie via Next.js Route Handler | Presenter rewrites strip upstream Set-Cookie; Route Handler owns cookie lifecycle cleanly | ✓ Good — no Presenter direct cookie writes, clean boundary |
 | CHECK constraints with NOT VALID + pre-flight audit | Avoids ACCESS EXCLUSIVE lock; pre-flight script exits non-zero if violating rows exist before VALIDATE | ✓ Good — zero-downtime constraint migration pattern, reusable |
-| INTERNAL_API_KEY middleware + hard-fail startup | Explicit service trust boundary; dead verify_session_token in Diagnosticer is tech debt (never wired to Depends()) | ⚠ Revisit — remove dead verify_session_token before v1.4 |
+| INTERNAL_API_KEY middleware + hard-fail startup | Explicit service trust boundary; dead verify_session_token in Diagnosticer is tech debt (never wired to Depends()) | ✓ Good — dead verify_session_token removed in Phase 18 (v1.4) |
 | GDPR Redis flush as documented procedure | analysis_queue is global; automated LREM unsafe (FLUSHDB prohibited); runbook covers operator steps | ✓ Good — accepted v1.3 tradeoff, documented in GDPR_DELETION_RUNBOOK.md |
+| BaseAnalyzer 3-class hierarchy (generic root + BaseSpanAnalyzer + BaseTraceAnalyzer) | Span-level and trace-level analyzers need different analyze() signatures; generic root holds shared helpers | ✓ Good — clean abstraction; ToolCallAnalyzer re-parents with zero behavior change |
+| TraceAnalyzer scaffold only in v1.4 (stub analyze() → []) | Prioritise infrastructure (flush-timeout, nullable span_id, API, UI) before implementing trace-level checks | ✓ Good — v1.5 can add real checks without rearchitecting |
+| Worker flush timeout (WORKER_TRACE_FLUSH_TIMEOUT_S, 30s default) | Flush per-span would be too aggressive for short traces; timeout-based batching matches real agent trace patterns | ✓ Good — configurable; inner finally ensures buffer cleanup even on error |
+| Two-phase 404 for GET /traces/{trace_id} (CH then PG fallback) | Preserves no-spans-yet 200 case where flags may exist before spans finish flushing | ✓ Good — cross-tenant stealth 404 via WHERE tenant_id on both stores |
+| PG queries sequential on shared AsyncSession in trace router | concurrent execute() on single AsyncSession causes IllegalStateChangeError (same constraint as spans router) | ✓ Good — consistent pattern with spans.py |
+| useState(spanFromUrl) initialiser for span URL deep-link | useSearchParams() is available synchronously at render time; a useEffect would add unnecessary re-render cycle | ✓ Good — no Suspense boundary needed because use(params) already makes page dynamically rendered |
 
 ---
-*Last updated: 2026-05-02 after v1.3 Security Hardening milestone*
+*Last updated: 2026-05-15 after v1.4 Trace Hierarchy + TraceAnalyzer Foundation milestone*

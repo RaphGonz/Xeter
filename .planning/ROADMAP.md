@@ -120,7 +120,11 @@ Plans:
   1. Dashboard has a Traces list page showing all traces for the tenant with span and flag counts
   2. Trace detail page renders spans as a collapsible parent/child tree using parent_span_id, with flag badges on each span
   3. From any span detail view, the user can navigate back to the parent trace detail page
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 21-01-PLAN.md — Trace API types + listTraces/getTraceDetail functions + TraceTable component + /traces page + layout + NavBar link (UI-01)
+- [ ] 21-02-PLAN.md — SpanTree collapsible component + /traces/[trace_id] detail page (UI-02)
+- [ ] 21-03-PLAN.md — Breadcrumb on SpanDetailPanel for back-navigation to trace (UI-03)
 
 ## Progress
 
@@ -146,4 +150,4 @@ Plans:
 | 18. Cleanup + BaseAnalyzer Refactor | v1.4 | 2/2 | Complete | 2026-05-14 |
 | 19. TraceAnalyzer Scaffold + DB Migration | v1.4 | 3/3 | Complete | 2026-05-14 |
 | 20. Trace API | 2/2 | Complete    | 2026-05-15 | - |
-| 21. Trace UI | v1.4 | 0/TBD | Not started | - |
+| 21. Trace UI | v1.4 | 0/3 | Not started | - |

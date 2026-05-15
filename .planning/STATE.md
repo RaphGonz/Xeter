@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-05-12)
 ## Current Position
 
 Phase: 21 of 21 (Trace UI)
-Plan: 21-03 complete (3 of N plans in phase 21)
-Status: In progress — phase 21 plan 03 complete
-Last activity: 2026-05-15 — 21-03 breadcrumb in SpanDetailPanel: Traces › {trace_id[:8]} › {span_id[:8]} with clickable trace_id link to /traces/{trace_id}
+Plan: 21-04 complete (4 of N plans in phase 21)
+Status: In progress — phase 21 plan 04 complete
+Last activity: 2026-05-15 — 21-04 span URL deep-link: breadcrumb href gains ?span param; trace detail page reads ?span and initialises selectedSpanId, auto-opening SpanDetailPanel on back-navigation (UI-03 closed)
 
 Progress: [███░░░░░░░] ~30%
 
@@ -70,6 +70,12 @@ All decisions logged in PROJECT.md Key Decisions table.
 - Missing-auth tests retain get_session and get_ch_client overrides while removing verify_session_token — FastAPI resolves all deps concurrently before raising 401
 - No-spans-yet test exercises both PG calls (existence probe + trace-level flags fetch) via side_effect; asserts 200 and spans==[]
 
+### Key Decisions (v1.4 continued — 21-04)
+
+- useState(spanFromUrl) initialiser used for selectedSpanId — synchronous param read makes useEffect unnecessary for span deep-link auto-open
+- No Suspense boundary added — page is already dynamically rendered via use(params); useSearchParams is safe without extra wrapper
+- No scrollIntoView/ref logic — auto-open via open={selectedSpanId !== null} is sufficient
+
 ### Key Decisions (v1.4 continued — 21-03)
 
 - SpanDetailPanel breadcrumb always shown (trace_id non-nullable on SpanDetail — no conditional); old "trace: {full trace_id}" paragraph removed
@@ -104,6 +110,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-15 — 21-02 complete. SpanTree collapsible component + /traces/[trace_id] detail page: VS Code-style chevron tree, orphan-safe buildTree, flag badges, SpanDetailPanel drill-down; zero TS errors.
-Stopped at: 21-02-PLAN.md complete
-Next: Phase 21 plan 03 (or remaining plans)
+Last session: 2026-05-15 — 21-04 complete. Span URL deep-link: SpanDetailPanel breadcrumb href gains ?span param; trace detail page reads useSearchParams().get('span') and initialises selectedSpanId from it, auto-opening panel on back-navigation. UI-03 fully satisfied.
+Stopped at: 21-04-PLAN.md complete
+Next: Phase 21 plan 05 (or remaining plans)

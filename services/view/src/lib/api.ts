@@ -192,3 +192,78 @@ export async function getDiagnosis(
     headers: { Authorization: `Bearer ${token}` },
   })
 }
+
+export interface TraceFlagItem {
+  flag_type: string
+  score: number
+  detail: Record<string, unknown> | null
+}
+
+export interface ScoreItem {
+  analyzer_name: string
+  metric_name: string
+  score: number
+}
+
+export interface SpanInTrace {
+  span_id: string
+  parent_span_id: string | null
+  tool_name: string | null
+  model: string
+  start_time: string
+  end_time: string
+  input_tokens: number | null
+  output_tokens: number | null
+  flags: TraceFlagItem[]
+  scores: ScoreItem[]
+}
+
+export interface TraceObject {
+  trace_id: string
+  start_time: string | null
+  duration: number  // seconds
+  flags: TraceFlagItem[]
+}
+
+export interface TraceDetailResponse {
+  trace: TraceObject
+  spans: SpanInTrace[]
+}
+
+export interface TraceListItem {
+  trace_id: string
+  span_count: number
+  flag_count: number
+  start_time: string
+  duration: number  // seconds
+}
+
+export interface TraceListResponse {
+  traces: TraceListItem[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export async function listTraces(
+  token: string,
+  params: { limit?: number; offset?: number } = {},
+): Promise<TraceListResponse> {
+  const qs = new URLSearchParams()
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null) qs.set(k, String(v))
+  })
+  const query = qs.toString() ? `?${qs.toString()}` : ''
+  return request<TraceListResponse>(`/api/traces${query}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export async function getTraceDetail(
+  token: string,
+  traceId: string,
+): Promise<TraceDetailResponse> {
+  return request<TraceDetailResponse>(`/api/traces/${traceId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}

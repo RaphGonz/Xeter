@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, use } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { getTraceDetail } from '@/lib/api'
 import type { TraceDetailResponse } from '@/lib/api'
 import { useAuthStore, useHydrateAuth } from '@/lib/auth'
@@ -18,6 +18,8 @@ export default function TraceDetailPage({ params }: PageProps) {
   useHydrateAuth()
 
   const { trace_id: traceId } = use(params)
+  const searchParams = useSearchParams()
+  const spanFromUrl = searchParams.get('span')
   const router = useRouter()
   const token = useAuthStore((s) => s.token)
   const hydrated = useAuthStore((s) => s.hydrated)
@@ -26,7 +28,7 @@ export default function TraceDetailPage({ params }: PageProps) {
   const [traceData, setTraceData] = useState<TraceDetailResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [selectedSpanId, setSelectedSpanId] = useState<string | null>(null)
+  const [selectedSpanId, setSelectedSpanId] = useState<string | null>(spanFromUrl)
 
   useEffect(() => {
     if (!hydrated) return

@@ -30,6 +30,18 @@ export function NavBar() {
             Xeter
           </Link>
           <Link
+            href="/spans"
+            className="text-sm text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50 transition-colors"
+          >
+            Spans
+          </Link>
+          <Link
+            href="/traces"
+            className="text-sm text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50 transition-colors"
+          >
+            Traces
+          </Link>
+          <Link
             href="#"
             className="text-sm text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50 transition-colors"
           >

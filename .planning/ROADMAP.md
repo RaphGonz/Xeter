@@ -7,6 +7,7 @@
 - ✅ **v1.2 Diagnosticer** — Phases 11–13 (shipped 2026-04-25)
 - ✅ **v1.3 Security Hardening** — Phases 14–17 (shipped 2026-05-02)
 - ✅ **v1.4 Trace Hierarchy + TraceAnalyzer Foundation** — Phases 18–21 (shipped 2026-05-15)
+- 🔄 **v1.5 Silent Failure Detection** — Phases 22–27 (in progress)
 
 ## Phases
 
@@ -71,6 +72,89 @@ See `.planning/milestones/v1.4-ROADMAP.md` for full phase details.
 
 </details>
 
+### v1.5 Silent Failure Detection (Phases 22–27)
+
+- [ ] **Phase 22: Bug Fixes** — Fix idle-flush and trace score persistence (gates all trace-level checks)
+- [ ] **Phase 23: Infrastructure** — calibrate.py multi-analyzer, new deps, SpanData schema fields
+- [ ] **Phase 24: Structural Span Checks** — OutputSchemaAnalyzer with heuristic/deterministic checks; zero embedding calls
+- [ ] **Phase 25: Semantic Span + Structural Trace Checks** — Embedding-based span checks and first wave of trace checks
+- [ ] **Phase 26: Best-Effort Proxy Checks** — Remaining trace checks; best-effort heuristics; precision floors verified
+- [ ] **Phase 27: Calibration Pass** — All 18 new flag types calibrated; recall floor and full-suite precision verified
+
+## Phase Details
+
+### Phase 22: Bug Fixes
+**Goal**: Worker reliably flushes and scores idle traces, so trace-level checks can fire in test and production conditions
+**Depends on**: Nothing (first v1.5 phase; gates all trace analysis)
+**Requirements**: INFRA-01, INFRA-02
+**Success Criteria** (what must be TRUE):
+  1. A test that sends exactly N spans and stops receives trace-level flags from the worker (idle trace flushed via BRPOP timeout, not just on next span arrival)
+  2. After each trace flush, `span_scores` contains rows for trace-level metrics (flush_scores called; calibration dataset can include trace-level data)
+  3. The worker does not silently drop traces that are the last item in the queue with no subsequent span
+**Plans**: TBD
+
+### Phase 23: Infrastructure
+**Goal**: Worker has the dependencies, schema fields, and calibration tooling required to implement every v1.5 check
+**Depends on**: Phase 22
+**Requirements**: INFRA-03, INFRA-04, INFRA-05, INFRA-06
+**Success Criteria** (what must be TRUE):
+  1. `calibrate.py --flag-type <new_type>` routes to the correct analyzer class and produces a threshold for that class's method (multi-analyzer support active)
+  2. Hill-climb in calibrate.py rejects degenerate P=1.0, R=0.0 convergence — a R < 0.10 result causes the run to fail with an explicit recall-floor error
+  3. Worker environment imports `jsonschema`, `tiktoken`, and `rapidfuzz` without error
+  4. `SpanData.expected_output_schema` field is populated from ClickHouse when a span carries it; absent on spans that don't
+  5. `SpanData.parent_span_id` field is populated from ClickHouse when a span carries it; absent on spans that don't
+**Plans**: TBD
+
+### Phase 24: Structural Span Checks
+**Goal**: System detects output schema violations, truncated outputs, type errors, token overflow, and prompt injection at the span level using only deterministic/heuristic signals — no embedding calls
+**Depends on**: Phase 23
+**Requirements**: SCHEMA-01, SCHEMA-02, SCHEMA-03, SCHEMA-04, CTX-01, CTX-03
+**Success Criteria** (what must be TRUE):
+  1. A span with `expected_output_schema` set and a free-text `response` (no JSON / no tool_use block) receives an `output_schema_violation` flag
+  2. A span whose `tool_arguments` passes JSON parse but fails the `required` validator in `expected_output_schema` receives a `required_fields_missing` flag
+  3. A span with `finish_reason=length` or an unclosed JSON delimiter in its response receives an `output_truncated` flag
+  4. A span whose `tool_arguments` contains a type violation (e.g., number-as-string) against `expected_output_schema` receives a `type_coercion_error` flag
+  5. A span whose prompt token count (tiktoken cl100k_base) exceeds the configured threshold receives a `context_overflow` flag
+  6. A span whose `tool_output` matches a pattern in `_INJECTION_PATTERNS` receives a `prompt_injection` flag; a clean span does not
+**Plans**: TBD
+
+### Phase 25: Semantic Span + Structural Trace Checks
+**Goal**: System detects stale context and missing detail at the span level via embeddings, and detects step repetition, termination loops, context propagation failure, and history loss at the trace level via rapidfuzz/spaCy/embeddings
+**Depends on**: Phase 24
+**Requirements**: CTX-02, CTX-04, TRACE-01, TRACE-02, TRACE-03, TRACE-04
+**Success Criteria** (what must be TRUE):
+  1. A span whose prompt closely matches a prior span's `tool_output` in the same trace receives a `stale_context` flag marked `low_confidence: true`; a span with fresh tool output does not
+  2. A span whose `response` semantically fails to cover entities explicitly requested in the `prompt` receives a `missing_details` flag
+  3. A trace containing two spans with near-duplicate `(tool_name, tool_arguments)` pairs receives a `step_repetition` flag on the trace
+  4. A trace where the same tool is called N+ times in sequence without a distinct exit receives a `termination_loop` flag on the trace
+  5. A trace where a later span's prompt is missing key information from an earlier span's `tool_output` receives a `context_propagation_failure` flag on the trace
+  6. A trace where a later span's prompt is semantically disconnected from the centroid of earlier prompts receives a `history_loss` flag on the trace
+**Plans**: TBD
+
+### Phase 26: Best-Effort Proxy Checks
+**Goal**: System surfaces best-effort heuristic flags for agent handoff failures and verification absence at the trace level, with precision floors verified before each check ships
+**Depends on**: Phase 25
+**Requirements**: TRACE-05, TRACE-06, TRACE-07, TRACE-08, TRACE-09, TRACE-10
+**Success Criteria** (what must be TRUE):
+  1. A trace with an unexpected agent-name transition (given a configured `AGENT_ROUTING_GRAPH`) receives a `wrong_agent_handoff` flag marked `low_confidence: true`; a trace with no configured graph produces no flag
+  2. A trace where an agent's `response` contains named entities not present in the next span's `prompt` receives an `information_withholding` flag
+  3. A trace with an abrupt embedding-cosine drop below the reset threshold mid-trace receives a `conversation_reset` flag marked `low_confidence: true`
+  4. A trace where a span proceeds on a disjunctive prompt (contains "or"/"either"/"which") with no question mark in its `response` receives a `clarification_skipped` flag marked `low_confidence: true`
+  5. A completed trace with no verification-keyword tool call receives a `no_verification` flag
+  6. A trace that has a verification span (no_verification not fired) but covers fewer output entities than were produced receives an `incomplete_verification` flag; `no_verification` and `incomplete_verification` never both fire on the same trace
+**Plans**: TBD
+
+### Phase 27: Calibration Pass
+**Goal**: All 18 new flag types have calibrated thresholds, recall floors are enforced, and full-suite mean precision meets the 95% target
+**Depends on**: Phase 26
+**Requirements**: CAL-01
+**Success Criteria** (what must be TRUE):
+  1. Every new flag type has a key in `THRESHOLDS` (or is registered in `BINARY_FLAG_TYPES`) and `calibrate.py --flag-type <type>` completes without error for each
+  2. No new flag type calibrates to R < 0.10 (recall floor enforced by hill-climb; any violation is a build error)
+  3. Full-suite mean precision across all flag types (old + new) is ≥ 95% as reported by calibrate.py
+  4. The calibration report identifies which of the 18 new checks are binary (no threshold sweep) versus threshold-tuned
+**Plans**: TBD
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -96,3 +180,9 @@ See `.planning/milestones/v1.4-ROADMAP.md` for full phase details.
 | 19. TraceAnalyzer Scaffold + DB Migration | v1.4 | 3/3 | Complete | 2026-05-14 |
 | 20. Trace API | v1.4 | 2/2 | Complete | 2026-05-15 |
 | 21. Trace UI | v1.4 | 4/4 | Complete | 2026-05-15 |
+| 22. Bug Fixes | v1.5 | 0/? | Not started | - |
+| 23. Infrastructure | v1.5 | 0/? | Not started | - |
+| 24. Structural Span Checks | v1.5 | 0/? | Not started | - |
+| 25. Semantic Span + Structural Trace Checks | v1.5 | 0/? | Not started | - |
+| 26. Best-Effort Proxy Checks | v1.5 | 0/? | Not started | - |
+| 27. Calibration Pass | v1.5 | 0/? | Not started | - |

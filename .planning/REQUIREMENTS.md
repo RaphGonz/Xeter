@@ -64,11 +64,30 @@
 
 ## Traceability
 
-| Requirement | Phase |
-|-------------|-------|
-| INFRA-01, INFRA-02 | Phase 22 |
-| INFRA-03, INFRA-04, INFRA-05, INFRA-06 | Phase 23 |
-| SCHEMA-01, SCHEMA-02, SCHEMA-03, SCHEMA-04, CTX-01, CTX-03 | Phase 24 |
-| CTX-02, CTX-04, TRACE-01, TRACE-02, TRACE-03, TRACE-04 | Phase 25 |
-| TRACE-05, TRACE-06, TRACE-07, TRACE-08, TRACE-09, TRACE-10 | Phase 26 |
-| CAL-01 | Phase 27 |
+| Requirement | Phase | Phase Name | Status |
+|-------------|-------|------------|--------|
+| INFRA-01 | Phase 22 | Bug Fixes | Pending |
+| INFRA-02 | Phase 22 | Bug Fixes | Pending |
+| INFRA-03 | Phase 23 | Infrastructure | Pending |
+| INFRA-04 | Phase 23 | Infrastructure | Pending |
+| INFRA-05 | Phase 23 | Infrastructure | Pending |
+| INFRA-06 | Phase 23 | Infrastructure | Pending |
+| SCHEMA-01 | Phase 24 | Structural Span Checks | Pending |
+| SCHEMA-02 | Phase 24 | Structural Span Checks | Pending |
+| SCHEMA-03 | Phase 24 | Structural Span Checks | Pending |
+| SCHEMA-04 | Phase 24 | Structural Span Checks | Pending |
+| CTX-01 | Phase 24 | Structural Span Checks | Pending |
+| CTX-03 | Phase 24 | Structural Span Checks | Pending |
+| CTX-02 | Phase 25 | Semantic Span + Structural Trace Checks | Pending |
+| CTX-04 | Phase 25 | Semantic Span + Structural Trace Checks | Pending |
+| TRACE-01 | Phase 25 | Semantic Span + Structural Trace Checks | Pending |
+| TRACE-02 | Phase 25 | Semantic Span + Structural Trace Checks | Pending |
+| TRACE-03 | Phase 25 | Semantic Span + Structural Trace Checks | Pending |
+| TRACE-04 | Phase 25 | Semantic Span + Structural Trace Checks | Pending |
+| TRACE-05 | Phase 26 | Best-Effort Proxy Checks | Pending |
+| TRACE-06 | Phase 26 | Best-Effort Proxy Checks | Pending |
+| TRACE-07 | Phase 26 | Best-Effort Proxy Checks | Pending |
+| TRACE-08 | Phase 26 | Best-Effort Proxy Checks | Pending |
+| TRACE-09 | Phase 26 | Best-Effort Proxy Checks | Pending |
+| TRACE-10 | Phase 26 | Best-Effort Proxy Checks | Pending |
+| CAL-01 | Phase 27 | Calibration Pass | Pending |

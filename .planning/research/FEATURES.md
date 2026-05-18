@@ -1,420 +1,298 @@
-# Feature Research
+# Feature Research — Silent Failure Detection Checks
 
-**Domain:** Security hardening — AI observability SaaS (v1.3 milestone)
-**Researched:** 2026-04-27
-**Confidence:** HIGH (PostgreSQL RLS/BYPASSRLS, bcrypt rounds, MinIO policy), MEDIUM (JWT refresh token rotation patterns), HIGH (docker-compose secrets hygiene)
+**Domain:** AI observability — silent failure detection for AI agent spans and traces (v1.5 milestone)
+**Researched:** 2026-05-18
+**Confidence:** HIGH (span-level heuristic checks), MEDIUM (trace-level pattern checks), LOW (multi-agent handoff checks — signal depends heavily on what instrumentation upstream agents emit)
 
 ---
 
 ## Context
 
-v1.2 is shipped. This file is scoped to the **v1.3 Security Hardening** milestone:
-closing auth gaps, RLS coverage, DB-level validation, secrets hygiene, and
-deployment documentation before public launch.
+v1.4 shipped. The existing `ToolCallAnalyzer` (span-level) covers A-category checks. The
+`TraceAnalyzer` scaffold (`analyze() → []`) is wired and ready. This research covers
+**18 new detection checks** across two categories:
 
-Previously shipped features (ingestion, embedding, flagging, diagnosis, dashboard,
-JWT login) are treated as existing dependencies, not features to design.
+- **Span-level (8 checks):** B1–B4, D3, D5, E3, H2 — implemented in a new `SilentFailureAnalyzer`
+  subclassing `BaseSpanAnalyzer`
+- **Trace-level (10 checks):** C3, C4, D1, D2, F1, F2, F4, F5, G1, G2 — implemented inside
+  `TraceAnalyzer.analyze(spans)`, which already receives the full flushed span list
 
 ---
 
-## Feature Landscape
+## Table Stakes
 
-### Table Stakes (Users Expect These)
+Features that any serious AI observability tool targeting silent failures must have.
+Missing these means the platform cannot claim B/C/D/G category coverage.
 
-Any B2B SaaS handling developer production data must have these before launch.
-Missing them means security-aware customers will reject the platform in a
-security review.
+| Check | Name | Why Expected | Detection Signal | Span vs Trace | Complexity |
+|-------|------|--------------|-----------------|---------------|------------|
+| B1 | Output schema not respected | Free text when structured output expected is the most common LLM output failure in production pipelines | `response` field JSON-parse attempt; if fails AND prompt contains schema keywords (`json`, `schema`, `structured`, `format`, `output as`) → flag | Single span | LOW |
+| B2 | Required fields missing | Structural schema validation — downstream consumers silently get None/KeyError | Parse `response` as JSON; compare keys against expected schema (if declared in span metadata) or check for null/empty values in parsed object | Single span | LOW–MEDIUM |
+| B3 | Output truncated | JSON/response cut before close is a common context-window side-effect that passes HTTP 200 | Response ends without closing delimiter: unclosed `{`, `[`, or trailing `...`, or response token count near model's max_tokens | Single span | LOW |
+| D3 | Context truncation / prompt overflow | Prompt exceeds context window causes silent oldest-content drop; models don't warn | Token-count estimate (chars / 4 heuristic) vs known model context limits; OR check `raw_response` for finish_reason=`length` | Single span | LOW |
+| G1 | No verification | Agent produces output with no self-check step in the trace | Count of spans in trace that mention verify/check/confirm/validate in tool_name or response; 0 = flag | Trace | LOW–MEDIUM |
+| C3 | Step repetition | Agent loops on same action without new information justifying it | Across spans in trace: hash (tool_name + normalized tool_arguments) and count duplicates; threshold ≥ 2 identical hashes | Trace | LOW |
+| C4 | Termination loop / unaware of stopping | Agent cannot halt; loops indefinitely | Span count in trace exceeds configurable threshold (e.g., 20 spans); OR repeated identical response embeddings across consecutive spans | Trace | LOW |
+| D1 | Context propagation failure | Critical upstream output not passed to dependent agent — the most common multi-agent failure | Compare key entities/values from span N's response with span N+1's prompt using lemma-set overlap or embedding similarity; low overlap = flag | Trace (2-span window) | MEDIUM |
 
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Short-lived access tokens (30 min) | JWTs without expiry are permanent credentials — a leaked token never expires. Any security-conscious buyer will reject a platform with 24-hour (current) or no-expiry tokens | LOW | Change `TOKEN_EXPIRE_HOURS = 24` to `TOKEN_EXPIRE_MINUTES = 30` in `deps.py`. The `jose` library already validates `exp` — no new dependency. |
-| httpOnly cookie for refresh token | Refresh tokens in JS-accessible storage (localStorage, memory) are stolen by XSS. httpOnly prevents any JS from reading the cookie. Standard browser security baseline for session tokens. | MEDIUM | FastAPI `response.set_cookie(httponly=True, secure=True, samesite="lax", max_age=604800)`. New `POST /auth/refresh` endpoint required. Access token stays in JSON body for Bearer pattern; refresh token moves to cookie. |
-| Refresh token endpoint | Without refresh, 30-min access tokens force re-login every 30 minutes, making the dashboard unusable during long debugging sessions | MEDIUM | `POST /auth/refresh` reads httpOnly cookie, validates token family, issues new access + refresh pair. Requires revocation store (see Anti-Features for why rotation without one is an anti-pattern). Depends on: httpOnly cookie feature. |
-| docker-compose secret hygiene | Committed `xeter_dev_password` as a hardcoded inline value means any developer who clones the repo has the same credential. If reused in staging/prod (common mistake), it is a public credential. | LOW | Replace all inline `xeter_dev_password` with `${VAR:-CHANGE_ME_BEFORE_DEPLOY}` expansion. Add `generate-secrets.sh` using `openssl rand -hex 32`. Create root `.gitignore` that excludes `.env`. |
-| PostgreSQL CHECK constraints on verdict/severity | `verdict` and `severity` are unconstrained VARCHAR columns in the `diagnoses` table. A LLM hallucination or code bug can write `"CRITICAL"` or `"wrong"` — values neither the frontend nor query logic expects. Data integrity gap. | LOW | `ALTER TABLE diagnoses ADD CONSTRAINT chk_verdict CHECK (verdict IN ('model','architecture','prompt','unknown'))`. Same for severity `IN ('low','medium','high')`. Pure SQL, new Alembic migration, zero Python changes. |
+---
 
-### Differentiators (Competitive Advantage)
+## Differentiators
 
-These go beyond minimum security hygiene — they are meaningful to enterprise buyers
-and security reviewers, and distinguish Xeter from hobbyist SaaS.
+Features beyond baseline that distinguish Xeter's silent failure coverage. These require
+semantic understanding, not just structural inspection.
 
-| Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| span_scores RLS policy | Migration 002 explicitly deferred RLS on `span_scores` ("RLS intentionally omitted"). Currently any DB connection can read all tenants' scores. Closing this gap means tenant isolation is complete across all PostgreSQL tables. | MEDIUM | Enable RLS on `span_scores` + add `tenant_isolation` policy matching migration 001 pattern. Worker inserts must still work — requires Worker BYPASSRLS role below. These two ship together. |
-| Worker BYPASSRLS role scoped to insert-only | The worker currently connects as the same `xeter` DB user as Presenter and Analyser — a full-privilege account. Migration 002 says "worker connects as BYPASSRLS role" but this is aspirational; it uses the main DATABASE_URL. | MEDIUM | Create `xeter_worker` role with `BYPASSRLS` attribute. GRANT only `INSERT` on `span_scores` and `flags`. Per PostgreSQL docs (verified): BYPASSRLS bypasses row-level filtering, but GRANT controls table-level access — a role with BYPASSRLS + INSERT-only GRANT **cannot SELECT**. Worker gets its own `WORKER_DATABASE_URL`. |
-| bcrypt rounds >= 12 CI enforcement | `bcrypt.gensalt()` defaults to rounds=12 (OWASP minimum). The default is correct but unenforced — a future developer passing `rounds=4` for test speed degrades production security with no CI failure. | LOW | Pytest test: parse cost factor from hash prefix `$2b$<cost>$` and assert `>= 12`. bcrypt hash format makes this trivial without re-hashing. Runs in existing test suite. |
-| JWT_SECRET rotation runbook | Many teams rotate secrets only after a breach. A documented dual-secret runbook means rotation is a planned 30-minute operation, not an emergency. | LOW | No code change needed if 30-min access token expiry is in place: (1) generate new SECRET_KEY, (2) accept old + new during 30-min window (or simply accept a 30-min re-login gap), (3) remove old key. Document as ops runbook. |
-| MinIO xeter-payloads private bucket assertion | The `minio-init` container only runs `mc mb` (create bucket) without asserting the policy. MinIO denies anonymous access by default, but this is not explicitly enforced or documented — a mis-configured MinIO instance could expose payloads. | LOW | Add `mc anonymous set none local/xeter-payloads` to the `minio-init` command. For cloud (AWS S3) deployments, document the equivalent IAM Deny policy. One line of shell + one paragraph of docs. |
+| Check | Name | Value Proposition | Detection Signal | Span vs Trace | Complexity |
+|-------|------|-------------------|-----------------|---------------|------------|
+| B4 | Type coercion errors | Catches semantically wrong but structurally valid outputs that pass JSON parsing | Parse `response` JSON; for each field, check if numeric string where number expected, boolean as 0/1 where bool expected, date as integer epoch, etc. | Single span | MEDIUM |
+| D5 | Stale context | Agent cites prior turn data that has been superseded in the same trace | Across trace spans: if a tool output in span N explicitly supersedes an earlier value (same entity, newer timestamp or explicit "updated" signal), check if span N+2+ still references the old value via embedding similarity | Trace (windowed) | MEDIUM–HIGH |
+| E3 | Prompt injection / hijacking | Detects adversarial content in tool outputs redirecting agent behavior | Tool output contains imperative overrides: regex for `ignore previous instructions`, `disregard`, `you are now`, `new task`, `forget` + variants; OR embedding distance between original task vector and post-tool-call action vector exceeds threshold | Single span | MEDIUM |
+| H2 | Missing details | Response succeeds but omits explicitly requested information | Embed prompt and response; extract key noun phrases / named entities from prompt; check entity recall in response using lemma-set overlap; flag when recall < threshold | Single span | MEDIUM–HIGH |
+| D2 | Conversation history loss | Agent forgets prior state mid-trace and re-derives known facts | In trace, later spans re-ask questions already answered in earlier spans — detect via embedding similarity between later prompt and earlier response content | Trace | MEDIUM |
+| F1 | Wrong agent handoff | Routing to wrong downstream agent based on agent_name changes across spans | Across trace spans: when `agent_name` transitions, compare the handing-off span's response with the receiving span's declared role/description; semantic mismatch flags | Trace | MEDIUM (depends on agent metadata) |
+| F2 | Information withholding | Agent passes incomplete context to next agent | When `agent_name` transitions: compare entity coverage between handing-off span's response and receiving span's prompt; below-threshold overlap = flag | Trace | MEDIUM |
+| G2 | Incomplete verification | Verification step exists but checks only a subset | Identify spans with verify-related tool/response content; check that verified entities in that span cover the entities claimed in the preceding production span | Trace (2-span window) | HIGH |
+| F4 | Conversation reset | An agent resets shared state, losing prior context | Early spans in trace accumulate context; later span prompt length drops dramatically (>50% token reduction) AND earlier unique entities absent from current prompt | Trace | MEDIUM |
+| F5 | Fail to clarify | Agent proceeds on ambiguous instruction instead of requesting clarification | High ambiguity signal in prompt (multiple conflicting intents, pronouns without referents, disjunctive instructions "do X or Y") + no clarification request in response + downstream error flag | Single span + trace correlation | HIGH |
 
-### Anti-Features (Commonly Requested, Often Problematic)
+---
 
-| Feature | Why Requested | Why Problematic | Alternative |
-|---------|---------------|-----------------|-------------|
-| Refresh token rotation without a revocation store | Simpler — no extra table, just issue a new token on each request | Without a store, reuse detection is impossible. If an attacker steals a refresh token, they silently compete with the legitimate user forever — the server cannot distinguish them. Rotation without reuse detection is security theater. Auth0 confirms this: token family reuse detection requires server-side state. | Store one row per active session in a `refresh_tokens` table (`family_id`, `token_hash`, `tenant_id`, `expires_at`). On rotation, UPDATE the token_hash. On reuse detection (old token presented), DELETE the family — full invalidation. PostgreSQL already available; no Redis needed. |
-| Sliding window refresh token expiry | "Sliding window" (each use extends expiry) feels more user-friendly — sessions stay alive while active | Sliding window requires per-use database writes to extend the expiry timestamp, extending the attack window if a token is stolen. A stolen token keeps getting renewed as long as the attacker uses it. Absolute expiry bounds the damage. | Absolute expiry (7 days). If a user is active beyond 7 days, they re-authenticate once. Predictable, auditable, and safe. |
-| Storing refresh tokens in localStorage or React state | Avoids cookie-handling complexity in Next.js frontend | XSS vulnerability. For a platform ingesting LLM traces (which may include adversarial input), XSS risk is elevated. A single DOM injection reads the token from memory. | httpOnly cookie — read only by the server, invisible to JavaScript. Access token in React state (lost on page refresh is acceptable — refresh endpoint re-issues it on next load). |
-| BYPASSRLS superuser for all services | One DB user for everything is simpler — fewer credentials to manage | Violates least privilege. If any service (worker, analyser) is compromised, the attacker has full read/write access to all tenant data. The worker is the highest-risk service (it handles external span payloads and runs embedding models). | Dedicated `xeter_worker` role with BYPASSRLS + INSERT-only GRANT. Worker cannot SELECT any tenant's data even if credentials are stolen. |
-| PostgreSQL ENUM types for verdict/severity | Stronger type safety than CHECK constraints | ENUM types require `ALTER TYPE ... ADD VALUE` to add new values, which **cannot run inside a transaction** in PostgreSQL. Breaks zero-downtime migrations. Inconsistent with FLAG-03 decision (flag_type is an open string). | CHECK constraint on VARCHAR. Adding a new allowed value is a normal `ALTER TABLE ... DROP CONSTRAINT ... ADD CONSTRAINT` inside a transaction. |
-| RS256 / JWKS for JWT secret rotation | RS256 with JWKS enables zero-downtime rotation without grace-period coordination | Significant complexity overhead for a single-service deployment: key pair generation, JWKS endpoint, `kid` claim management. Justified when third-party API consumers need to validate tokens. Not justified for internal service-to-service auth. | HS256 + rotation runbook. The 30-min access token window is short enough that a 30-min re-login gap during rotation is acceptable. Migrate to RS256 when/if a public API for third-party consumers is added. |
+## Anti-Features
+
+Checks to explicitly NOT build in v1.5.
+
+| Anti-Feature | Why Avoid | What to Do Instead |
+|--------------|-----------|-------------------|
+| LLM-as-judge for every check | Every check → LLM call makes the worker 10–50x slower per span; cost is unbounded | Reserve LLM judgment for the Diagnosticer (on-demand). All 18 checks must use heuristics, regex, token counting, or embeddings only |
+| Real schema registry | Requiring agents to register output schemas creates a major SDK burden; most agents don't have formal schemas | Infer expected structure from prompt keywords; check for JSON-parse success + non-empty result |
+| Per-field type inference | Deep type inference (e.g., "this field should be a UUID") requires schema knowledge that isn't available | Flag obvious coercions: number-as-string, bool-as-0/1 — leave edge cases unflagged rather than false-positive |
+| Cross-tenant trace comparison | Comparing traces across tenants to detect "unusual" behavior | Per-tenant calibration is safer and avoids data leakage |
+| Streaming/real-time trace analysis | Per-span flush would fire trace checks before the trace is complete | Trace-level checks run only after flush timeout, as designed in v1.4 |
 
 ---
 
 ## Feature Dependencies
 
 ```
-[httpOnly refresh token cookie]
-    └──requires──> [Refresh token endpoint (POST /auth/refresh)]
-                       └──requires──> [Refresh tokens table (revocation store)]
-                                          └──requires──> [Short-lived access token (30 min expiry)]
+[B1 output_schema_not_respected]
+    └──shares JSON-parse logic──> [B2 required_fields_missing]
+                                      └──shares JSON-parse logic──> [B3 output_truncated]
+                                                                         └──shares token-count──> [D3 context_truncation]
 
-[span_scores RLS policy]
-    └──requires──> [Worker BYPASSRLS role (xeter_worker)]
-                       └──requires──> [Separate WORKER_DATABASE_URL env var]
-                                          └──requires──> [docker-compose secret hygiene update]
-                                                             └──requires──> [generate-secrets.sh adds WORKER_DATABASE_PASSWORD]
+[E3 prompt_injection]
+    └──uses embed()──> [D5 stale_context]
 
-[bcrypt CI enforcement]
-    └──standalone──> [No new dependencies; test reads hash prefix]
+[H2 missing_details]
+    └──uses lemma-set overlap (same as _check_wrong_tool containment guard)──> [D2 conversation_history_loss]
 
-[CHECK constraints (verdict/severity)]
-    └──standalone──> [New Alembic migration; no Python service changes]
+[D1 context_propagation_failure]
+    └──2-span window pattern──> [F2 information_withholding]
+                                    └──agent_name transition guard──> [F1 wrong_agent_handoff]
+                                                                           └──same agent boundary detection──> [F4 conversation_reset]
 
-[JWT_SECRET rotation runbook]
-    └──enhances──> [Short-lived access token (30 min window makes rotation safe without code changes)]
+[G1 no_verification]
+    └──identifies verify-spans first──> [G2 incomplete_verification]
 
-[MinIO private bucket assertion]
-    └──standalone──> [One mc command in minio-init; no service changes]
+[C3 step_repetition]
+    └──span count accumulation──> [C4 termination_loop]
 ```
 
 ### Dependency Notes
 
-- **Refresh token requires access token expiry shortening first.** A 24-hour access token makes refresh tokens useless — the access token outlives any attack window where the refresh mechanism matters. The 30-min expiry is the prerequisite that makes the refresh architecture meaningful.
-- **span_scores RLS requires worker BYPASSRLS role in the same deployment.** Adding RLS to span_scores without a scoped worker role breaks worker inserts. These two features must land in the same Alembic migration and docker-compose update — never one without the other.
-- **Worker BYPASSRLS requires docker-compose secret hygiene update.** A new `WORKER_DATABASE_URL` env var must be wired in docker-compose. The `generate-secrets.sh` script must generate the worker DB password, so secret hygiene and worker role creation are naturally bundled.
-- **CHECK constraints are fully standalone.** Pure SQL in a migration, no ordering dependency on other v1.3 features.
-- **bcrypt CI test is fully standalone.** Five-line pytest test, no new dependencies.
-- **MinIO documentation is fully standalone.** One shell line in docker-compose, one paragraph in ops docs.
+- **B1–B3 share the same JSON-parse attempt.** A single `_try_parse_json(response)` helper returns `(parsed, error)` and all three checks consume it. This avoids three redundant parse calls per span.
+- **G2 requires G1's span identification.** G2 only runs when G1 identifies a verification span in the trace; without G1 pinpointing which spans are verification steps, G2 has no anchor to evaluate completeness against.
+- **F1/F2/F4 require agent_name transitions.** If all spans in a trace have the same `agent_name`, these checks short-circuit immediately and produce no flags. They only activate in multi-agent traces.
+- **D1 and F2 are closely related** but D1 fires on any span-to-span context gap (same or different agent), while F2 fires specifically at agent_name transition boundaries.
+- **C3 must run before C4** in the same pass — C3's duplicate-hash set is cheap and informs whether C4's loop count is genuinely new work or repetition.
 
 ---
 
-## Implementation Details Per Feature
+## Single-Span vs Multi-Span Boundary
 
-### 1. JWT 30 Min Expiry + Refresh Token + httpOnly Cookie
+This boundary is architecturally load-bearing. Span-level checks run in `ToolCallAnalyzer`-style span processors; trace-level checks run in `TraceAnalyzer.analyze(spans)` after flush timeout.
 
-**Current state (`deps.py`):**
-- `TOKEN_EXPIRE_HOURS = 24` — 24-hour access tokens
-- No refresh mechanism. No cookie. Token issued in JSON body only.
+### Single-Span Checks (implement in new `SilentFailureAnalyzer(BaseSpanAnalyzer)`)
 
-**Target state:**
+| Check | Primary Signal | Secondary Signal |
+|-------|---------------|-----------------|
+| B1 | JSON parse fail on `response` + prompt schema keywords | — |
+| B2 | JSON parse success + null/missing key check | Optional: compare against schema if declared |
+| B3 | Unclosed JSON delimiters OR `finish_reason=length` in `raw_response` | Response char length near model limit |
+| B4 | Type mismatch patterns in parsed JSON values | Regex: `"[0-9]+"` where bare int expected |
+| D3 | Token estimate (len/4) > model_context_limit | `finish_reason=length` in `raw_response` |
+| D5 | Temporal/version signal in tool output vs prior span response (requires recent prior span reference — BORDERLINE) | Can be approximated single-span with tool output timestamp vs prompt timestamp |
+| E3 | Injection regex on `tool_output` field | Embedding drift: pre-call task vec vs post-call action vec |
+| H2 | Lemma recall: prompt entities in response | Embedding similarity (prompt vs response) — already available via `response_anomaly` score |
 
-Access token: Change constant to `TOKEN_EXPIRE_MINUTES = 30`. `timedelta(minutes=TOKEN_EXPIRE_MINUTES)`.
+Note: D5 is marked borderline — its best detection requires comparing tool output recency against prior-span data. A single-span approximation (does the tool output contain a timestamp newer than the prompt?) is feasible but misses the case where staleness comes from the agent ignoring a tool result already available in the same trace.
 
-Refresh token revocation store — new `refresh_tokens` table (Alembic migration 004 or 005):
-```sql
-CREATE TABLE refresh_tokens (
-    family_id  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    token_hash TEXT NOT NULL,        -- SHA-256 of the raw refresh token string
-    tenant_id  UUID NOT NULL,
-    expires_at TIMESTAMPTZ NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT now()
-);
--- No RLS needed: only the backend (as superuser) reads/writes this table.
--- One row per active session. On rotation: UPDATE token_hash. On reuse: DELETE row.
-```
+### Multi-Span (Trace-Level) Checks (implement in `TraceAnalyzer.analyze(spans)`)
 
-`POST /auth/refresh` logic:
-1. Read refresh token from httpOnly cookie.
-2. Look up `family_id` by token hash in `refresh_tokens`.
-3. If row not found: token was revoked or never issued → 401.
-4. If token hash does not match stored hash: reuse detected → DELETE row (full family invalidation) → 401.
-5. If expired: DELETE row → 401.
-6. On valid token: generate new access token + new refresh token. UPDATE `token_hash` in DB. Set new cookie. Return new access token in body.
-
-Cookie parameters:
-- `httponly=True` — blocks JS access
-- `secure=True` in production (HTTPS), `False` in local dev (HTTP)
-- `samesite="lax"` — CSRF protection without breaking cross-origin flows
-- `max_age=604800` — 7-day absolute expiry (seconds)
-
-Login changes: on successful login, set httpOnly cookie in addition to returning access token in body.
-
-**MEDIUM complexity:** New table, new endpoint, cookie handling on server side, Next.js frontend must let the browser handle the cookie automatically (no manual cookie header — `credentials: "include"` on fetch calls to `/auth/refresh`).
+| Check | Window Size | Primary Signal |
+|-------|------------|----------------|
+| C3 | All spans | Duplicate (tool_name + args_hash) count ≥ threshold |
+| C4 | All spans | Total span count ≥ threshold OR consecutive identical response hashes |
+| D1 | Rolling 2-span window | Entity/embedding overlap between span[N].response and span[N+1].prompt below threshold |
+| D2 | Full trace | Later span re-derives a value already present in an earlier span response |
+| F1 | Agent transition boundary | Semantic mismatch between handing-off span's response topic and receiving agent's declared role |
+| F2 | Agent transition boundary | Entity coverage gap: span[N].response entities not present in span[N+1].prompt |
+| F4 | Full trace | Prompt token count drops >50% at any span transition |
+| F5 | Single span + trace | High ambiguity score on prompt AND no clarifying question in response AND subsequent error flag |
+| G1 | Full trace | Zero spans with verification signals (tool_name or response contains verify/check/validate) |
+| G2 | 2-span window (production → verify) | Entity recall: what G1 identified as verified vs what was produced |
 
 ---
 
-### 2. JWT_SECRET Rotation Runbook
+## Table Stakes vs Differentiators Summary
 
-**Dual-secret strategy for HS256 without code changes (using 30-min access token window):**
-
-1. Generate new `SECRET_KEY`: `openssl rand -hex 32`.
-2. **Option A (zero-code, 30-min re-login gap):** Update `SECRET_KEY` env var and redeploy. All existing access tokens (max 30 min) expire naturally. Users re-authenticate once. Refresh tokens remain valid if their family rows exist in `refresh_tokens` — but since refresh tokens are validated by DB lookup (not JWT decode), they survive the secret rotation without issues.
-3. **Option B (dual-decode, zero re-login):** Temporarily modify `verify_session_token()` to try decoding with `SECRET_KEY_NEW` first, fall back to `SECRET_KEY_OLD` on failure. After 30 min, remove the fallback.
-
-Runbook steps (Option A, recommended for solo-dev SaaS):
-```
-1. openssl rand -hex 32 → new_secret
-2. Update SECRET_KEY in .env (or secrets manager)
-3. Redeploy presenter and diagnosticer services
-4. Wait 30 minutes (existing access tokens expire)
-5. No further action needed — refresh tokens are DB-validated, not JWT-validated
-```
-
-**LOW complexity:** Pure documentation. No code change unless dual-decode fallback is desired.
+| Category | Checks | Detection Approach | Calibration Difficulty | False Positive Risk |
+|----------|---------|--------------------|----------------------|---------------------|
+| **Table stakes** | B1, B3, D3, C3, C4, G1 | Structural/heuristic (JSON parse, token count, hash comparison, span count, keyword search) | LOW — thresholds are count-based or binary | LOW — structural signals are unambiguous |
+| **Table stakes** | B2 | Structural + light semantic | LOW–MEDIUM | MEDIUM — depends on whether schema is known |
+| **Differentiators** | B4, E3, H2, D1, F4 | Regex + embedding + lemma overlap | MEDIUM | MEDIUM — embedding thresholds need calibration |
+| **Differentiators** | D2, D5, F1, F2, G2, F5 | Semantic + multi-span reasoning | HIGH | HIGH — prone to false positives without careful calibration |
 
 ---
 
-### 3. span_scores RLS + Worker BYPASSRLS Role
+## Calibration Difficulty Per Check
 
-**Current state:**
-- `span_scores` has no RLS (migration 002 comment: "RLS intentionally omitted")
-- Worker connects as the same `xeter` DB user as all other services — full privileges
-- `score_writer.py` comment says "BYPASSRLS role" but this is aspirational
-
-**Target state (SQL — run via migration or init script before migration 004):**
-```sql
--- 1. Create the scoped worker role
-CREATE ROLE xeter_worker WITH LOGIN PASSWORD 'CHANGE_ME' BYPASSRLS;
-
--- 2. Grant only INSERT on tables the worker writes to
-GRANT INSERT ON span_scores TO xeter_worker;
-GRANT INSERT ON flags TO xeter_worker;
-
--- 3. Enable RLS on span_scores
-ALTER TABLE span_scores ENABLE ROW LEVEL SECURITY;
-
--- 4. Add tenant isolation policy (same pattern as migration 001)
-CREATE POLICY tenant_isolation ON span_scores
-    USING (tenant_id::text = current_setting('app.current_tenant_id', true));
-```
-
-**Verified mechanic (PostgreSQL 16 docs, HIGH confidence):**
-BYPASSRLS bypasses the row-filtering layer. GRANT controls the table-privilege layer (above RLS). A role with `BYPASSRLS` + `INSERT`-only GRANT:
-- CAN INSERT (bypasses RLS row filter; GRANT allows INSERT)
-- CANNOT SELECT (GRANT denied at table level; never reaches RLS)
-
-This is the correct least-privilege pattern for a write-only worker.
-
-**Alternative (no BYPASSRLS):** Add a `FOR INSERT WITH CHECK (true)` policy on `span_scores` for the `xeter_worker` role instead of using BYPASSRLS. This avoids the BYPASSRLS attribute but requires the worker to set `app.current_tenant_id` before each insert (currently it does not). BYPASSRLS is simpler for the worker's existing insert pattern.
-
-**docker-compose change:**
-```yaml
-worker:
-  environment:
-    WORKER_DATABASE_URL: postgresql+asyncpg://xeter_worker:${WORKER_DATABASE_PASSWORD:-CHANGE_ME}@postgres:5432/xeter
-```
-
-Worker `score_writer.py` and `flag_writer.py` must read `WORKER_DATABASE_URL` (falling back to `DATABASE_URL` for local dev compatibility).
-
-**MEDIUM complexity:** New DB role, migration, two env var changes, `score_writer.py` and `flag_writer.py` DSN source change.
+| Check | Difficulty | Reason | Calibration Approach |
+|-------|-----------|--------|---------------------|
+| B1 | LOW | Binary: JSON parse succeeds or fails | No threshold needed; keyword guard prevents false positives when response is legitimately plain text |
+| B2 | LOW–MEDIUM | Needs schema expectation; null check is reliable, missing-field check needs field name list | Flag only when response is valid JSON but has null/empty values across all fields |
+| B3 | LOW | Structural: unclosed delimiter or `finish_reason=length` is unambiguous | `finish_reason=length` in `raw_response` is the most reliable signal; delimiter check has edge cases (embedded strings) |
+| B4 | MEDIUM | Type patterns require careful regex to avoid flagging legitimate string representations | Restrict to clear cases: `"true"/"false"` as strings, numeric strings in known-numeric contexts |
+| D3 | LOW | Token count heuristic (chars/4) is approximate but directionally reliable; `finish_reason=length` is exact | Use `finish_reason=length` when available; fall back to token estimate with a safety margin (90% of limit) |
+| D5 | HIGH | "Staleness" is inherently relative — what counts as outdated requires a reference timeline | Best-effort: flag only when tool output contains an explicit newer timestamp than what appears in prior span context |
+| E3 | MEDIUM | Regex catches known patterns; novel injections evade it; embedding drift is noisy | Maintain a curated injection phrase list; embedding drift threshold needs calibration against known-clean traces |
+| H2 | HIGH | Entity recall requires reliable NER; short responses to complex prompts are legitimate AND flaggable | Set conservative threshold; use spaCy NER (already lazy-loaded) for entity extraction |
+| C3 | LOW | Hash comparison is exact; "same args" is unambiguous | Normalize args (sort keys, lowercase strings) before hashing to catch semantic duplicates with minor formatting differences |
+| C4 | LOW | Span count threshold is a blunt but reliable signal | Default threshold of 20 spans; expose as `WORKER_THRESHOLD_C4_MAX_SPANS` env var |
+| D1 | MEDIUM | Entity/embedding overlap between sequential spans — legitimate topic changes look like propagation failures | Use combined lemma-set + embedding hybrid (existing `hybrid_score()`) |
+| D2 | HIGH | Must distinguish "agent re-derives because it forgot" from "agent re-confirms for accuracy" | Compare whether re-derived value matches original; mismatch = likely D2; match = likely G2 (verification) |
+| F1 | MEDIUM | Agent role metadata may not be available in spans; depends on instrumentation quality | Best-effort: if agent_name metadata is absent from spans, skip check rather than false-flag |
+| F2 | MEDIUM | Distinguishing intentional summarization from information withholding is hard | Threshold on entity recall at handoff boundaries; calibrate against known-good multi-agent traces |
+| F4 | LOW–MEDIUM | Token count drop is structural; 50% is a heuristic threshold | Flag only when drop is large AND the dropped content contained unique named entities |
+| F5 | HIGH | Ambiguity detection in prompts requires semantic reasoning; "proceed confidently" and "proceed with ambiguity" look identical | Restrict to clear signals: multiple disjunctive instructions (`or`/`either`) + no `?` in response |
+| G1 | LOW–MEDIUM | Keyword search for verification signals is fast; absence of verification is structural | Use both tool_name keywords AND response content keywords; at least one span in trace must show verification |
+| G2 | HIGH | Requires identifying what was "supposed to be verified" from prior production span | Anchor on G1's identified verification span; compare entity coverage with the immediately preceding non-verification span |
 
 ---
 
-### 4. CHECK Constraints (verdict + severity)
+## Known False Positive Risks
 
-**Current state:** `verdict VARCHAR NOT NULL`, `severity VARCHAR NOT NULL` in migration 003. No constraint on allowed values. A LLM hallucination or parse bug could write arbitrary strings.
-
-**Migration (004 or combined with RLS migration):**
-```sql
-ALTER TABLE diagnoses
-    ADD CONSTRAINT chk_verdict
-        CHECK (verdict IN ('model', 'architecture', 'prompt', 'unknown')),
-    ADD CONSTRAINT chk_severity
-        CHECK (severity IN ('low', 'medium', 'high'));
-```
-
-**Note on existing data:** If `diagnoses` rows with non-conforming values exist (e.g., from early seed data), the migration fails. Pre-check:
-```sql
-SELECT DISTINCT verdict FROM diagnoses WHERE verdict NOT IN ('model','architecture','prompt','unknown');
-```
-Delete or update outliers before running the migration.
-
-**Consistency with FLAG-03:** VARCHAR + CHECK rather than PostgreSQL ENUM. Adding `'critical'` to severity in the future requires only updating the CHECK constraint inside a transaction — no `ALTER TYPE ... ADD VALUE` which PostgreSQL cannot run transactionally.
-
-**LOW complexity:** Pure SQL migration. Zero Python changes. Standalone dependency.
+| Check | False Positive Scenario | Mitigation |
+|-------|------------------------|------------|
+| B1 | Prompt asks for a "summary" or "explanation" — plain text is correct | Guard: only flag when prompt contains explicit schema keywords (`json`, `{`, `schema`, `format`, `structured output`) |
+| B2 | Partial response is intentional (agent returns subset of schema on first step) | Guard: only flag when ALL non-nullable fields are null/missing simultaneously |
+| B3 | Legitimate responses that end with an ellipsis in markdown | Guard: delimiter check only for JSON responses (B1 preceded it); exclude plain-text responses |
+| D3 | Large prompts for summarization tasks (expected to be large) | Guard: only flag when `finish_reason=length` is explicit; avoid flagging large-but-valid prompts without this signal |
+| E3 | Tool output legitimately contains instructional text (e.g., a README being processed) | Restrict injection patterns to clear override keywords; avoid flagging instructional content |
+| H2 | Agent intentionally defers part of the answer to a subsequent tool call | Low-confidence flag only; correlate with subsequent spans to see if deferred content is later produced |
+| D1 | Agent intentionally reformulates context (e.g., summarizes before passing) | Use entity recall not verbatim matching; reformulation preserves key entities |
+| D2 | Agent re-confirms a known fact as part of verification (G2 pattern) | Check whether the re-derived value matches the original; if it matches, it's likely G2 not D2 |
+| F1 | Single-agent traces with varying `agent_name` (versioning or tool names) | Short-circuit if only one unique `agent_name` in trace |
+| G1 | Very short traces (1–2 spans) where verification step is in a subsequent unflushed trace | Set minimum trace length guard: G1 only fires on traces with ≥ 3 spans |
+| C3 | Polling patterns (legitimate repeated queries for status updates) | Guard: require that args contain identical content (not just same tool); polling has incrementing parameters |
+| C4 | Batch processing traces (legitimately many spans for multi-item processing) | Correlate with C3: if C3 fires, C4 is likely real; if C3 does not fire (no repetition), raise C4 threshold |
 
 ---
 
-### 5. bcrypt Rounds >= 12 CI Enforcement
+## MVP Recommendation
 
-**Current state:**
-- `bcrypt.gensalt()` called without `rounds` argument in `auth.py`, `api_keys.py`, `seed.py`
-- Python's `bcrypt` library defaults to `rounds=12` (OWASP minimum)
-- No CI guard exists — a future `bcrypt.gensalt(rounds=4)` for test speed would silently degrade security
+### Build First (v1.5 Phase 1 — table stakes + simple heuristics)
 
-**OWASP guidance (HIGH confidence):** Minimum work factor for bcrypt is 10 globally; 12 is the recommended floor for new systems. The Python `bcrypt` library default matches this.
+These are low-complexity, low-false-positive-risk, and form the core "silent failure" story:
 
-**Test implementation:**
+1. **B1** (output_schema_not_respected) — JSON parse + schema keyword guard
+2. **B3** (output_truncated) — `finish_reason=length` + unclosed delimiter
+3. **D3** (context_truncation) — token estimate + `finish_reason=length`
+4. **C3** (step_repetition) — hash comparison across spans
+5. **C4** (termination_loop) — span count threshold
+6. **G1** (no_verification) — keyword scan across trace spans
+
+### Build Second (v1.5 Phase 2 — semantic checks with calibration)
+
+7. **B2** (required_fields_missing) — JSON + null field detection
+8. **B4** (type_coercion) — regex type mismatch patterns
+9. **E3** (prompt_injection) — injection regex on tool_output
+10. **H2** (missing_details) — entity recall via spaCy NER
+11. **D1** (context_propagation_failure) — hybrid overlap between adjacent spans
+12. **F4** (conversation_reset) — token count drop detection
+13. **D2** (conversation_history_loss) — re-derivation detection
+
+### Defer or Best-Effort (v1.5 Phase 3 — high calibration difficulty)
+
+14. **D5** (stale_context) — best-effort timestamp comparison
+15. **F1** (wrong_agent_handoff) — requires agent metadata; best-effort
+16. **F2** (information_withholding) — entity recall at handoff boundaries
+17. **G2** (incomplete_verification) — anchored on G1; high calibration cost
+18. **F5** (fail_to_clarify) — disjunctive prompt detection; high false positive risk
+
+---
+
+## Implementation Notes
+
+### New `SilentFailureAnalyzer(BaseSpanAnalyzer)`
+
+A second concrete span-level analyzer. Add to `ANALYZERS` list in `worker/main.py` alongside
+`ToolCallAnalyzer`. The existing worker dispatch loop (iterates over `analyzers`) handles this
+with zero structural changes.
+
+Checks that share logic (B1/B2/B3 JSON parse, H2/D2 entity overlap) should use shared
+`_try_parse_json()` and `_extract_entities()` private methods to avoid redundant computation.
+
+### `TraceAnalyzer` — Implement `analyze(spans)`
+
+The scaffold already exists. Implement checks in this priority order per Phase:
+- Phase 1: C3, C4, G1 (structural, zero embedding calls)
+- Phase 2: D1, D2, F4 (embedding calls, use `hybrid_score()`)
+- Phase 3: F1, F2, G2, F5, D5 (high complexity, best-effort)
+
+Each check should be a private `_check_*` method matching the pattern established in
+`ToolCallAnalyzer`. This makes unit testing and calibration per-method straightforward.
+
+### Threshold Keys (add to `THRESHOLDS` dict in `worker/main.py`)
+
 ```python
-def test_bcrypt_cost_factor_at_least_12():
-    """Cost factor is encoded in the hash: $2b$<cost>$<salt><hash>."""
-    import bcrypt
-    hashed = bcrypt.hashpw(b"test-password", bcrypt.gensalt())
-    cost_factor = int(hashed.decode().split("$")[2])
-    assert cost_factor >= 12, f"bcrypt cost {cost_factor} below OWASP minimum of 12"
+# Span-level
+"output_schema_not_respected":   0.0,   # binary — no threshold, keyword guard only
+"output_truncated":               0.0,   # binary — structural signal
+"context_truncation":             0.9,   # fraction of model context limit (token estimate)
+"type_coercion":                  0.0,   # binary — pattern match
+"prompt_injection":               0.0,   # binary — regex match
+"missing_details":                0.5,   # entity recall threshold
+
+# Trace-level
+"step_repetition_min_count":      2,     # duplicate hashes needed to flag
+"termination_loop_max_spans":    20,     # trace span count upper bound
+"context_propagation_min_sim":    0.3,   # hybrid overlap floor between adjacent spans
+"conversation_history_loss":      0.7,   # similarity floor for re-derivation detection
+"conversation_reset_drop":        0.5,   # fraction of token count drop to flag
+"no_verification_min_spans":      3,     # minimum trace length before G1 fires
 ```
 
-The bcrypt hash format `$2b$12$...` makes cost factor extraction trivial without re-hashing. Add to `test_security_invariants.py` or inline in `test_auth_login.py`.
+All keys follow the existing pattern: `self._thresholds["key"]` — no numeric literals in check methods.
 
-**LOW complexity:** 5-line test. No new dependencies.
+### spaCy Reuse
 
----
-
-### 6. docker-compose CHANGE_ME + generate-secrets.sh
-
-**Current state:**
-- Hardcoded `xeter_dev_password` in docker-compose.yml for postgres, clickhouse, minio
-- `SECRET_KEY` already uses `${SECRET_KEY:-dev-secret-key-change-in-production}` (correct pattern)
-- Root `.gitignore` does not exist — `.env` is not excluded from git
-- No `generate-secrets.sh`
-
-**Target state:**
-
-`docker-compose.yml` replacements:
-```yaml
-postgres:
-  environment:
-    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-CHANGE_ME_BEFORE_DEPLOY}
-
-clickhouse:
-  environment:
-    CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-CHANGE_ME_BEFORE_DEPLOY}
-
-minio:
-  environment:
-    MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-CHANGE_ME_BEFORE_DEPLOY}
-```
-
-`generate-secrets.sh`:
-```bash
-#!/usr/bin/env bash
-# Generates random secrets for a new deployment environment.
-# Usage: bash generate-secrets.sh > .env
-set -euo pipefail
-echo "POSTGRES_PASSWORD=$(openssl rand -hex 32)"
-echo "CLICKHOUSE_PASSWORD=$(openssl rand -hex 32)"
-echo "MINIO_ROOT_PASSWORD=$(openssl rand -hex 32)"
-echo "SECRET_KEY=$(openssl rand -hex 32)"
-echo "WORKER_DATABASE_PASSWORD=$(openssl rand -hex 32)"
-```
-
-Root `.gitignore` (must be created — currently absent):
-```
-.env
-*.env.local
-```
-
-`CHANGE_ME_BEFORE_DEPLOY` as the fallback (not `xeter_dev_password`) makes it immediately obvious in logs/config dumps that secrets have not been rotated.
-
-**LOW complexity:** Sed-pattern replacements in docker-compose, one shell script, one `.gitignore`.
-
----
-
-### 7. MinIO xeter-payloads Private Bucket Policy
-
-**Current state:**
-- `minio-init` container: `mc mb local/xeter-payloads --ignore-existing` only
-- No explicit policy assertion
-- MinIO denies anonymous access by default, but this is not enforced or documented
-
-**Target state:**
-
-Add to `minio-init` command (idempotent, safe to re-run):
-```sh
-mc anonymous set none local/xeter-payloads
-```
-Per MinIO mc documentation (HIGH confidence): `none` removes all anonymous access policies. This is the equivalent of "private ACL" in S3 terminology.
-
-Full `minio-init` command after change:
-```sh
-mc alias set local http://minio:9000 xeter ${MINIO_ROOT_PASSWORD} \
-  && mc mb local/xeter-payloads --ignore-existing \
-  && mc anonymous set none local/xeter-payloads
-```
-
-AWS S3 equivalent (for production/cloud deployments — documentation only):
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Deny",
-      "Principal": "*",
-      "Action": "s3:*",
-      "Resource": [
-        "arn:aws:s3:::xeter-payloads",
-        "arn:aws:s3:::xeter-payloads/*"
-      ],
-      "Condition": {
-        "StringNotEquals": {
-          "aws:PrincipalArn": "arn:aws:iam::ACCOUNT_ID:user/xeter-service"
-        }
-      }
-    }
-  ]
-}
-```
-
-**LOW complexity:** One line in docker-compose minio-init, one paragraph in deployment docs.
-
----
-
-## MVP Definition
-
-### Launch With (v1.3 — all features required)
-
-Security hardening is binary. Shipping partial security improvements creates a false sense of security — if any of these gaps are open, a security review will fail.
-
-- [ ] JWT 30 min access token expiry — eliminates permanent-credential exposure
-- [ ] Refresh token endpoint + httpOnly cookie + revocation store — closes XSS token theft vector
-- [ ] docker-compose CHANGE_ME_BEFORE_DEPLOY + generate-secrets.sh + root .gitignore — closes committed-secrets risk
-- [ ] span_scores RLS policy — completes tenant isolation across all PostgreSQL tables
-- [ ] Worker xeter_worker BYPASSRLS role + WORKER_DATABASE_URL — closes cross-tenant read via worker
-- [ ] CHECK constraints on verdict/severity — closes data integrity gap
-- [ ] bcrypt rounds >= 12 CI test — regression guard in place
-- [ ] JWT_SECRET rotation runbook — operational readiness documented
-- [ ] MinIO xeter-payloads private bucket documented + mc command asserted — closes S3 config gap
-
-### Add After Validation (v1.4+)
-
-- [ ] Rate limiting on `POST /auth/login` and `POST /auth/refresh` — brute-force protection; important but post-launch for a solo-dev SaaS
-- [ ] Explicit logout endpoint (invalidates refresh token family) — UX polish; session ends naturally on expiry without it
-- [ ] RS256 / JWKS key rotation — only relevant when third-party API consumers exist
-
-### Future Consideration (v2+)
-
-- [ ] Argon2id migration from bcrypt — OWASP's preferred algorithm; worth migrating when multi-region deployment justifies the operational complexity
-- [ ] Clerk migration for multi-member tenant auth — already deferred in PROJECT.md
-
----
-
-## Feature Prioritization Matrix
-
-| Feature | Security Value | Implementation Cost | Priority |
-|---------|---------------|---------------------|----------|
-| JWT 30 min access token expiry | HIGH | LOW | P1 |
-| httpOnly refresh token + endpoint + revocation store | HIGH | MEDIUM | P1 |
-| docker-compose CHANGE_ME + generate-secrets.sh | HIGH | LOW | P1 |
-| span_scores RLS + xeter_worker BYPASSRLS role | HIGH | MEDIUM | P1 |
-| CHECK constraints (verdict/severity) | MEDIUM | LOW | P1 |
-| bcrypt rounds >= 12 CI test | MEDIUM | LOW | P1 |
-| JWT_SECRET rotation runbook | MEDIUM | LOW | P2 |
-| MinIO private bucket assertion + documentation | MEDIUM | LOW | P2 |
-
-**Priority key:** P1 = blocking for v1.3 launch, P2 = include in v1.3 but not a hard blocker
+`_get_spacy()` and `_extract_non_negated_clauses()` are already in `tool_call_analyzer.py`.
+Move these to `base.py` as shared helpers, or create a `xeter/services/worker/nlp_helpers.py`
+module. Both `SilentFailureAnalyzer` and `ToolCallAnalyzer` need spaCy.
 
 ---
 
 ## Sources
 
-- [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html) — bcrypt minimum work factor is 10 globally; 12 recommended for new systems. HIGH confidence.
-- [PostgreSQL 16 Role Attributes](https://www.postgresql.org/docs/16/role-attributes.html) — BYPASSRLS attribute definition and creation syntax. HIGH confidence.
-- [PostgreSQL Row Security Policies](https://www.postgresql.org/docs/current/ddl-rowsecurity.html) — BYPASSRLS + GRANT interaction: BYPASSRLS bypasses row-level filtering; GRANT controls table-level access; both apply independently. HIGH confidence.
-- [Auth0: Refresh Tokens — What Are They and When to Use Them](https://auth0.com/blog/refresh-tokens-what-are-they-and-when-to-use-them/) — token family reuse detection strategy; invalidate entire family on reuse detection. MEDIUM confidence.
-- [Implement Refresh Token Reuse Detection Without DB Bloat](https://dev.to/alvaromrveiga/implement-refresh-token-automatic-reuse-detection-without-cluttering-your-database-lb) — store one row per active token family (family_id + token_hash); UPDATE on rotation, DELETE on reuse. MEDIUM confidence.
-- [MinIO mc anonymous set documentation](https://docs.min.io/enterprise/aistor-object-store/reference/cli/mc-anonymous/mc-anonymous-set/) — `none` removes all anonymous access policies. HIGH confidence.
-- [pyca/bcrypt on PyPI](https://pypi.org/project/bcrypt/) — `gensalt()` defaults to rounds=12. HIGH confidence.
-- Codebase direct review: `deps.py`, `routers/auth.py`, `migrations/002_span_scores.py`, `migrations/003_diagnoses.py`, `services/worker/score_writer.py`, `deploy/docker-compose.yml`, `.env.example`
+- IBM Research: Detecting Silent Failures in Multi-Agentic AI Trajectories (arXiv 2511.04032) — taxonomy source for B/D/E/H category descriptions
+- Berkeley MAST: Why Do Multi-Agent LLM Systems Fail? (arXiv 2503.13657, NeurIPS 2025) — taxonomy source for C/F/G category descriptions and failure mode definitions; κ = 0.88 inter-annotator agreement confirms these are real, observable failure modes
+- [Detecting AI Agent Failure Modes in Production — Latitude](https://latitude.so/blog/ai-agent-failure-detection-guide) — observability-driven diagnosis patterns, span-level vs trace-level signal
+- [Why Multi-Agent Systems Fail — Galileo](https://galileo.ai/blog/why-multi-agent-systems-fail) — context propagation, handoff failure patterns
+- [Context Window Overflow — Redis](https://redis.io/blog/context-window-overflow/) — token count detection, `finish_reason=length` as primary D3 signal
+- [How to Detect Prompt Injection — ARMO](https://www.armosec.io/blog/how-to-detect-prompt-injection-in-production-ai-agent-workloads/) — three-layer detection (regex, heuristic, semantic); tool output scanning for E3
+- Codebase direct review: `worker/base.py`, `worker/tool_call_analyzer.py`, `worker/trace_analyzer.py`, `worker/main.py`, `documentation/silent_failures_ai_agents.md`, `.planning/PROJECT.md`
 
 ---
-*Feature research for: Xeter v1.3 Security Hardening*
-*Researched: 2026-04-27*
+
+*Feature research for: Xeter v1.5 Silent Failure Detection*
+*Researched: 2026-05-18*

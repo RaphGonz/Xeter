@@ -1,361 +1,193 @@
 # Pitfalls Research
 
-**Domain:** Security hardening — adding auth hardening, RLS, DB constraints, and secrets hygiene to an existing FastAPI + Next.js AI observability platform (Xeter v1.3)
-**Researched:** 2026-04-27
-**Confidence:** HIGH (codebase inspected directly; official PostgreSQL docs, FastAPI community issues, and Docker Compose official docs verified)
+**Domain:** Adding 18 new analyser checks (B1-B4, C3-C4, D1-D3, D5, E3, F1-F2, F4-F5, G1-G2, H2) to an existing AI observability worker.
+**Researched:** 2026-05-18
+**Confidence:** HIGH — based on direct codebase inspection of worker/main.py, base.py, tool_call_analyzer.py, trace_analyzer.py, flag_writer.py, score_writer.py, span_fetcher.py, and calibrate.py.
 
 ---
 
 ## Critical Pitfalls
 
-### Pitfall 1: httpOnly Cookie Silently Blocked by Browser in Dev Due to Cross-Port SameSite Rules
+### Pitfall 1: Sparse Fixture Problem — New Checks Cannot Be Calibrated With the Existing Fixture
 
 **What goes wrong:**
-The refresh token cookie is set by FastAPI on `localhost:8000` and the Next.js frontend runs on `localhost:3000`. Browsers treat these as different origins (same hostname, different port = cross-origin under the SameSite model). With `SameSite=Strict`, the cookie is never sent on cross-origin requests — every call to `/auth/refresh` from the frontend appears as "no cookie" and returns 401. With `SameSite=None`, the browser requires `Secure=True` (HTTPS), which is impossible on plain `http://localhost`. Result: the cookie is set successfully (FastAPI returns `Set-Cookie` and the header appears in devtools), but the browser silently refuses to attach it on subsequent requests. The implementation appears to work in curl (which ignores SameSite) but fails in every real browser.
-
-The current `presenter/main.py` has no CORS middleware configured at all, and `deps.py` issues tokens as `Authorization: Bearer` headers — switching to cookies requires adding CORS middleware first. Forgetting `allow_credentials=True` in the CORS config while setting cookies makes the browser reject the `Set-Cookie` header entirely.
+`calibrate.py` loads `fixtures/labelled_spans.jsonl` and hill-climbs against `ToolCallAnalyzer` (line 144 of calibrate.py: the harness instantiates only `ToolCallAnalyzer`). The existing fixture labels use `anomaly_type` matching the seven A-category flag types. Every new v1.5 check (output_schema_violation, step_repetition, context_propagation_failure, etc.) has zero labelled examples in that fixture. Hill-climbing on zero positives produces P=0/0 (the division guard returns 0.0) and the hill-climb converges immediately with `best_threshold = HILL_CLIMB_START = 0.10` — a threshold so low it fires on nearly any span. The summary prints "WARN" but still writes the bad threshold to `calibrated_thresholds.json` and patches `docker-compose.yml`. The check is deployed and flags everything.
 
 **Why it happens:**
-Developers follow production cookie security guidance (`SameSite=Strict`, `Secure=True`) without realizing neither setting is compatible with cross-port localhost development. The failure is invisible: no error from FastAPI, no browser console error — just a missing cookie.
+The calibration harness is tightly coupled to `ToolCallAnalyzer`. Even if new fixture entries are added with the correct `anomaly_type`, the harness never dispatches to `OutputSchemaAnalyzer` or `TraceAnalyzer`. The harness loop on line 444 iterates `active_flag_types` (a string list) and calls `ToolCallAnalyzer(embedder, thresholds).analyze()` — new analyzer classes are invisible to it.
 
 **How to avoid:**
-Drive cookie settings from an environment variable:
-- Dev (`ENVIRONMENT=development`): `secure=False`, `samesite="lax"`, `httponly=True`
-- Prod: `secure=True`, `samesite="strict"` (same-domain) or `samesite="lax"` (cross-subdomain), `httponly=True`
-
-Add CORS middleware to `presenter/main.py` before any cookie work:
-```python
-from fastapi.middleware.cors import CORSMiddleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # never "*" with credentials
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-```
-
-The Next.js fetch calls to the refresh endpoint must include `credentials: "include"`. Without this, the browser does not attach cookies even if SameSite allows it.
+- Build fixtures before implementing checks. Minimum viable: 15 positive + 15 negative labelled examples per check. For trace-level checks (C3, C4, D1, D2, F1-F5, G1-G2), the fixture format must be a list of SpanData per trace, not a single span row.
+- Extend `calibrate.py` with an `--analyzer` flag that instantiates the correct class, or create a separate `calibrate_v15.py`. Do not modify the working v1.4 harness mid-milestone — it covers 112+ passing tests.
+- Register every new threshold key in `THRESHOLDS` in `main.py` (and `DEFAULT_THRESHOLDS` in `calibrate.py`) in the same PR that introduces the check method. A missing key raises `KeyError` at runtime, not at import time.
 
 **Warning signs:**
-- `Set-Cookie` header appears in devtools but the cookie disappears after the login response
-- `/auth/refresh` always returns 401 in the browser but works in curl
-- No `CORSMiddleware` in `presenter/main.py`
-- `allow_origins=["*"]` combined with `allow_credentials=True` (browsers block this combination)
+- Hill-climb completes in 1 step with precision=0.0 for any new flag type.
+- `calibrate.py` prints "WARN (<80% precision)" for every new check.
+- New `self._thresholds["some_key"]` reference added but the key is absent from `THRESHOLDS` in `main.py`.
 
 **Phase to address:**
-JWT refresh token endpoint phase. Must be the first thing verified in a real browser before any other auth work, because every subsequent test depends on it.
+The fixture-definition phase preceding each check group. Threshold registration must ship in the same PR as the check method — not as a follow-up.
 
 ---
 
-### Pitfall 2: Refresh Token Rotation Without Revocation — Logout Is Theatre
+### Pitfall 2: Trace Flush Does Not Fire During Idle — Buffer Grows Unbounded
 
 **What goes wrong:**
-Adding a refresh token endpoint that rotates tokens (issues a new refresh token on each use) without a server-side revocation store means logout does nothing. The frontend calls `POST /logout`, the httpOnly cookie is cleared client-side, and the server returns 200. But any refresh token that was exfiltrated before logout — from a compromised network, XSS via a non-httpOnly cookie on the same origin, or a browser extension — remains valid until it naturally expires. The attacker silently continues refreshing access tokens indefinitely.
-
-The gap is especially sharp here because the current system has no token expiry at all (`TOKEN_EXPIRE_HOURS = 24` in `deps.py`, no refresh cycle). Moving to 30-minute access tokens is only a security improvement if refresh tokens can actually be revoked.
+The flush check in `main.py` lives inside the `for attempt in range(3)` success branch (lines 168-188 of main.py). It fires only when a new span is successfully processed. BRPOP with `timeout=2` returns `None` on the quiet path, hits `continue`, and skips the buffer check entirely. If a developer sends one trace and then stops sending spans, the trace buffer entry sits in memory indefinitely. No trace-level flags are ever written for that trace, no matter how long the worker runs. The 30-second timeout is a "time since last span" measurement, not a wall-clock ticker.
 
 **Why it happens:**
-Token rotation (swap old for new on each use) is the visible security improvement and is straightforward to implement. The revocation store requires a database table, a lookup on every refresh request, and a write on logout — three extra steps that teams defer as "we'll add this later."
+The flush check was correctly placed to avoid a second sleep loop. The architectural consequence — that the buffer is only inspected on new span arrival — is easy to miss. The bug is invisible in integration tests that always follow a trace with more traffic, and invisible in unit tests that call `trace_analyzer.analyze()` directly.
 
 **How to avoid:**
-Add a `refresh_tokens` PostgreSQL table:
-```sql
-refresh_tokens (
-    jti          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id    UUID NOT NULL,
-    expires_at   TIMESTAMPTZ NOT NULL,
-    revoked_at   TIMESTAMPTZ,
-    created_at   TIMESTAMPTZ DEFAULT now()
-)
-```
-The refresh JWT payload must include a `jti` claim. On every `POST /auth/refresh`, look up `jti` in the table and verify `revoked_at IS NULL AND expires_at > now()`. On `POST /logout`, set `revoked_at = now()`. Add RLS (tenant_isolation policy using `app.current_tenant_id`) to the table.
-
-If the revocation table is intentionally deferred for MVP, document the gap explicitly and cap refresh token lifetime at 7 days (not 30 days or longer).
+Move the `ready_trace_ids` block so it also runs on the `result is None` branch (the BRPOP timeout path). When BRPOP returns None, check `trace_last_seen` for any trace that has exceeded the timeout and flush it. This is a one-line structural change to the main loop.
 
 **Warning signs:**
-- `POST /logout` only calls `response.delete_cookie()` with no database write
-- The refresh token JWT payload has no `jti` claim
-- No `refresh_tokens` table (or equivalent Redis set) in the schema
+- Integration test sends exactly N spans for a trace, waits 35 seconds with `WORKER_TRACE_FLUSH_TIMEOUT_S=5`, and sees zero trace-level flags.
+- `trace_buffer` grows over a long run and its length never decreases.
+- No trace-level flags appear in the flags table despite spans being processed.
 
 **Phase to address:**
-JWT refresh token endpoint phase. The revocation store must be decided before the endpoint is built — the `jti` claim must be in the JWT from day one.
+The phase that implements the first trace-level check. If trace flags never fire in tests, this is the cause. Add a `test_trace_flush_on_idle` integration test that explicitly verifies the BRPOP-timeout path.
 
 ---
 
-### Pitfall 3: `current_setting('app.current_tenant_id', true)` With `missing_ok=True` Silences Missing-Variable Cases Instead of Raising
+### Pitfall 3: Trace-Level Scores Silently Not Persisted — Calibration Dataset Is Empty for All C/D/F/G Checks
 
 **What goes wrong:**
-All existing RLS policies use `current_setting('app.current_tenant_id', true)` with the `missing_ok=true` flag. When the session variable is not set, `current_setting` returns NULL, making the USING clause `tenant_id::text = NULL`, which is always false in SQL. Rows are invisibly filtered — no error, no 401, just empty results. This is correct for the migration role (which must run without the variable set), but it becomes a silent footgun for application code.
-
-When span_scores RLS is enabled with the same policy pattern, any code path that reads from span_scores without first calling `set_config('app.current_tenant_id', ...)` will silently return zero rows. The worker's `score_writer.py` connects without setting the variable (it uses psycopg2 directly, no `tenant_session` context manager). If future code reads span_scores via that same connection, it will see nothing — no exception, no indication of the problem.
+`process_span()` calls `analyzer.analyze(span)` then `analyzer.flush_scores()` and passes scores to `write_scores(span_id, tenant_id, scores)`. In the trace flush loop (main.py lines 175-188), `trace_analyzer.analyze(spans_for_trace)` is called and flags are written, but `trace_analyzer.flush_scores()` is never called — and even if it were, `write_scores` takes `span_id: str` with no None handling. The `span_scores` table may also have `span_id NOT NULL`. The result: every `log_score()` call inside trace-level check methods accumulates in `self._scores` indefinitely (buffer leak) and no trace scores ever reach the database. The calibration dataset for all C/D/F/G checks is permanently empty.
 
 **Why it happens:**
-`missing_ok=true` is the correct choice for the migration role. Developers carry this exact pattern into application-facing code without recognizing that it trades an explicit error for silent invisibility. The bug manifests as "no data" rather than "permission denied," making it extremely hard to diagnose.
+`write_scores` was written for span-level use exclusively. The v1.4 scaffold wired only `write_flags` for the trace path. No one noticed because `TraceAnalyzer.analyze()` returned `[]` and `log_score()` was never called.
 
 **How to avoid:**
-Write an integration test that asserts the RLS policy is enforced AND does not silently return empty results for wrong reasons:
-1. Connect to PostgreSQL without calling `set_config`
-2. Assert `SELECT COUNT(*) FROM span_scores` returns 0 even when rows exist
-3. Connect with an incorrect tenant_id and assert the same
-
-For application code, document that any new service or code path that queries RLS-protected tables must call `set_config` before querying. The `tenant_session()` context manager in `shared/db/postgres.py` handles this correctly for async paths — make it the required pattern, not an optional one.
+- Inspect the `span_scores` schema for `span_id NOT NULL` before the first trace check lands. If NOT NULL, add a migration to make it nullable, or add a `trace_id` column and create a `write_trace_scores(trace_id, tenant_id, scores)` function.
+- In the flush loop, after `trace_analyzer.analyze()`, call `trace_analyzer.flush_scores()` and write the results. Do this in the same PR as the first trace-level check.
+- Add a buffer-leak test: call `trace_analyzer.analyze(spans)` twice without flushing and assert that `len(trace_analyzer._scores)` grows — confirming the leak is present before the fix, then confirm the flush zeroes it.
 
 **Warning signs:**
-- Any SELECT against span_scores, flags, or diagnoses outside a `tenant_session()` context manager block
-- New services that have their own database connection without importing `tenant_session()`
-- Queries returning empty results when data exists (wrong tenant variable) treated as "no data found" rather than investigated
+- `span_scores` shows zero rows with `analyzer_name = 'trace_analyzer'` after multiple trace flushes.
+- `trace_analyzer._scores` grows without bound over multiple analyze() calls (no flush in the loop).
+- Calibration data for C/D/F/G checks is empty even after full processing runs.
 
 **Phase to address:**
-span_scores RLS policy phase. Write the missing-variable integration test in the same PR that adds the policy.
+The phase implementing the first trace-level check. Score persistence must be in the same PR as the check — not deferred to a "calibration cleanup" phase.
 
 ---
 
-### Pitfall 4: BYPASSRLS Role Used for the Entire Worker — "Scoped to Inserts Only" Requires Two Roles, Not One DATABASE_URL
+### Pitfall 4: Second Span-Level Analyzer Doubles Embedder Round-Trips Per Span
 
 **What goes wrong:**
-The v1.3 target states "Worker BYPASSRLS scoped to insert paths only." But the Worker has a single `DATABASE_URL` environment variable (visible in `docker-compose.yml`) that connects as a BYPASSRLS role. `write_scores()` in `score_writer.py` and `write_flags()` in `flag_writer.py` both derive their DSN from the same `DATABASE_URL`. There is no way to scope BYPASSRLS to inserts at the code level — BYPASSRLS is a role attribute, not an operation attribute. Any read operation that uses the same DATABASE_URL also bypasses RLS.
-
-If any future worker code (calibration read, health check, admin query) uses the Worker's DATABASE_URL for a SELECT, it bypasses all tenant isolation silently. The scoping intent cannot be enforced by documentation alone.
+`process_span()` iterates `for analyzer in analyzers` and dispatches each independently. If `OutputSchemaAnalyzer` (B1-B4) and `ContentAnalyzer` (D3/D5/E3/H2) are both appended to `ANALYZERS`, and both embed `span.prompt`, each makes a separate `POST /encode` to the embedder service. With the synchronous `EmbedderClient`, this is two blocking HTTP round-trips per span for identical input. The per-tool embedding cache in `ToolCallAnalyzer` is instance-scoped and invisible to other analyzers. At dev volume, this is imperceptible. As span volume grows, each additional span analyzer multiplies embedder load linearly.
 
 **Why it happens:**
-"Scope to inserts only" sounds like a code comment or a guard at the Python level. It actually requires creating two distinct PostgreSQL roles with different capabilities and two distinct connection strings.
+`BaseAnalyzer.embed()` has no cross-analyzer caching. The design is correct for single-analyzer use. Multi-analyzer extension was not anticipated when the cache was designed.
 
 **How to avoid:**
-Create two PostgreSQL roles in the migrations:
-- `xeter_worker_writer`: BYPASSRLS, INSERT-only GRANT on `span_scores` and `flags`
-- `xeter_app`: no BYPASSRLS, standard SELECT/INSERT/UPDATE GRANTs, reads via `set_config` + RLS
-
-Add two environment variables to the Worker service in docker-compose:
-- `WORKER_WRITE_DATABASE_URL` — used by `write_scores()` and `write_flags()`
-- `DATABASE_URL` — app role connection used for any future reads (with tenant_session)
-
-Verify by connecting as `xeter_worker_writer` and attempting `SELECT * FROM span_scores` — it should return all rows (BYPASSRLS). Then verify that a misconfigured read through this connection is detectable by the role name in audit logs.
+Before appending a second class to `ANALYZERS`, add a span-level embedding cache at the `process_span()` level: a `dict[str, np.ndarray]` keyed by `hashlib.sha256(text.encode()).hexdigest()`. Pass the cache to each analyzer, or wrap `EmbedderClient` with a cache layer. Alternatively, compute shared embeddings (prompt, response) once before the loop and inject them into `SpanData` as optional pre-computed fields.
+The minimum viable mitigation for v1.5: document this as TECH-01 and accept the duplicate calls at dev scale, but add the cache before any production load test.
 
 **Warning signs:**
-- Worker service has only one `DATABASE_URL` in docker-compose
-- `_get_dsn()` in `score_writer.py` reads from `DATABASE_URL` for both reads and writes
-- No second PostgreSQL role named anything like `worker_writer` or `app_role` in the migrations
+- Embedder service logs show two `POST /encode` calls with identical `texts` payloads within milliseconds of each other.
+- Worker per-span processing time increases by ~50ms per additional span analyzer.
+- `EmbedderClient.encode()` is called with the same text string multiple times in a single span's analysis.
 
 **Phase to address:**
-span_scores RLS phase. The role architecture must be established before the span_scores RLS migration runs, because enabling RLS with a BYPASSRLS role still covering reads defeats the policy entirely.
+The phase that appends the second span-level analyzer to `ANALYZERS`. Add the cross-analyzer cache in the same PR, not as a follow-up.
 
 ---
 
-### Pitfall 5: Table Owner Bypasses All RLS Policies — `FORCE ROW LEVEL SECURITY` Missing From All Tables
+### Pitfall 5: F1/F2/F4/F5 Heuristic Brittleness — Proxy Signals Without a Documented False-Positive Mode Are Just Wrong Flags
 
 **What goes wrong:**
-PostgreSQL table owners bypass RLS by default, even when RLS is enabled. The migration comment in `001_initial.py` states: "The migration role must be a superuser or BYPASSRLS role." That role owns all five tables. None of the existing migrations call `ALTER TABLE ... FORCE ROW LEVEL SECURITY`. This means the table owner can SELECT across all tenants without setting any session variable. Every admin script, every Alembic migration, and any future service that reuses the migration DATABASE_URL can read all tenant data silently.
-
-This is not a theoretical risk: `ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY` are two distinct commands with distinct semantics. The existing schema only uses `ENABLE`.
+F1 (wrong agent handoff), F2 (information withholding), F4 (conversation reset), and F5 (fail to ask for clarification) have no ground truth in OTel spans. No standard span attribute declares `handoff_target`, `required_fields_passed`, or `conversation_reset`. Every implementation must use a proxy signal: e.g., F1 approximated by comparing `agent_name` transitions across spans, F4 approximated by detecting a span response with no reference to prior tool outputs. These proxies have structural false-positive modes that are independent of threshold calibration — they fire on correct agent behaviour that coincidentally matches the heuristic pattern.
 
 **Why it happens:**
-Most RLS tutorials show only `ENABLE ROW LEVEL SECURITY`. The `FORCE` variant is a lesser-known second step that appears in the PostgreSQL docs but is absent from most examples.
+The IBM/Berkeley taxonomy defines failures at the semantic level (what the agent *should* have done). OTel spans record what the agent *did*. The gap between intent and action cannot be closed by heuristics alone without richer instrumentation.
 
 **How to avoid:**
-Add a new migration that applies `FORCE ROW LEVEL SECURITY` to every table that has RLS enabled:
-```sql
-ALTER TABLE tenants FORCE ROW LEVEL SECURITY;
-ALTER TABLE users FORCE ROW LEVEL SECURITY;
-ALTER TABLE api_keys FORCE ROW LEVEL SECURITY;
-ALTER TABLE flags FORCE ROW LEVEL SECURITY;
-ALTER TABLE diagnostics FORCE ROW LEVEL SECURITY;
-ALTER TABLE diagnoses FORCE ROW LEVEL SECURITY;
-```
-Add this to the span_scores RLS migration so both tables get FORCE together with ENABLE.
-
-Verify with: `SELECT relname, relrowsecurity, relforcerowsecurity FROM pg_class WHERE relname IN ('flags', 'diagnoses', 'span_scores')` — both `relrowsecurity` and `relforcerowsecurity` must be `t`.
+- Define a precision floor for each F-check before writing a single line of implementation. If F1 cannot reach 65% precision on a hand-curated fixture without a `handoff_target` span attribute, defer F1 until the SDK emits that attribute.
+- Write the proxy signal and its known false-positive mode in the check method's docstring before any code. This forces the false-positive decision to be made at spec time, not discovered in the dashboard.
+- Assign all F-checks to `BINARY_FLAG_TYPES` in `calibrate.py` (no threshold sweep, single evaluation pass) so they cannot be over-fitted to a threshold that masks poor signal quality.
+- Add a `confidence: "low"` field to the `Flag.detail` dict for F-checks so the dashboard can visually distinguish them from high-confidence A/B flags.
 
 **Warning signs:**
-- `SELECT relforcerowsecurity FROM pg_class WHERE relname = 'flags'` returns `f`
-- A psql connection as the migration role can SELECT rows from multiple tenants without setting `app.current_tenant_id`
-- Migrations 001–003 contain `ENABLE ROW LEVEL SECURITY` but no `FORCE ROW LEVEL SECURITY`
+- F-check precision on a hand-crafted fixture is below 0.60.
+- The same trace triggers F1 and F4 simultaneously (heuristic overlap rather than distinct signal).
+- The check fires on single-agent traces with no handoff spans.
+- A check method docstring has no paragraph describing the proxy signal and its false-positive mode.
 
 **Phase to address:**
-span_scores RLS phase. Add `FORCE ROW LEVEL SECURITY` for all existing tables in the same migration as the span_scores policy — one retroactive fix, not six separate migrations.
+The phase defining F-check specifications. Each spec must include proxy signal, false-positive mode, and precision floor as go/no-go criteria before any implementation code is written.
 
 ---
 
-### Pitfall 6: CHECK Constraint on `diagnoses` With Existing Data Blocks Writes During Migration
+### Pitfall 6: G1/G2 Fires on Every Non-Verification Agent — Structural False Positives at the Trace Level
 
 **What goes wrong:**
-Adding `CHECK (verdict IN ('model','architecture','prompt','unknown'))` to the `diagnoses` table using a standard `op.create_check_constraint()` call acquires an `ACCESS EXCLUSIVE` lock and performs a full table scan to validate all existing rows before the constraint becomes active. On a live system, this blocks all INSERTs and UPDATEs to `diagnoses` for the duration of the scan. If any existing row contains a verdict value outside the allowed set — possible if an LLM returned an unexpected value that passed through the "fail-clean" pipeline — the migration fails entirely and rolls back. The constraint is not applied, there is no indication of which rows violated it, and the migration must be rerun after manual data repair.
-
-The `diagnoses` table has live data from v1.2 (LLM Diagnosticer). The same risk applies to `severity IN ('low','medium','high')`. Both constraints are on the same table with the same existing rows.
+G1 (no verification) and G2 (incomplete verification) are trace-level: "did the agent include any self-check or cross-check step?" Most agent traces — data retrieval, action execution, single-step tasks — legitimately have no verification step because the task does not require one. With no span attribute declaring `task_requires_verification`, G1 flags every single-step trace, every simple fetch trace, every trace where verification was correctly absent. At realistic agent traffic, G1 fires on the majority of traces with a precision near zero.
 
 **Why it happens:**
-`op.create_check_constraint()` defaults to non-NOT VALID mode. Developers test the migration against an empty development table where it passes instantly. The lock and scan only become a problem in production where data exists.
+Verification absence is only a failure when verification was *expected*. The check cannot distinguish "correctly skipped" from "incorrectly omitted" without declarative intent metadata in the trace.
 
 **How to avoid:**
-Use a two-step approach in Alembic. Step 1 installs the constraint without validating existing data (only new writes are checked):
-```python
-op.execute(sa.text(
-    "ALTER TABLE diagnoses ADD CONSTRAINT chk_verdict "
-    "CHECK (verdict IN ('model','architecture','prompt','unknown')) NOT VALID"
-))
-```
-Step 2, run after pre-flight verification, validates existing rows with a weaker lock that does not block writes:
-```python
-op.execute(sa.text("ALTER TABLE diagnoses VALIDATE CONSTRAINT chk_verdict"))
-```
-Pre-flight query to run before step 2:
-```sql
-SELECT verdict, count(*) FROM diagnoses
-WHERE verdict NOT IN ('model','architecture','prompt','unknown')
-GROUP BY verdict;
-```
-If this returns any rows, update them before VALIDATE runs. Apply the same two-step pattern to the `severity` constraint.
+Gate G1 and G2 on structural prerequisites:
+- Minimum span count threshold: the trace must contain at least N spans with tool use (N >= 3 is a reasonable proxy for "substantial work that might warrant a check"). Exclude all single-span traces unconditionally.
+- Prefer an opt-in span attribute: `xeter.verification_expected: true`. Without that attribute on at least one span, skip G1/G2 entirely. This shifts the signal burden to the instrumentation layer but eliminates structural false positives.
+- If opt-in is not viable for v1.5, tag G1/G2 flags with `confidence: "low"` in `Flag.detail` so the dashboard can filter them separately.
 
 **Warning signs:**
-- A single `op.create_check_constraint("diagnoses", "chk_verdict", ...)` call without `postgresql_not_valid=True`
-- No pre-flight query in the migration runbook
-- Migration tested only against an empty diagnoses table in development
+- G1 fires on every trace with a single tool-call span.
+- G1 precision on a manually curated fixture is below 0.50 even with selected positive examples.
+- The flag appears on traces where the task is clearly a single-step lookup (no multi-step reasoning expected).
 
 **Phase to address:**
-CHECK constraint migration phase. The NOT VALID pattern must be decided before any migration is written, not retrofitted after a production failure.
+The phase implementing G1/G2. The multi-span prerequisite gate must be in the spec before implementation — adding it as a post-hoc patch after dashboard noise appears means deleting and rewriting the check.
 
 ---
 
-### Pitfall 7: bcrypt Cost Factor 12 Makes CI Tests Slow — Module-Level Hash Computed on Every Import
+### Pitfall 7: Hill-Climb Degenerate Solution — P=1.0, R=0.0 Reported as "OK"
 
 **What goes wrong:**
-`test_auth_login.py` line 32 calls `bcrypt.hashpw(USER_PASSWORD.encode("utf-8"), bcrypt.gensalt())` at module level — outside any function or fixture. This runs every time the test module is imported by pytest, before any test function executes. At default cost factor 10, this takes ~100ms. At cost factor 12 (the v1.3 target minimum), it takes 300–600ms on a development machine and 600–1200ms on a CI runner with throttled CPU. With more auth tests added in v1.3, module-level bcrypt calls accumulate across the test suite.
-
-The deeper issue: the bcrypt CI enforcement test (verifying that production code uses rounds ≥ 12) will itself need to call `bcrypt.gensalt(rounds=12)` to verify the cost. If implemented naively, the enforcement test adds another 600ms+ of bcrypt compute to every CI run.
+The hill-climb algorithm (`calibrate.py` lines 247-278) raises the threshold until precision drops. For a check with few positive examples in the fixture (say, 5 positives out of 100 spans), the hill-climb converges to a high threshold that classifies everything as negative: P=1.0 (no false positives — nothing predicted), R=0.0 (no true positives detected). The script reports "OK" because `P >= 0.80` is satisfied. The deployed check then flags nothing. No operator notice. Calibration "succeeded."
 
 **Why it happens:**
-The module-level hash was placed outside a fixture for simplicity. At cost factor 10 (the bcrypt default), the impact is barely noticeable. The developer writing the test did not anticipate the cost factor being raised. Moving from 10 to 12 rounds doubles the time twice (4x slowdown).
+The stopping condition is "precision stopped improving." With a low-prevalence check and a high threshold, precision trivially reaches 1.0. There is no recall floor in the current algorithm.
 
 **How to avoid:**
-Move all bcrypt calls in test files to pytest fixtures with `scope="session"` so the hash is computed once per test session, not once per module import:
-```python
-@pytest.fixture(scope="session")
-def hashed_password():
-    # rounds=4 is intentional — fastest valid bcrypt for tests.
-    # Do not raise this in tests; test the round count separately.
-    return bcrypt.hashpw(b"correct-horse-battery", bcrypt.gensalt(rounds=4)).decode()
-```
-`rounds=4` is the minimum bcrypt accepts. It makes fixtures 64x faster than `rounds=10`. Tests still exercise the bcrypt API correctly — they are testing application logic, not cryptographic strength.
-
-The CI enforcement test should verify the production `bcrypt.gensalt()` call uses `rounds >= 12` by inspecting the hash output (the `$2b$12$` prefix encodes the cost factor) or by mocking `gensalt` and asserting it was called with the correct rounds argument — not by calling `hashpw` with production cost in the test body.
+Add `RECALL_FLOOR = 0.40` to `calibrate.py`. In `hill_climb()`, update `best_threshold` only when both `precision >= precision_floor` AND `recall >= RECALL_FLOOR`. If no threshold satisfies both, report the threshold with the best F1 score and print a warning. This prevents the degenerate all-negative solution from being silently accepted. Additionally, print the R value alongside the "OK" status in the calibration summary so a P=1.0, R=0.0 result is visually obvious.
 
 **Warning signs:**
-- `bcrypt.hashpw(...)` or `bcrypt.gensalt()` appears at module level (outside any function/fixture/class) in test files
-- CI test run time increases by more than 20 seconds after raising cost factor
-- The bcrypt enforcement test takes more than 2 seconds individually
-- `pytest --collect-only` takes noticeably longer than before
+- Calibration reports P=1.0, R=0.0 for a new check type and marks it "OK."
+- The check produces zero flags on the full production fixture.
+- Hill-climb converges in 2 steps (threshold 0.10 already achieves P=1.0 trivially).
+- `calibrate.py` prints `steps=2` for a new check type.
 
 **Phase to address:**
-bcrypt cost enforcement phase. The fixture refactor must be in the same PR that raises the production cost factor — raising cost factor without fixing test fixtures causes CI timeout failures immediately.
+The calibration infrastructure phase for v1.5. The recall floor must be added to `calibrate.py` before any v1.5 calibration runs, not discovered after seeing a deployed check that never fires.
 
 ---
 
-### Pitfall 8: `CHANGE_ME_BEFORE_DEPLOY` Placeholders Don't Cover the Two Actual Leak Vectors
+### Pitfall 8: TraceAnalyzer Registered in ANALYZERS — Dispatched With Single SpanData Instead of List
 
 **What goes wrong:**
-Replacing `xeter_dev_password` with `CHANGE_ME_BEFORE_DEPLOY` in `docker-compose.yml` prevents accidental production deployment with the dev password. But the two real leak vectors are different:
-
-**Leak vector 1 — the `:-fallback` default:** `docker-compose.yml` currently has `SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}`. If a developer copies docker-compose.yml to a new environment and forgets to set `SECRET_KEY` in `.env`, the fallback `dev-secret-key-change-in-production` is used silently. The service starts, appears healthy, and signs JWTs with a known weak key. `deps.py` reinforces this with `SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key-change-in-production")` — two layers of silent fallback.
-
-**Leak vector 2 — `.env` committed to git:** `generate-secrets.sh` writes a `.env` file. If `.env` is not in `.gitignore` at the time the file is created, the first `git add .` commits all generated secrets. Git history is permanent — rotating the secrets does not remove the historical commit. The ANTHROPIC_API_KEY is particularly dangerous here: it was already present in `docker-compose.yml` as `${ANTHROPIC_API_KEY:-}` and would appear in the generated `.env`.
+`main.py` `ANALYZERS` list currently contains only `BaseSpanAnalyzer` instances. `process_span()` calls `analyzer.analyze(span)` for each — passing a single `SpanData`. `TraceAnalyzer(BaseTraceAnalyzer)` defines `analyze(self, spans: list[SpanData]) -> list[Flag]`. If `TraceAnalyzer` is accidentally appended to `ANALYZERS` instead of kept as the separate `trace_analyzer` instance, it receives a single `SpanData` where it expects a list. The first check method that calls `spans[0].span_id` works fine (a SpanData is subscriptable as `span[0]` returns a character). It will either return wrong results silently or raise a `TypeError` mid-analysis, which the log-and-skip handler catches and swallows.
 
 **Why it happens:**
-Teams treat "use environment variables" as the secure pattern. It is more secure than hardcoding, but env vars are visible via `docker inspect <container>`, appear in CI/CD logs on failure, and are committed if `.gitignore` is incomplete.
+Both `ToolCallAnalyzer` and `TraceAnalyzer` subclass `BaseAnalyzer`. They look structurally similar at the registration site. The type signatures differ (`SpanData` vs `list[SpanData]`) but Python does not enforce this at construction time.
 
 **How to avoid:**
-1. Remove ALL fallback defaults for security-sensitive values in docker-compose and application code. `SECRET_KEY: ${SECRET_KEY}` (no `:-fallback`) causes docker-compose to fail loudly if the variable is unset. In `deps.py`: `SECRET_KEY = os.environ["SECRET_KEY"]` — `KeyError` on startup, not silent fallback.
-
-2. Ensure `.env` is in `.gitignore` before writing `generate-secrets.sh`. Verify with `git check-ignore -v .env` — if it prints nothing (not ignored), the file will be committed.
-
-3. Add a guard at the top of `generate-secrets.sh`:
-```bash
-if git ls-files --error-unmatch .env 2>/dev/null; then
-    echo "ERROR: .env is already tracked by git. Remove it from tracking first."
-    exit 1
-fi
-```
-
-4. Add `.env.example` (with `CHANGE_ME` values) to version control. The generate-secrets script copies from `.env.example` and substitutes random values.
+- Keep `trace_analyzer` as a named variable separate from the `ANALYZERS` list, as it is today.
+- Add a type assertion comment at the ANALYZERS definition: `# NOTE: BaseSpanAnalyzer instances only. TraceAnalyzer is dispatched separately below.`
+- Add a runtime assertion in the main function: `assert all(isinstance(a, BaseSpanAnalyzer) for a in analyzers)` before the BRPOP loop begins.
 
 **Warning signs:**
-- `${VAR:-fallback-value}` pattern in docker-compose.yml for any secret
-- `os.environ.get("SECRET_KEY", "...")` in any service code (the `.get()` with default is the problem)
-- `git check-ignore -v .env` prints nothing
-- `generate-secrets.sh` does not check if `.env` is git-tracked before writing
+- `TraceAnalyzer` appears in the `analyzers` parameter passed to `process_span()`.
+- `process_span()` raises `TypeError` on trace-related spans after new analyzers are added.
+- Logs show "worker: failed to process span" immediately after a new analyzer is registered.
 
 **Phase to address:**
-Secrets hygiene phase. The `:-fallback` removal and `.gitignore` verification must happen before the generate-secrets script is written, not as a follow-up.
-
----
-
-### Pitfall 9: MinIO Bucket Policy — `mc mb` Creates the Bucket But Does Not Enforce Private Policy
-
-**What goes wrong:**
-The `minio-init` container in `docker-compose.yml` runs `mc mb local/xeter-payloads --ignore-existing` to create the bucket. MinIO's default for a newly created bucket is private (no anonymous access). But the policy state is stored in MinIO's internal state on the volume — it is not re-applied on container restart. Two failure modes:
-
-1. A developer manually runs `mc policy set download local/xeter-payloads` for debugging (to view an object directly in the browser). The policy persists on the volume after they stop debugging. No alert, no indication — the bucket silently remains public.
-
-2. MinIO's default "private" is implemented as an absence of a policy, not an explicit DENY. The absence of a policy means anonymous access defaults to denied, but it also means the effective policy is not visible in the IAM audit trail. An explicit `mc policy set none` creates a policy document that is auditable.
-
-Additionally, all five application services (Analyser, Presenter, Worker, Diagnosticer, embedder) use the same `S3_ACCESS_KEY` / `S3_SECRET_KEY` root credentials. If any one service has a vulnerability, the attacker gets full read/write access to the entire bucket across all tenants.
-
-**Why it happens:**
-MinIO deprecated S3-style ACLs in favour of bucket policies. Developers accustomed to AWS S3 `private` ACL on bucket creation assume `mc mb` sets the same posture. MinIO's ACL implementation is intentionally limited — `mc policy` is the correct tool, not `mc mb` flags.
-
-**How to avoid:**
-Update the `minio-init` command to explicitly set the private policy after bucket creation:
-```
-mc mb local/xeter-payloads --ignore-existing && mc policy set none local/xeter-payloads
-```
-
-Add a verification step to the runbook: after deployment, run `mc policy get local/xeter-payloads`. Expected output: `Access permission for 'local/xeter-payloads' is 'none'`. Any other output is a misconfiguration.
-
-For the IAM documentation, create per-service MinIO service accounts:
-- Analyser: `s3:PutObject` only
-- Presenter: `s3:GetObject` only
-- Worker: `s3:PutObject` + `s3:GetObject`
-
-Root credentials (`MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`) should not appear in application service environment blocks.
-
-**Warning signs:**
-- `minio-init` command does not include `mc policy set none` after `mc mb`
-- All services in docker-compose share identical `S3_ACCESS_KEY` / `S3_SECRET_KEY` values
-- No `mc policy get` verification step in the runbook
-- A browser can load `http://localhost:9100/xeter-payloads/any-key` without authentication
-
-**Phase to address:**
-MinIO bucket policy documentation phase. The `mc policy set none` addition to minio-init must ship in the same change as the documentation.
-
----
-
-### Pitfall 10: Refresh Token + Next.js 15 App Router — Client Components Cannot Read httpOnly Cookies, Access Token Must Be in the Response Body
-
-**What goes wrong:**
-With the refresh token in an httpOnly cookie and the access token used as a `Bearer` header (the current system pattern in `deps.py`), the frontend needs to silently refresh the access token when it expires. The standard approach — a fetch interceptor that catches 401, calls `/auth/refresh`, and retries — works only if `/auth/refresh` returns the new access token in the JSON response body.
-
-If the implementation sets both tokens as cookies (moving away from the current Bearer header pattern), Client Components in Next.js 15 App Router cannot read httpOnly cookies at all — `document.cookie` does not return httpOnly cookies by design. The interceptor cannot get the new access token. The user is silently logged out.
-
-The `presenter/deps.py` currently returns tokens as Bearer headers and reads them from the `Authorization` header — this is correct. The risk is that developers building the refresh endpoint copy cookie-only patterns from tutorials and return the new access token only as a cookie.
-
-**Why it happens:**
-Many refresh token tutorials target server-rendered apps where cookies carry everything and JS never needs to read the token. In Next.js 15 with a mix of Server and Client Components, the token must be readable by Client Component fetch interceptors.
-
-**How to avoid:**
-The `/auth/refresh` endpoint contract must:
-1. Read the refresh token from the httpOnly cookie (unreadable by JS — sent automatically by browser)
-2. Validate and rotate it (write new httpOnly refresh cookie to the response)
-3. Return the new short-lived access token in the JSON response body: `{"access_token": "...", "expires_in": 1800}`
-
-The Client Component fetch interceptor reads `response.json().access_token` and stores it in memory (not in any cookie or localStorage). This is the only pattern compatible with httpOnly refresh cookies + Client Component fetch interceptors.
-
-**Warning signs:**
-- `/auth/refresh` returns 200 with no JSON body (only sets cookies)
-- The access token is stored in a non-httpOnly cookie to make it readable by JS (defeats the XSS protection)
-- The frontend interceptor uses `document.cookie` to read the access token after refresh
-- No `expires_in` field in the refresh response (frontend cannot schedule preemptive refresh)
-
-**Phase to address:**
-JWT refresh token endpoint phase. The response contract must be decided before any frontend integration code is written.
+The phase adding the second span-level analyzer. The type assertion guard should be added then, before the ANALYZERS list grows.
 
 ---
 
@@ -363,56 +195,48 @@ JWT refresh token endpoint phase. The response contract must be decided before a
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| Single `DATABASE_URL` for both Worker writes and future reads | Zero additional config | Any future read path in Worker bypasses RLS silently; impossible to scope BYPASSRLS to inserts in code | Never — split into write and read connection strings from the start |
-| `os.environ.get("SECRET_KEY", "default")` fallback | App starts without config | Weak known key used silently when env var not set; no startup failure to alert | Never for security-critical secrets |
-| `bcrypt.hashpw()` at module scope in tests | Simple fixture setup | CI slowdown at cost factor 12; makes enforcement tests slow and unreliable | Never — use `scope="session"` fixtures with `rounds=4` |
-| Single S3 credential pair for all services | Simple docker-compose | Full bucket access from any compromised container | Acceptable in local dev; never in production deployment |
-| `ENABLE ROW LEVEL SECURITY` without `FORCE` | Migrations run cleanly as owner | Table owner (migration role) bypasses all tenant policies silently | Never |
-| Deferred refresh token revocation | No extra table needed | Logout does not invalidate exfiltrated tokens | Only if refresh token lifetime ≤ 1 hour AND explicitly documented as a known gap |
-| Single-step CHECK constraint migration | Simpler migration code | Full table lock blocks writes during scan; fails if any existing row violates constraint | Never on tables with live data |
+| Reuse `calibrate.py` as-is by adding new entries to `FLAG_TYPES` | No new harness code | Harness instantiates only `ToolCallAnalyzer`, so new analyzer check methods never run during calibration. Calibration scores are artifacts. | Never for v1.5. Create a separate calibration entry point or refactor to accept an analyzer class. |
+| Hard-code proxy signal for F1/F2/F4/F5 without specifying false-positive modes | Faster implementation | False positive modes discovered in production dashboards; no documented baseline to measure regression. | Only if each check has a documented precision floor and false-positive mode in its docstring before merging. |
+| Add all 18 checks as inline code in `TraceAnalyzer.analyze()` | Simpler file structure | Single method becomes a 400-line god function. Cannot calibrate checks independently. Tests require mocking the entire method. | Never. Each check must be a private method (`_check_c3`, `_check_c4`, etc.) mirroring ToolCallAnalyzer. |
+| Skip `log_score()` calls for non-threshold heuristic checks | Less boilerplate | Calibration dataset is permanently incomplete. Cannot retrospectively analyse why a check fires. | Never. Even binary/heuristic checks should log a meaningful score (repetition_count, overlap_ratio) via `log_score()`. |
+| Deploy new checks with `threshold=0.0` (always fire) until calibrated | Immediate dashboard visibility | Every trace gets flagged. Dashboard becomes noise. Customers stop trusting the product. | Never. Deploy with `threshold=1.1` (never fires) and lower only after calibration. |
 
 ---
 
 ## Integration Gotchas
 
 | Integration | Common Mistake | Correct Approach |
-|-------------|----------------|-----------------|
-| FastAPI `set_cookie` + Next.js cross-origin | `secure=True` on http://localhost | `secure=False` in dev (env-driven), `secure=True` in prod only |
-| FastAPI CORS + cookie credentials | `allow_origins=["*"]` with `allow_credentials=True` | Browsers block this combination; use explicit `allow_origins=["http://localhost:3000"]` |
-| asyncpg SQLAlchemy pool + SET LOCAL | Session variable lost when connection returns to pool | The `tenant_session()` context manager in `shared/db/postgres.py` sets the variable inside `session.begin()` — correct, but only if all queries go through it |
-| MinIO `mc mb` on init | Assuming `mc mb` sets private policy | Must follow with `mc policy set none` explicitly |
-| Alembic `create_check_constraint` + live data | Constraint added without NOT VALID holds full ACCESS EXCLUSIVE lock | Two-step: `ALTER TABLE ... ADD CONSTRAINT ... NOT VALID`, then `VALIDATE CONSTRAINT` |
-| Docker env var + generated `.env` | `.env` committed to git on first `git add .` | Verify `.gitignore` entry before writing generate-secrets.sh; add git-tracked guard in the script |
-| psycopg2 score_writer + no `tenant_session` | Score reads using BYPASSRLS connection bypass all RLS policies | BYPASSRLS connection restricted to writes; reads use app role with tenant_session |
+|-------------|----------------|------------------|
+| `ANALYZERS` list in `main.py` | Append `TraceAnalyzer` to `ANALYZERS` alongside span-level analyzers | Only `BaseSpanAnalyzer` instances belong in `ANALYZERS`. `TraceAnalyzer` is a separate `trace_analyzer` instance dispatched in the flush loop. Mixing them calls `TraceAnalyzer.analyze(span)` with a single SpanData instead of `list[SpanData]`. |
+| `THRESHOLDS` dict in `main.py` | Read `self._thresholds["new_key"]` from a check method before registering the key | All threshold keys must exist in `THRESHOLDS` in `main.py` before the worker starts. A missing key raises `KeyError` mid-analysis, silently dropping the entire span result via the log-and-skip handler. |
+| `flush_scores()` in the trace flush loop | Never call `trace_analyzer.flush_scores()` after `trace_analyzer.analyze()` | `BaseAnalyzer._scores` accumulates across calls. Without a flush, the buffer grows unbounded across all trace flushes, and scores from trace N contaminate trace N+1. |
+| `write_flags` with `span_id=None` for trace flags | Assume `span_id=None` works everywhere because migration 005 made `flags.span_id` nullable | `flag_writer.py` correctly handles `None` (psycopg2 maps None to SQL NULL). But `score_writer.py` takes `span_id: str` with no None path. The writers behave differently. Verify schema nullable before calling write_scores with None. |
+| Score writing for trace-level checks | Call `write_scores(span_id=None, ...)` assuming `span_scores.span_id` is nullable | Inspect the migration for `span_scores.span_id` nullability before writing. If NOT NULL, add a migration to make it nullable or create a `trace_scores` table. |
+| `calibrate.py` `FLAG_TYPES` list + new checks | Add new flag type string to `FLAG_TYPES` and assume calibration covers it | The harness dispatches to `ToolCallAnalyzer` only. Adding a string to `FLAG_TYPES` without also extending the harness to instantiate the correct analyzer class produces calibration data against the wrong analyzer. |
 
 ---
 
-## Security Mistakes
+## Performance Traps
 
-| Mistake | Risk | Prevention |
-|---------|------|------------|
-| `missing_ok=true` in RLS policy used in application code | Missing tenant variable returns empty results (orphaned rows) rather than permission error — invisible bug | Integration test asserting COUNT=0 without set_config; document tenant_session() as required, not optional |
-| Refresh token without revocation table | Stolen tokens valid until natural expiry even after logout | `refresh_tokens` table with `jti` and `revoked_at`; verify on each refresh request |
-| BYPASSRLS role used for Worker reads | Cross-tenant data visible to any Worker read path | Separate roles: BYPASSRLS for writes only, app role for reads |
-| `os.environ.get("SECRET_KEY", "fallback")` pattern | Weak known key used in production if env var not set | `os.environ["SECRET_KEY"]` — KeyError on startup forces explicit configuration |
-| All services share same S3 credentials | One compromised service = full bucket read/write | Per-service MinIO IAM service accounts with least-privilege policies |
-| `ENABLE ROW LEVEL SECURITY` without `FORCE` | Table owner bypasses all tenant isolation policies | `ALTER TABLE ... FORCE ROW LEVEL SECURITY` on every RLS-protected table |
-| Single-step CHECK constraint on live table | Blocks writes during full table scan; fails on first bad row with no row identification | NOT VALID + VALIDATE CONSTRAINT two-step; pre-flight violation query before VALIDATE |
+| Trap | Symptoms | Prevention | When It Breaks |
+|------|----------|------------|----------------|
+| 10 trace-level checks each embedding all spans | Worker flush time spikes from ~50ms to >5s per trace with 20+ spans | Pre-compute embeddings for each span's prompt+response once at flush time; pass pre-computed vectors to each check method as arguments | At ~10 spans per trace, 2 embeddings each, 10 checks each re-embedding independently: 200 embedder HTTP calls per flush. Noticeable at dev scale; catastrophic at production scale. |
+| `trace_buffer` holds full S3 payloads in memory | Worker OOM on long-running traces with large prompt/response fields | SpanData.prompt and SpanData.response are full strings fetched from S3. For traces with 50+ spans and multi-KB prompts, the buffer holds MBs. Consider buffering only the fields trace checks actually need (span_id, agent_name, tool_name, tool_output). | At >50 spans per trace with >10KB prompts: potential OOM. Not a v1.5 concern at dev scale, but a v2.0 production risk to document now. |
+| spaCy `_get_spacy()` reimplemented in TraceAnalyzer | First trace flush blocks ~2s while a second spaCy model instance loads | Import `_get_spacy` from `tool_call_analyzer.py` rather than reimplementing it. The global `_NLP` singleton is already loaded by ToolCallAnalyzer before any trace flush occurs. | Only on first flush after worker restart. Not sustained, but breaks flush latency SLA on the first trace. |
+| One psycopg2 connection per flag in the flush loop | Connection pool exhaustion on traces producing many flags | `write_flags` opens and closes one connection per call. The flush loop calls it once per trace (all flags in one call). This is already correct. Do not break it into per-flag calls. | At >20 per-flag calls: connection pool exhaustion. Current pattern is safe — do not change it. |
 
 ---
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **httpOnly cookie in dev:** Cookie appears in browser devtools Application > Cookies AND the `Cookie` header is present on the subsequent refresh request — `Set-Cookie` received is not the same as cookie sent
-- [ ] **Refresh token revocation:** POST /logout writes to the database. Test: call /logout, then POST /auth/refresh with the old cookie — should return 401, not a new token
-- [ ] **span_scores RLS:** Connect via psql without calling `set_config`. Assert `SELECT COUNT(*) FROM span_scores` returns 0 even when rows exist — silently empty, not error
-- [ ] **BYPASSRLS scoping:** grep the codebase for all code paths that call `_get_dsn()` or read `DATABASE_URL` in the Worker. Verify none are used for SELECT operations
-- [ ] **FORCE ROW LEVEL SECURITY:** Run `SELECT relname, relforcerowsecurity FROM pg_class WHERE relname IN ('flags','diagnoses','span_scores','users','api_keys')` — all must be `t`
-- [ ] **CHECK constraint NOT VALID:** After step 1 migration, run `SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'chk_verdict'` — must contain `NOT VALID` annotation
-- [ ] **bcrypt enforcement test:** Temporarily change `gensalt(rounds=12)` to `gensalt(rounds=10)` and verify the CI test fails. Then restore and verify the test passes
-- [ ] **Secret fallback removed:** `grep -r 'environ.get.*SECRET_KEY' xeter/` — any match with a second argument is a bug. `grep ':-' deploy/docker-compose.yml` — any match on a secret variable is a bug
-- [ ] **MinIO private policy:** After minio-init starts, run `mc policy get local/xeter-payloads` — expected output is `none`, not `download` or `public`
-- [ ] **.env gitignored:** `git check-ignore -v .env` returns a hit (shows the .gitignore rule that matches). If it prints nothing, `.env` is not ignored
+- [ ] **New threshold key registered:** Every `self._thresholds["new_key"]` reference has a corresponding entry in `THRESHOLDS` in `main.py` with an `os.environ.get()` override. Missing key = `KeyError` at runtime.
+- [ ] **Fixture coverage before calibration:** `fixtures/labelled_spans.jsonl` (or the new trace fixture) has labelled examples for the new flag type before running `calibrate.py`. Hill-climb on zero positives writes a bad threshold to docker-compose.
+- [ ] **Trace flush scores written:** After implementing a trace-level check, `trace_analyzer.flush_scores()` is called in the flush loop AND scores are persisted to a DB table that accepts `span_id = NULL` or uses `trace_id` as the key.
+- [ ] **Flush fires on idle:** Integration test sends N spans then waits — flush fires on BRPOP timeout (not only on next-span arrival). Without the idle-path fix, this test will time out.
+- [ ] **F-check false-positive mode documented:** Every F-category check has a docstring paragraph stating the proxy signal and its known false-positive mode. If this paragraph is absent, the check is not ready to merge.
+- [ ] **G1/G2 prerequisite gate active:** Single-span trace produces zero G1/G2 flags. Verify with a test before merging.
+- [ ] **TraceAnalyzer not in ANALYZERS:** `assert all(isinstance(a, BaseSpanAnalyzer) for a in analyzers)` passes at worker startup. If it fails, a TraceAnalyzer was accidentally registered.
+- [ ] **Hill-climb recall floor:** Calibration results show recall > 0 for all threshold-based new checks. P=1.0, R=0.0 means the check never fires and calibration did not catch it.
 
 ---
 
@@ -420,13 +244,13 @@ JWT refresh token endpoint phase. The response contract must be decided before a
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| httpOnly cookie SameSite wrong in dev | LOW | Update FastAPI `set_cookie` with env-driven `samesite` parameter; add CORSMiddleware with explicit origins; retest in browser |
-| Refresh token revocation missing post-launch | MEDIUM | Add `refresh_tokens` table migration; invalidate all existing tokens (forced re-login for all users); deploy |
-| BYPASSRLS leakage discovered after RLS enabled | MEDIUM | Create new app role without BYPASSRLS; update DATABASE_URL references; rolling redeploy of affected services |
-| CHECK constraint migration fails due to existing violations | LOW | Run pre-flight violation query; UPDATE offending rows manually; re-run NOT VALID migration; then VALIDATE |
-| `.env` committed to git | HIGH | Rotate ALL secrets immediately (assume compromised); `git filter-repo` to scrub history; regenerate all credentials; invalidate LLM API keys with providers |
-| MinIO bucket accidentally set to public | HIGH | `mc policy set none` immediately; audit MinIO access logs; rotate S3_ACCESS_KEY and S3_SECRET_KEY for all services |
-| `FORCE ROW LEVEL SECURITY` not applied | LOW | New migration: `ALTER TABLE ... FORCE ROW LEVEL SECURITY` for each table; no data change required |
+| Bad threshold deployed (check fires on everything) | LOW | Set `WORKER_THRESHOLD_<CHECK>=1.1` in docker-compose, restart worker. Existing false-positive flag rows must be manually deleted or marked invalid in the flags table. |
+| Fixture-less calibration produced P=0.0 threshold | LOW | Revert threshold to `1.1` (never fires), build fixture with labelled examples, rerun `calibrate.py --flag-type <check>`. No code change needed. |
+| Trace buffer never flushed (flush-on-idle not implemented) | LOW | One-line change to main.py: move ready_trace_ids block to also run on the `result is None` BRPOP path. Restart worker. Unflushed in-memory traces are lost on restart. |
+| `span_scores` rejects None span_id from trace checks | MEDIUM | Add migration to make `span_scores.span_id` nullable, or create `trace_scores` table. Re-run affected traces (or accept historical gap in calibration data). |
+| G1/G2 flooding dashboard with structural false positives | LOW | Add multi-span prerequisite gate (minimum N spans with tool use) as a guard in the check method. No migration required. Existing false-positive flags remain but new ones stop. |
+| F-check precision below floor after calibration | MEDIUM | Demote the check to `confidence: "low"` in Flag.detail and add filtering to the dashboard. If precision is below 0.50, deactivate by setting threshold=1.1 until SDK emits the required metadata. |
+| TraceAnalyzer accidentally added to ANALYZERS list | LOW | Remove from ANALYZERS list, confirm it is only referenced as the separate `trace_analyzer` variable in main(). Restart worker. No DB change required. |
 
 ---
 
@@ -434,37 +258,23 @@ JWT refresh token endpoint phase. The response contract must be decided before a
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| httpOnly cookie SameSite cross-origin in dev | JWT refresh token endpoint | Browser manual test: cookie sent on refresh call from localhost:3000 to localhost:8000 |
-| Refresh token no revocation store | JWT refresh token endpoint | Test: POST /logout → POST /auth/refresh with old cookie → 401 |
-| SET LOCAL silent empty results | span_scores RLS policy | Integration test: connect without set_config, assert COUNT=0 with data present |
-| BYPASSRLS role used for reads | span_scores RLS (role architecture) | Two connection strings in Worker docker-compose; `\du` shows BYPASSRLS on writer role only |
-| Table owner bypasses RLS (FORCE missing) | span_scores RLS migration | `SELECT relforcerowsecurity FROM pg_class` returns t for all RLS tables |
-| CHECK constraint locks live table | CHECK constraint migration | NOT VALID in step 1 confirmed; VALIDATE runs separately with pre-flight query |
-| bcrypt cost CI tests slow | bcrypt enforcement CI phase | CI enforcement test fails at rounds=10, passes at rounds=12, completes in under 2 seconds |
-| CHANGE_ME + env fallback still leaks | Secrets hygiene phase | `git check-ignore -v .env` returns hit; `grep 'environ.get.*SECRET_KEY'` finds no defaults |
-| MinIO no explicit private policy | Bucket policy documentation phase | `mc policy get` returns none; minio-init command includes explicit `mc policy set none` |
-| Refresh token + App Router — access token not in response body | JWT refresh token endpoint | Interceptor reads `response.json().access_token`, not `document.cookie` |
+| Sparse fixture / calibration harness not extended | Phase defining check specs (before any implementation) | Run `calibrate.py --flag-type <new_check>` before implementing; confirm "zero positives" error is raised explicitly rather than silently producing P=0 |
+| Trace flush not firing on idle | Phase implementing first trace-level check (C3 or C4) | Integration test: send trace, wait 35s with no new spans, assert flags written without any follow-up span |
+| Trace scores not persisted (buffer leak) | Phase implementing first trace-level check | Assert `len(trace_analyzer._scores) == 0` after flush; assert rows appear in span_scores with `analyzer_name='trace_analyzer'` |
+| Second span analyzer doubles embedder calls | Phase appending second class to ANALYZERS | Embedder logs: no duplicate `POST /encode` with identical payloads within a single span's processing |
+| F-check proxy signal undocumented | Phase defining F-check specifications | PR review gate: check method docstring must contain proxy signal and false-positive mode paragraph |
+| G1/G2 fires on all single-step traces | Phase implementing G1/G2 | Test: single-tool-call trace produces zero G1/G2 flags |
+| Hill-climb degenerate P=1.0 R=0.0 | Phase running first v1.5 calibration | Add recall floor assertion to calibrate.py before any new check calibration runs |
+| TraceAnalyzer in ANALYZERS (wrong dispatch) | Phase adding any new analyzer | Runtime assertion at worker startup: `all(isinstance(a, BaseSpanAnalyzer) for a in analyzers)` |
 
 ---
 
 ## Sources
 
-- [FastAPI GitHub Issues — Cookies not set for cross-domain requests #3267](https://github.com/fastapi/fastapi/issues/3267)
-- [FastAPI CORS and Cookie Fix for React/Next.js](https://sqlpey.com/javascript/cors-cookie-fastapi-react-fix/)
-- [Chrome 80 SameSite=None Secure impact on localhost development](https://medium.com/swlh/how-the-new-chrome-80-cookie-rule-samesite-none-secure-affects-web-development-c06380220ced)
-- [PostgreSQL Documentation: Row Security Policies — BYPASSRLS and FORCE ROW LEVEL SECURITY](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)
-- [Common Postgres Row-Level-Security footguns — Bytebase](https://www.bytebase.com/blog/postgres-row-level-security-footguns/)
-- [constraint-missing-not-valid — Squawk linter for Postgres migrations](https://squawkhq.com/docs/constraint-missing-not-valid)
-- [Alembic Migrations Without Downtime — Exness Tech Blog](https://medium.com/exness-blog/alembic-migrations-without-downtime-a3507d5da24d)
-- [Zero-Downtime Alembic Migrations on PostgreSQL — Gold Lapel](https://goldlapel.com/grounds/replication-scaling-cloud/alembic-zero-downtime-migrations)
-- [Stop Using Environment Variables for Secrets in Docker Compose — Medium](https://medium.com/@bernard.sofeng/stop-using-environment-variables-for-secrets-in-docker-compose-fd0be09ebcc5)
-- [Manage secrets securely in Docker Compose — Docker Official Docs](https://docs.docker.com/compose/how-tos/use-secrets/)
-- [asyncpg — session parameters not preserved in connection pool — Issue #541](https://github.com/MagicStack/asyncpg/issues/541)
-- [MinIO Bucket Policies — copyprogramming.com guide](https://copyprogramming.com/howto/simple-minio-bucket-policy)
-- [MinIO docs: private vs public — Issue #1508](https://github.com/minio/minio/issues/1508)
-- [Essential JWT Security Part 2: Refresh Tokens and Revocation — DEV Community](https://dev.to/rahuls24/essential-jwt-security-part-2-refresh-tokens-and-revocation-made-simple-12pf)
-- Xeter codebase direct inspection: `xeter/migrations/versions/001_initial.py`, `xeter/migrations/versions/002_span_scores.py`, `xeter/migrations/versions/003_diagnoses.py`, `xeter/services/presenter/deps.py`, `xeter/services/presenter/routers/auth.py`, `xeter/services/worker/score_writer.py`, `xeter/services/worker/main.py`, `deploy/docker-compose.yml`, `xeter/tests/presenter/test_auth_login.py`
+- Direct inspection: `xeter/services/worker/main.py`, `base.py`, `tool_call_analyzer.py`, `trace_analyzer.py`, `flag_writer.py`, `score_writer.py`, `span_fetcher.py`, `xeter/scripts/calibrate.py`
+- Domain taxonomy: `documentation/silent_failures_ai_agents.md` (IBM arXiv 2511.04032, Berkeley MAST NeurIPS 2025, Microsoft AI Red Team Whitepaper 2025)
+- Project history: `.planning/PROJECT.md` — Key Decisions log (v1.0-v1.4), established constraints (false positives erode trust, fixture-first calibration, three-branch wrong_tool logic)
 
 ---
-*Pitfalls research for: Xeter v1.3 Security Hardening — adding auth hardening, RLS, DB constraints, and secrets hygiene to an existing FastAPI + Next.js system*
-*Researched: 2026-04-27*
+*Pitfalls research for: Xeter v1.5 Silent Failure Detection — adding B1-B4, C3-C4, D1-D3, D5, E3, F1-F2, F4-F5, G1-G2, H2 analyser checks*
+*Researched: 2026-05-18*

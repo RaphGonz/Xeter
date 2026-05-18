@@ -1,8 +1,204 @@
 # Stack Research
 
 **Domain:** AI agent observability and debugging SaaS platform
-**Researched:** 2026-03-27 (base platform); 2026-04-20 (v1.2 Diagnosticer additions); 2026-04-27 (v1.3 Security Hardening additions)
+**Researched:** 2026-03-27 (base platform); 2026-04-20 (v1.2 Diagnosticer additions); 2026-04-27 (v1.3 Security Hardening additions); 2026-05-18 (v1.5 Silent Failure Detection additions)
 **Confidence:** HIGH (all versions verified against PyPI and official docs)
+
+---
+
+## v1.5 Silent Failure Detection Additions
+
+This section covers library changes needed for the 18 new analyser checks in v1.5.
+All other stack decisions are unchanged — see the base platform sections below.
+
+### What Already Exists and Is Sufficient
+
+The following capabilities in the Worker require **no new library** for the checks indicated:
+
+| Existing Asset | Covers | How |
+|---------------|--------|-----|
+| `re` (stdlib) | E3 prompt injection, G1/G2 verification absence, F1/F2/F4/F5 handoff heuristics | Compile canonical injection/verification/handoff patterns at module load (`re.compile()` at top of module, same pattern as `_SQL_KEYWORD_RE` in `tool_call_analyzer.py`) |
+| `json` (stdlib) | B3 truncated JSON, B4 type coercion (fallback heuristic), F-series payload inspection | `json.loads()` in try/except; inspect `response[-1]` for truncation; scan field-name patterns for type coercion |
+| `collections` (stdlib) | C3/C4 step repetition and loop detection | `Counter(tool_names)` over a trace; frequency spike signals a termination loop |
+| `difflib` (stdlib) | D1/D2 context propagation baseline | `SequenceMatcher` available but superseded by `rapidfuzz` which is added for C3/C4 anyway |
+| `EmbedderClient` (existing HTTP microservice) | D5 stale context, H2 missing details | Both are cosine similarity checks between sequential span fields — same mechanism as `_check_response_anomaly` |
+| `spaCy en_core_web_md` (already loaded) | Injection pattern enrichment | NER entity detection already in `_check_unnecessary_tool_call`; reusable for E3 |
+| `BaseAnalyzer.compare()` + `BaseAnalyzer.embed()` | All similarity-based new checks | No duplicate NLP dependency; route through existing embedder microservice |
+
+### New Dependencies Required
+
+Three packages to add to `xeter/pyproject.toml`:
+
+| Library | Version | Purpose | Why This, Not Another |
+|---------|---------|---------|----------------------|
+| `jsonschema` | `4.26.0` | B1–B4: validate `tool_output` / `response` against a caller-provided JSON Schema. `Draft202012Validator(schema).iter_errors(instance)` yields `ValidationError` objects with a `validator` field (`"required"`, `"type"`, `"additionalProperties"`, etc.) — each error type maps directly to one of B1–B4. | Pure-Python, zero native extension deps, Draft 2020-12 support. `iter_errors()` gives structured error objects (not just pass/fail), so B1 (free text), B2 (missing field), B3 (truncated), B4 (type mismatch) can each be flagged from one validation pass. `referencing==0.37.0` installs as a transitive dep — no pin conflict with current deps. Rejected `jsonschema-rs 0.46.5` (43–240× faster Rust backend) because at worker scale (one span at a time) the performance gain is irrelevant, and `jsonschema` has the stable Python `ValidationError.validator` API. Rejected Pydantic for this: dynamic runtime JSON Schemas cannot be expressed as Pydantic classes. |
+| `tiktoken` | `0.13.0` | D3: count prompt tokens against a static `MODEL_CONTEXT_LIMITS` dict to detect prompt overflow before the embedding step. Binary flag when `token_count > limit * threshold`. | Offline BPE tokenizer (no API call, no network dependency). Pre-built Rust-core wheels for Python 3.12 on Linux/macOS/Windows. Supports `encoding_for_model(span.agent_model)` with graceful `KeyError` fallback to `cl100k_base` for unknown or non-OpenAI models (Claude, Ollama). For Anthropic models the cl100k_base count over-estimates by ~10% — acceptable for a detection heuristic. Rejected `transformers.AutoTokenizer`: 500 MB+ model download per model, 3–8 s import time — violates the Worker's fast-startup constraint. Rejected Anthropic `count_tokens` SDK: requires a live API call. |
+| `rapidfuzz` | `3.14.5` | C3 step repetition, C4 termination loop, D1/D2 context propagation/history loss — all require fuzzy string comparison across span fingerprints in a trace. `fuzz.token_sort_ratio(a, b)` normalises over `[0, 100]` and handles argument key-order variation (same args, different JSON key order). | C extension (~16× faster than stdlib `SequenceMatcher`). `fuzz.token_sort_ratio` handles the specific case where `tool_arguments` dicts are semantically identical but serialised with different key order. `fuzz.partial_ratio` is also available for substring-level context-chain checks (D1). Python 3.10–3.14 pre-built wheels confirmed. Rejected stdlib `difflib.SequenceMatcher` alone: O(n²) on long strings, no token-sort variant. `python-Levenshtein` is subsumed by rapidfuzz (same C core, broader API) — no reason to add both. |
+
+### pyproject.toml Delta
+
+```toml
+# Add to [project] dependencies in xeter/pyproject.toml:
+"jsonschema==4.26.0",
+"tiktoken==0.13.0",
+"rapidfuzz==3.14.5",
+```
+
+No Docker image change needed for the embedder service — all three additions land in the Worker image only.
+
+---
+
+### Feature-by-Feature Library Mapping
+
+#### B1–B4: Output/Schema Failures — span-level (`ToolCallAnalyzer` or new `OutputSchemaAnalyzer`)
+
+**Library:** `jsonschema 4.26.0`
+
+```python
+from jsonschema import Draft202012Validator, ValidationError
+
+def _check_output_schema(self, span: SpanData) -> list[Flag]:
+    # schema comes from span attribute or matched tool's output_schema field
+    schema = _extract_output_schema(span)
+    if schema is None:
+        return _structural_heuristics(span)  # B3/B4 fallback without schema
+
+    try:
+        instance = json.loads(span.response)
+    except (json.JSONDecodeError, TypeError):
+        # B1: not parseable JSON at all → free text when structured expected
+        return [Flag(flag_type="output_schema_violation", score=1.0,
+                     detail={"check": "B1", "metric": "not_json"})]
+
+    errors = list(Draft202012Validator(schema).iter_errors(instance))
+    flags = []
+    for err in errors:
+        if err.validator == "required":
+            flags.append(Flag("output_schema_violation", 1.0,
+                              {"check": "B2", "metric": "missing_required",
+                               "missing": err.validator_value}))
+        elif err.validator == "type":
+            flags.append(Flag("output_schema_violation", 1.0,
+                              {"check": "B4", "metric": "type_mismatch",
+                               "path": list(err.absolute_path),
+                               "expected": err.validator_value}))
+    return flags
+```
+
+B3 (truncation) is detected without a schema: `json.loads()` raises `JSONDecodeError` on truncated input, or the response ends without the expected closing `}` / `]`.
+
+#### D3: Prompt Overflow — span-level
+
+**Library:** `tiktoken 0.13.0`
+
+```python
+import tiktoken
+
+_ENCODING_CACHE: dict[str, tiktoken.Encoding] = {}
+
+MODEL_CONTEXT_LIMITS: dict[str, int] = {
+    "gpt-4o": 128_000, "gpt-4": 8_192, "gpt-3.5-turbo": 16_385,
+    "claude-3-5-sonnet": 200_000, "claude-3-haiku": 200_000,
+    # extend via config; fallback 8192
+}
+
+def _count_tokens(text: str, model: str) -> int:
+    try:
+        enc = tiktoken.encoding_for_model(model)
+    except KeyError:
+        enc = tiktoken.get_encoding("cl100k_base")  # fallback for Claude/Ollama
+    return len(enc.encode(text))
+```
+
+Cache the `Encoding` object per model name to avoid re-constructing it on every span.
+
+#### E3: Prompt Injection — span-level
+
+**Library:** `re` (stdlib only)
+
+```python
+# Compile once at module level — same pattern as _SQL_KEYWORD_RE in tool_call_analyzer.py
+_INJECTION_PATTERNS: list[re.Pattern] = [
+    re.compile(r'ignore\s+(all\s+)?previous\s+instructions', re.IGNORECASE),
+    re.compile(r'you\s+are\s+now\s+(?:a|an)\s+', re.IGNORECASE),
+    re.compile(r'<\|(?:im_start|system|user|assistant)\|>', re.IGNORECASE),
+    re.compile(r'\[INST\]|\[/INST\]|\[SYS\]', re.IGNORECASE),
+    re.compile(r'disregard\s+(?:your\s+)?(?:instructions|constraints|rules)', re.IGNORECASE),
+    re.compile(r'reveal\s+(?:your\s+)?(?:system\s+prompt|instructions)', re.IGNORECASE),
+]
+```
+
+Scan `span.tool_output` and `span.response` (content that arrived from external sources, not the original user prompt). Binary flag — no threshold needed (same pattern as `tool_not_available`). The existing embedder can be used as a second gate if calibration shows low precision.
+
+#### C3/C4: Step Repetition / Termination Loop — trace-level (`TraceAnalyzer`)
+
+**Library:** `rapidfuzz 3.14.5`
+
+```python
+from rapidfuzz import fuzz
+
+def _fingerprint(span: SpanData) -> str:
+    """Stable fingerprint for step-identity comparison."""
+    return f"{span.tool_name or 'no_tool'}::{span.tool_arguments or ''}"
+
+# C3: any two non-adjacent spans with fuzz.token_sort_ratio >= threshold → repetition
+# C4: same tool_name in last N consecutive spans with no change in tool_output → loop
+```
+
+`collections.Counter(span.tool_name for span in spans)` provides the frequency signal for C4 (loop). `rapidfuzz` provides the fuzzy match for C3 (near-identical steps that differ only in argument serialisation order).
+
+#### D1/D2: Context Propagation / History Loss — trace-level
+
+**Library:** `rapidfuzz 3.14.5` (already added)
+
+D2 (history loss): `fuzz.token_sort_ratio(span_n.response, span_n1.prompt)` — a sharp drop signals that span N+1's prompt does not reference what span N produced. D1 (propagation failure): `fuzz.partial_ratio` on key entity strings extracted from span N's output vs span N+1's tool_arguments.
+
+#### D5, H2 — span-level (no new library)
+
+D5 (stale context): `self.compare(self.embed(prior_tool_output), self.embed(current_prompt))` — already available via `BaseAnalyzer`. H2 (missing details): `self.compare(self.embed(span.prompt), self.embed(span.response))` — same mechanism as `_check_response_anomaly`, just with a different threshold and flag type.
+
+#### F1/F2/F4/F5, G1/G2 — trace-level (no new library)
+
+All implemented with `re` and `json` (stdlib) + `EmbedderClient` for semantic coverage checks. F-series: detect `agent_name` changes in span sequence, verify payload continuity. G-series: scan for verification-keyword spans (`re` match on tool_name / response text), count verified vs total output fields.
+
+---
+
+### What NOT to Add
+
+| Avoid | Why | Use Instead |
+|-------|-----|-------------|
+| `transformers` / HuggingFace tokenizer | 500 MB+ model download per model; 3–8 s import; violates Worker fast-startup constraint (model is pre-baked in Dockerfile) | `tiktoken` offline BPE with `cl100k_base` fallback |
+| `langchain`, `llama-index`, `instructor` | Framework abstractions that hide analysis logic from calibration pipeline; contradict Worker's minimal stateless design | Implement checks directly in `ToolCallAnalyzer` / `TraceAnalyzer` |
+| `pydantic` for B1–B4 schema validation | Dynamic runtime JSON Schemas cannot be expressed as Pydantic classes; forces pre-compilation step that the Worker doesn't have access to | `jsonschema.Draft202012Validator(schema).iter_errors(instance)` |
+| `jsonschema-rs` | No performance benefit at worker scale (one span at a time); `ValidationError.validator` Python API is the critical surface, not throughput | `jsonschema==4.26.0` |
+| `rebuff`, `presidio`, `llm-guard` for E3 | All three are large frameworks pulling in model weights or full NLP stacks; E3 is a heuristic detector — regex is faster and more transparent | `re` stdlib + `_INJECTION_PATTERNS` list |
+| Second copy of `sentence-transformers` in Worker | Already abstracted behind the embedder microservice HTTP API; a direct import creates a second model in memory (800 MB+) and violates AD-05 | `EmbedderClient.encode()` / `.similarity()` |
+| `python-Levenshtein` standalone | Subsumed by `rapidfuzz` (same C core, broader API including `token_sort_ratio`) | `rapidfuzz==3.14.5` |
+| `Anthropic count_tokens` SDK for D3 | Requires a live API call; adds latency and network dependency to an offline worker | `tiktoken` with `cl100k_base` fallback |
+
+---
+
+### Version Compatibility
+
+| Package | Python | Notes |
+|---------|--------|-------|
+| `jsonschema==4.26.0` | 3.9–3.13 | No conflict with `pydantic==2.12.5` — independent validators; `referencing==0.37.0` installs as transitive dep, no pin conflict |
+| `tiktoken==0.13.0` | 3.9–3.13 | No numpy dependency; Rust-core wheels ship for Python 3.12 Linux/macOS/Windows (verified on PyPI) |
+| `rapidfuzz==3.14.5` | 3.10–3.14 | C extension; pre-built wheels for Python 3.12 confirmed on PyPI; no conflict with `numpy>=1.26` or `spacy>=3.7` |
+
+---
+
+### Sources
+
+- [PyPI jsonschema 4.26.0](https://pypi.org/project/jsonschema/) — current stable version confirmed
+- [jsonschema errors docs](https://python-jsonschema.readthedocs.io/en/stable/errors/) — `ValidationError.validator`, `iter_errors()`, `absolute_path` API verified; HIGH confidence (official docs)
+- [PyPI tiktoken 0.13.0](https://pypi.org/project/tiktoken/) — current stable version confirmed
+- [tiktoken model.py](https://github.com/openai/tiktoken/blob/main/tiktoken/model.py) — `encoding_for_model` raises `KeyError` for unknown models; cl100k_base fallback pattern verified; HIGH confidence (official source)
+- [markaicode.com tiktoken token limits](https://markaicode.com/llm-token-counting-tiktoken-model-limits/) — cl100k_base fallback for Claude confirmed as community standard; MEDIUM confidence
+- [PyPI rapidfuzz 3.14.5](https://pypi.org/project/rapidfuzz/) — current stable version confirmed
+- [rapidfuzz docs](https://rapidfuzz.github.io/RapidFuzz/) — `fuzz.token_sort_ratio`, `fuzz.partial_ratio` API verified; performance benchmarks vs difflib/python-Levenshtein; HIGH confidence (official docs)
+- [PyPI jsonschema-rs 0.46.5](https://pypi.org/project/jsonschema-rs/) — evaluated and rejected (see Alternatives Considered)
+- [OWASP LLM Top 10 2025](https://genai.owasp.org/llmrisk/llm01-prompt-injection/) — E3 regex-first approach confirmed as standard practice; regex pattern corpus design validated
 
 ---
 
@@ -395,7 +591,7 @@ The `opentelemetry-exporter-otlp` convenience meta-package installs both HTTP an
 
 ---
 
-## What NOT to Add
+## What NOT to Use (Base Platform)
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
@@ -407,21 +603,6 @@ The `opentelemetry-exporter-otlp` convenience meta-package installs both HTTP an
 
 ---
 
-## Installation Delta (v1.3)
-
-```toml
-# xeter/pyproject.toml — changes for v1.3 Security Hardening
-
-# REMOVE:
-# "passlib[bcrypt]>=1.7",
-
-# ADD: nothing
-
-# Net result: one package removed, none added
-```
-
----
-
 ## Version Compatibility
 
 | Package A | Compatible With | Notes |
@@ -430,6 +611,9 @@ The `opentelemetry-exporter-otlp` convenience meta-package installs both HTTP an
 | `bcrypt==5.0.0` | Python 3.12 | `gensalt()` default rounds=12 confirmed; hash format `$2b$<rounds>$...` stable since bcrypt 3.x; CI test parses index 2 of `hash.split("$")` |
 | `fastapi==0.135.2` / Starlette | `response.set_cookie(httponly=True, secure=True, samesite="lax")` | Confirmed via Starlette official docs 2026-04-27; `partitioned=` parameter requires Python 3.14+ but is not needed here |
 | `alembic==1.18.4` | `op.create_check_constraint()` | Available since Alembic 1.0; no version concern for adding CHECK constraints or RLS migrations |
+| `jsonschema==4.26.0` | Python 3.12, `pydantic==2.12.5` | Independent validators; no import conflict; `referencing==0.37.0` installs as transitive dep |
+| `tiktoken==0.13.0` | Python 3.12, `numpy>=1.26` | No numpy dependency; Rust-core wheels for Python 3.12 verified |
+| `rapidfuzz==3.14.5` | Python 3.12, `spacy>=3.7`, `numpy>=1.26` | C extension; no conflict with existing NLP stack |
 
 ---
 
@@ -442,6 +626,13 @@ The `opentelemetry-exporter-otlp` convenience meta-package installs both HTTP an
 - [FastAPI discussion #9587](https://github.com/fastapi/fastapi/discussions/9587) — additional confirmation of python-jose maintenance concerns; MEDIUM confidence
 - [python-jose PyPI](https://pypi.org/project/python-jose/) — version 3.5.0 released May 2025, CVE-2024-33663 patched; used in codebase confirmed by grep; HIGH confidence for current v1.3 use
 - [FastAPI Cookie dependency docs](https://fastapi.tiangolo.com/tutorial/cookie-params/) — `Cookie()` dependency pattern for reading httpOnly refresh token on server; HIGH confidence (official FastAPI docs)
+- [PyPI jsonschema 4.26.0](https://pypi.org/project/jsonschema/) — current stable version confirmed; HIGH confidence
+- [jsonschema errors docs](https://python-jsonschema.readthedocs.io/en/stable/errors/) — `ValidationError.validator`, `iter_errors()` API verified; HIGH confidence (official docs)
+- [PyPI tiktoken 0.13.0](https://pypi.org/project/tiktoken/) — current stable version confirmed; HIGH confidence
+- [tiktoken model.py](https://github.com/openai/tiktoken/blob/main/tiktoken/model.py) — `encoding_for_model` raises `KeyError` for unknown models; cl100k_base fallback pattern verified; HIGH confidence
+- [PyPI rapidfuzz 3.14.5](https://pypi.org/project/rapidfuzz/) — current stable version confirmed; HIGH confidence
+- [rapidfuzz docs](https://rapidfuzz.github.io/RapidFuzz/) — `fuzz.token_sort_ratio`, `fuzz.partial_ratio` API; performance benchmarks; HIGH confidence (official docs)
+- [OWASP LLM Top 10 2025](https://genai.owasp.org/llmrisk/llm01-prompt-injection/) — E3 regex-first approach confirmed; MEDIUM confidence
 - Codebase grep — confirmed: `from jose import JWTError, jwt` in `presenter/deps.py:17` and `diagnosticer/main.py:23`; `import bcrypt` in `presenter/routers/auth.py:24`, `shared/dal/api_keys.py:28`, `scripts/seed.py:26`, `tests/presenter/test_auth_login.py:15`; `passlib` never imported anywhere; `gensalt()` called without explicit rounds in all 5 call sites
 
 ---
@@ -449,3 +640,4 @@ The `opentelemetry-exporter-otlp` convenience meta-package installs both HTTP an
 *Base stack researched: 2026-03-27*
 *v1.2 Diagnosticer additions researched: 2026-04-20*
 *v1.3 Security Hardening additions researched: 2026-04-27*
+*v1.5 Silent Failure Detection additions researched: 2026-05-18*

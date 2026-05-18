@@ -10,6 +10,19 @@ v1.0 shipped: full pipeline from SDK to dashboard running locally via Docker Com
 
 When a tool call fails, tell the developer whether it was the model, the architecture, or the prompt — and why.
 
+## Current Milestone: v1.5 Silent Failure Detection
+
+**Goal:** Implement all B/C/D/E/F/G/H failure categories across span and trace analyzers — covering 18 new detection modes from the IBM/Berkeley research taxonomy.
+
+**Target features:**
+- B1–B4: Output/schema failure checks (span-level) — free text when structured expected, missing fields, truncated JSON, type coercion errors
+- D3, D5, E3, H2: Context/content checks (span-level) — prompt overflow, stale context heuristic, prompt injection, missing details
+- C3, C4: Reasoning/planning checks (trace-level) — step repetition, termination loop detection
+- D1, D2: Context/memory checks (trace-level) — context propagation failure, conversation history loss
+- F1, F2, F4, F5: Multi-agent/handoff checks (trace-level, best-effort heuristic)
+- G1, G2: Verification checks (trace-level) — no verification, incomplete verification
+- Calibration & threshold tuning for all new checks
+
 ## Requirements
 
 ### Validated
@@ -57,14 +70,22 @@ When a tool call fails, tell the developer whether it was the model, the archite
 
 ### Active
 
-<!-- v1.5 candidates -->
+<!-- v1.5 scope -->
+
+- [ ] B1–B4: Output/schema failure checks — span-level (SCHEMA-01 to SCHEMA-04) — v1.5
+- [ ] D3, D5, E3, H2: Context/content checks — span-level (CTX-01 to CTX-04) — v1.5
+- [ ] C3, C4: Step repetition + termination loop detection — trace-level (TRACE-01, TRACE-02) — v1.5
+- [ ] D1, D2: Context propagation failure + conversation history loss — trace-level (TRACE-03, TRACE-04) — v1.5
+- [ ] F1, F2, F4, F5: Multi-agent handoff failures — trace-level, best-effort heuristic (TRACE-05 to TRACE-08) — v1.5
+- [ ] G1, G2: Verification absence + incomplete verification — trace-level (TRACE-09, TRACE-10) — v1.5
+- [ ] Calibration & threshold tuning for all new checks — v1.5
+
+<!-- deferred to v1.6+ -->
 
 - [ ] python-jose → PyJWT migration — python-jose near-abandoned; migrate before CVE liability (AUTH-F02)
 - [ ] Refresh token revocation store — server-side blacklist for stolen token detection (AUTH-F01)
 - [ ] Rate limiting on Analyser ingestion — per-API-key sliding window, Redis, 429 with Retry-After (OPS-F01)
 - [ ] TypeScript/Node.js SDK for instrumenting JS-based agents (SDK-F01)
-- [ ] New analyser checks: B1–B4, C3–C4, D1–D3, D5, E3, F1–F2, F4–F5, G1–G2, H2 (see documentation/silent_failures_ai_agents.md)
-- [ ] TraceAnalyzer real checks — implement actual B/C/D/E/F/G/H category detections in `trace_analyzer.py`
 
 ### Out of Scope
 
@@ -142,5 +163,22 @@ When a tool call fails, tell the developer whether it was the model, the archite
 | PG queries sequential on shared AsyncSession in trace router | concurrent execute() on single AsyncSession causes IllegalStateChangeError (same constraint as spans router) | ✓ Good — consistent pattern with spans.py |
 | useState(spanFromUrl) initialiser for span URL deep-link | useSearchParams() is available synchronously at render time; a useEffect would add unnecessary re-render cycle | ✓ Good — no Suspense boundary needed because use(params) already makes page dynamically rendered |
 
+## Evolution
+
+This document evolves at phase transitions and milestone boundaries.
+
+**After each phase transition** (via `/gsd-transition`):
+1. Requirements invalidated? → Move to Out of Scope with reason
+2. Requirements validated? → Move to Validated with phase reference
+3. New requirements emerged? → Add to Active
+4. Decisions to log? → Add to Key Decisions
+5. "What This Is" still accurate? → Update if drifted
+
+**After each milestone** (via `/gsd:complete-milestone`):
+1. Full review of all sections
+2. Core Value check — still the right priority?
+3. Audit Out of Scope — reasons still valid?
+4. Update Context with current state
+
 ---
-*Last updated: 2026-05-15 after v1.4 Trace Hierarchy + TraceAnalyzer Foundation milestone*
+*Last updated: 2026-05-18 after v1.5 Silent Failure Detection milestone start*

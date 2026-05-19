@@ -116,6 +116,49 @@ def process_span(span_id: str, analyzers: list) -> SpanData:
     return span
 
 
+def _flush_stale_traces(
+    trace_buffer: dict,
+    trace_last_seen: dict,
+    trace_analyzer,
+) -> None:
+    """Flush stale traces from the buffer to TraceAnalyzer.
+
+    Args:
+        trace_buffer:    dict mapping trace_id to list[SpanData] — the accumulated
+                         spans for each in-flight trace.
+        trace_last_seen: dict mapping trace_id to last-seen monotonic time — used
+                         to determine whether the trace has exceeded the flush timeout.
+        trace_analyzer:  TraceAnalyzer instance — receives the accumulated spans for
+                         analysis once the trace is ready to flush.
+
+    Returns:
+        None.  Mutates both dicts in place (entries are removed after flush).
+    """
+    now = time.monotonic()
+    ready_trace_ids = [
+        tid for tid, last in trace_last_seen.items()
+        if now - last >= WORKER_TRACE_FLUSH_TIMEOUT_S
+    ]
+    for tid in ready_trace_ids:
+        spans_for_trace = trace_buffer[tid]
+        tenant_id_for_trace = spans_for_trace[0].tenant_id
+        try:
+            trace_flags = trace_analyzer.analyze(spans_for_trace)
+            trace_scores = trace_analyzer.flush_scores()           # INFRA-02 fix
+            write_scores(None, tenant_id_for_trace, trace_scores)  # INFRA-02 fix
+            if trace_flags:
+                write_flags(None, tenant_id_for_trace, tid, trace_flags)
+            logger.info(
+                "worker: flushed trace trace_id=%s spans=%d flags=%d",
+                tid, len(spans_for_trace), len(trace_flags),
+            )
+        except Exception as exc:
+            logger.error("worker: failed to flush trace trace_id=%s: %s", tid, exc)
+        finally:
+            trace_buffer.pop(tid, None)
+            trace_last_seen.pop(tid, None)
+
+
 # ---- entry point ------------------------------------------------------------
 
 
@@ -150,6 +193,7 @@ def main() -> None:
     while running:
         result = r.brpop(QUEUE_KEY, timeout=BRPOP_TIMEOUT)
         if result is None:
+            _flush_stale_traces(trace_buffer, trace_last_seen, trace_analyzer)
             continue
         _, span_id = result
         # Retry up to 3 times with backoff — the batcher may not have
@@ -163,28 +207,7 @@ def main() -> None:
                 trace_buffer.setdefault(span.trace_id, []).append(span)
                 trace_last_seen[span.trace_id] = time.monotonic()
 
-                # Check all traces for flush timeout
-                now = time.monotonic()
-                ready_trace_ids = [
-                    tid for tid, last in trace_last_seen.items()
-                    if now - last >= WORKER_TRACE_FLUSH_TIMEOUT_S
-                ]
-                for tid in ready_trace_ids:
-                    spans_for_trace = trace_buffer[tid]
-                    tenant_id_for_trace = spans_for_trace[0].tenant_id
-                    try:
-                        trace_flags = trace_analyzer.analyze(spans_for_trace)
-                        if trace_flags:
-                            write_flags(None, tenant_id_for_trace, tid, trace_flags)
-                        logger.info(
-                            "worker: flushed trace trace_id=%s spans=%d flags=%d",
-                            tid, len(spans_for_trace), len(trace_flags),
-                        )
-                    except Exception as exc:
-                        logger.error("worker: failed to flush trace trace_id=%s: %s", tid, exc)
-                    finally:
-                        trace_buffer.pop(tid, None)
-                        trace_last_seen.pop(tid, None)
+                _flush_stale_traces(trace_buffer, trace_last_seen, trace_analyzer)
 
                 break
             except ValueError as exc:

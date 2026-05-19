@@ -7,7 +7,7 @@
 
 ### INFRA — Infrastructure Prerequisites
 
-- [ ] **INFRA-01**: Worker processes pending trace flushes on BRPOP timeout — idle traces (last trace in queue, no subsequent span arrival) are flushed and analyzed correctly; trace flags fire in test conditions that send exactly N spans and stop
+- [x] **INFRA-01**: Worker processes pending trace flushes on BRPOP timeout — idle traces (last trace in queue, no subsequent span arrival) are flushed and analyzed correctly; trace flags fire in test conditions that send exactly N spans and stop
 - [x] **INFRA-02**: TraceAnalyzer score data is persisted — `flush_scores()` called and results written to `span_scores` after each trace flush; calibration dataset includes trace-level metrics
 - [ ] **INFRA-03**: `calibrate.py` supports multiple analyzer classes — new flag types route to the correct analyzer instance; hill-climb enforces a minimum recall floor (R ≥ 0.10) to prevent degenerate `P=1.0, R=0.0` convergence
 - [ ] **INFRA-04**: Worker `pyproject.toml` includes `jsonschema==4.26.0`, `tiktoken==0.13.0`, `rapidfuzz==3.14.5`
@@ -66,8 +66,8 @@
 
 | Requirement | Phase | Phase Name | Status |
 |-------------|-------|------------|--------|
-| INFRA-01 | Phase 22 | Bug Fixes | Pending |
-| INFRA-02 | Phase 22 | Bug Fixes | Pending |
+| INFRA-01 | Phase 22 | Bug Fixes | Complete |
+| INFRA-02 | Phase 22 | Bug Fixes | Complete |
 | INFRA-03 | Phase 23 | Infrastructure | Pending |
 | INFRA-04 | Phase 23 | Infrastructure | Pending |
 | INFRA-05 | Phase 23 | Infrastructure | Pending |

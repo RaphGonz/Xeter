@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Silent Failure Detection
 status: Not started
-last_updated: "2026-05-19T20:46:49.816Z"
+last_updated: "2026-05-19T21:04:41.731Z"
 last_activity: 2026-05-19 — Phase 22 context gathered via discuss-phase
 progress:
   total_phases: 6
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
-  percent: 0
+  completed_plans: 4
+  percent: 34
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-05-18)
 ## Current Position
 
 Phase: 22 — Bug Fixes
-Plan: —
-Status: Not started
-Last activity: 2026-05-19 — Phase 22 context gathered via discuss-phase
+Plan: 02 (complete)
+Status: Phase complete
+Last activity: 2026-05-19 — Phase 22 Plans 01+02 executed; INFRA-01 + INFRA-02 fixed
 
 ```
-Progress: [█████░░░░░] 50%
+Progress: [██████████] 100% (Phase 22 complete)
 ```
 
 ## Performance Metrics
@@ -65,12 +65,18 @@ All architectural decisions logged in PROJECT.md Key Decisions table.
 - Best-effort checks (CTX-02, TRACE-05, TRACE-07, TRACE-08) carry `low_confidence: true` in flag detail
 - `no_verification` and `incomplete_verification` are mutually exclusive per trace
 
+### Key Decisions (Phase 22)
+
+- `_flush_stale_traces` accepts explicit params (no implicit globals) — consistent with `process_span` pattern
+- `flush_scores()` called before `write_scores()` inside try block — same ordering as `process_span()`
+- time.monotonic called internally in helper (not a param) — simplifies both call sites
+
 ### Open Blockers
 
 None.
 
 ## Session Continuity
 
-Last session: 2026-05-19T20:46:49.802Z
-Current session: 2026-05-18 — v1.5 roadmap created.
-Next: `/gsd:execute-phase 22` — 2 plans ready (Wave 1: migration + score_writer; Wave 2: _flush_stale_traces + tests)
+Last session: 2026-05-19
+Stopped at: Phase 22 Plan 02 — complete
+Next: Phase 23 — calibrate.py multi-analyzer support + SpanData fields

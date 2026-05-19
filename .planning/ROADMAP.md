@@ -74,7 +74,7 @@ See `.planning/milestones/v1.4-ROADMAP.md` for full phase details.
 
 ### v1.5 Silent Failure Detection (Phases 22–27)
 
-- [ ] **Phase 22: Bug Fixes** — Fix idle-flush and trace score persistence (gates all trace-level checks)
+- [x] **Phase 22: Bug Fixes** — Fix idle-flush and trace score persistence (gates all trace-level checks)
 - [ ] **Phase 23: Infrastructure** — calibrate.py multi-analyzer, new deps, SpanData schema fields
 - [ ] **Phase 24: Structural Span Checks** — OutputSchemaAnalyzer with heuristic/deterministic checks; zero embedding calls
 - [ ] **Phase 25: Semantic Span + Structural Trace Checks** — Embedding-based span checks and first wave of trace checks
@@ -94,7 +94,7 @@ See `.planning/milestones/v1.4-ROADMAP.md` for full phase details.
 **Plans**: 2 plans
 Plans:
 - [x] 22-01-PLAN.md — DB migration 006 (span_scores nullable span_id) + write_scores type update
-- [ ] 22-02-PLAN.md — Extract _flush_stale_traces, wire both call sites, add 4 tests
+- [x] 22-02-PLAN.md — Extract _flush_stale_traces, wire both call sites, add 4 tests
 
 ### Phase 23: Infrastructure
 **Goal**: Worker has the dependencies, schema fields, and calibration tooling required to implement every v1.5 check
@@ -183,7 +183,7 @@ Plans:
 | 19. TraceAnalyzer Scaffold + DB Migration | v1.4 | 3/3 | Complete | 2026-05-14 |
 | 20. Trace API | v1.4 | 2/2 | Complete | 2026-05-15 |
 | 21. Trace UI | v1.4 | 4/4 | Complete | 2026-05-15 |
-| 22. Bug Fixes | v1.5 | 1/2 | In Progress|  |
+| 22. Bug Fixes | v1.5 | 2/2 | Complete | 2026-05-19 |
 | 23. Infrastructure | v1.5 | 0/? | Not started | - |
 | 24. Structural Span Checks | v1.5 | 0/? | Not started | - |
 | 25. Semantic Span + Structural Trace Checks | v1.5 | 0/? | Not started | - |

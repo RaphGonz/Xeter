@@ -44,7 +44,7 @@ def _get_dsn() -> str:
 
 
 def write_scores(
-    span_id: str,
+    span_id: str | None,
     tenant_id: str,
     scores: list[tuple[str, str, float]],
 ) -> None:
@@ -56,7 +56,7 @@ def write_scores(
     and INSERTs run in the same transaction scope — matching flag_writer.py pattern.
 
     Args:
-        span_id: The span being scored.
+        span_id: The span being scored, or None for trace-level scores produced by TraceAnalyzer (psycopg2 maps None to SQL NULL automatically).
         tenant_id: The owning tenant (stored on the row AND used for RLS SET LOCAL).
         scores: List of (analyzer_name, metric_name, score) tuples.
                 If empty, returns immediately without connecting to PostgreSQL.

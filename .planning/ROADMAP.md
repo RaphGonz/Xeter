@@ -93,7 +93,7 @@ See `.planning/milestones/v1.4-ROADMAP.md` for full phase details.
   3. The worker does not silently drop traces that are the last item in the queue with no subsequent span
 **Plans**: 2 plans
 Plans:
-- [ ] 22-01-PLAN.md — DB migration 006 (span_scores nullable span_id) + write_scores type update
+- [x] 22-01-PLAN.md — DB migration 006 (span_scores nullable span_id) + write_scores type update
 - [ ] 22-02-PLAN.md — Extract _flush_stale_traces, wire both call sites, add 4 tests
 
 ### Phase 23: Infrastructure
@@ -183,7 +183,7 @@ Plans:
 | 19. TraceAnalyzer Scaffold + DB Migration | v1.4 | 3/3 | Complete | 2026-05-14 |
 | 20. Trace API | v1.4 | 2/2 | Complete | 2026-05-15 |
 | 21. Trace UI | v1.4 | 4/4 | Complete | 2026-05-15 |
-| 22. Bug Fixes | v1.5 | 0/2 | In progress | - |
+| 22. Bug Fixes | v1.5 | 1/2 | In Progress|  |
 | 23. Infrastructure | v1.5 | 0/? | Not started | - |
 | 24. Structural Span Checks | v1.5 | 0/? | Not started | - |
 | 25. Semantic Span + Structural Trace Checks | v1.5 | 0/? | Not started | - |

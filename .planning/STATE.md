@@ -37,9 +37,9 @@ Progress: [██████████] 100% (Phase 22 complete)
 
 | Metric | Value |
 |--------|-------|
-| Phases complete | 0 / 6 |
-| Plans complete | 0 / ? |
-| Tests passing | 112+ (from v1.4) |
+| Phases complete | 1 / 6 |
+| Plans complete | 2 / 2 (phase 22) |
+| Tests passing | 99 passed, 9 skipped (1 pre-existing spacy) |
 | Flag types active | 7 (pre-v1.5) |
 | Flag types targeted | +18 new (v1.5) |
 

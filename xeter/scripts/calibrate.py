@@ -295,6 +295,28 @@ def hill_climb(
 
 
 # ---------------------------------------------------------------------------
+# Recall floor guard
+# ---------------------------------------------------------------------------
+
+def _check_recall_floor(flag_type: str, best_recall: float) -> None:
+    """Exit with a human-readable error if best_recall is below the minimum floor.
+
+    Called after each hill_climb() in main(). A recall below 0.10 indicates
+    degenerate P=1.0, R=0.0 convergence — the threshold has been pushed so high
+    that the analyzer never fires (perfect precision on nothing). The calibrated
+    threshold would be useless in production.
+    """
+    if best_recall < 0.10:
+        print(
+            f"RECALL FLOOR ERROR: flag_type={flag_type} converged to "
+            f"recall={best_recall:.3f} which is below the minimum floor of 0.10. "
+            f"This indicates degenerate P=1.0, R=0.0 convergence. "
+            f"Improve the fixture or check the analyzer logic before calibrating."
+        )
+        sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
 # Plot
 # ---------------------------------------------------------------------------
 
@@ -479,6 +501,7 @@ def main() -> dict:
         best_threshold, best_precision, best_recall, history = hill_climb(
             flag_type, spans, embedder, calibrated
         )
+        _check_recall_floor(flag_type, best_recall)
         calibrated[flag_type] = best_threshold
         results[flag_type] = {
             "best_threshold": best_threshold,

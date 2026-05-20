@@ -80,6 +80,7 @@ class SpanDetailResponse(BaseModel):
     """Full span detail response merging ClickHouse, PostgreSQL, and S3 data."""
 
     span_id: str
+    tenant_id: str
     trace_id: str
     parent_span_id: str | None
     agent_name: str
@@ -538,6 +539,7 @@ async def get_span_detail(
 
     return SpanDetailResponse(
         span_id=ch_span_id,
+        tenant_id=tenant_id,
         trace_id=trace_id,
         parent_span_id=parent_span_id,
         agent_name=agent_name,

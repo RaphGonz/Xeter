@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Silent Failure Detection
 status: executing
-stopped_at: Phase 23 plan 02 complete — expected_output_schema wired end-to-end (SpanPayload, SPAN_COLUMNS, ingest, DDL, ALTER, SDK)
-last_updated: "2026-05-20T19:58:24.126Z"
-last_activity: 2026-05-20 — 23-02 executed; expected_output_schema wired through full ingest pipeline
+stopped_at: Phase 23 complete — infrastructure verified; ready for Phase 24
+last_updated: "2026-05-20T21:00:00.000Z"
+last_activity: 2026-05-20 — Phase 23 verified; all 3 plans complete; 23 tests pass; ready for Phase 24
 progress:
   total_phases: 6
   completed_phases: 2
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-18)
 
 **Core value:** When a tool call fails, tell the developer whether it was the model, the architecture, or the prompt — and why.
-**Current focus:** Phase 23 — Infrastructure — planned, ready to execute
+**Current focus:** Phase 24 — Structural Span Checks — ready to plan
 
 ## Current Position
 
-Phase: 23 — Infrastructure
-Status: Executing — plan 02 of 03 complete; 23-03 (Wave 2) remaining
-Last activity: 2026-05-20 — 23-02 executed; expected_output_schema wired through full ingest pipeline
+Phase: 24 — Structural Span Checks
+Status: Not started — Phase 23 complete and verified
+Last activity: 2026-05-20 — Phase 23 verified (5/5 truths, 23 tests pass, zero regressions)
 
 ```
 Progress: [██████████] 100%
@@ -37,9 +37,9 @@ Progress: [██████████] 100%
 
 | Metric | Value |
 |--------|-------|
-| Phases complete | 1 / 6 |
-| Plans complete | 2 / 2 (phase 22) |
-| Tests passing | 99 passed, 9 skipped (1 pre-existing spacy) |
+| Phases complete | 2 / 6 |
+| Plans complete | 5 / 5 (phases 22 + 23) |
+| Tests passing | 161 passed, 9 skipped (13 pre-existing spacy env failures, not regressions) |
 | Flag types active | 7 (pre-v1.5) |
 | Flag types targeted | +18 new (v1.5) |
 
@@ -71,11 +71,14 @@ All architectural decisions logged in PROJECT.md Key Decisions table.
 - `flush_scores()` called before `write_scores()` inside try block — same ordering as `process_span()`
 - time.monotonic called internally in helper (not a param) — simplifies both call sites
 
-### Key Decisions (Phase 23 plan 02)
+### Key Decisions (Phase 23)
 
 - D-04 dual-write DDL pattern: CREATE TABLE IF NOT EXISTS covers fresh deployments; idempotent ALTER TABLE ADD COLUMN IF NOT EXISTS covers live deployments
 - D-02 decorator kwarg: expected_output_schema is dict at SDK call site; serialized to JSON string before transmission to match SpanPayload Optional[str] field
 - SPAN_COLUMNS position 9 reserved for expected_output_schema (after tool_arguments, before tool_output)
+- D-05 static registry FLAG_TYPE_TO_ANALYZER_CLASS: all 7 existing flag types map to ToolCallAnalyzer; zero behavior change; extension point for phases 24-27
+- D-08 recall floor = 0.10: exact boundary acceptable; sys.exit(1) with RECALL FLOOR ERROR message in CI output
+- D-10 parent_span_id scope: SpanData + span_fetcher only (ClickHouse column already existed)
 
 ### Open Blockers
 
@@ -83,6 +86,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-20T19:58:24.112Z
-Stopped at: Phase 23 plan 02 complete — expected_output_schema wired end-to-end (SpanPayload, SPAN_COLUMNS, ingest, DDL, ALTER, SDK)
-Next: Execute Phase 23 plan 03 — /gsd:execute-phase 23
+Last session: 2026-05-20T21:00:00.000Z
+Stopped at: Phase 23 verified — all infrastructure in place for v1.5 checks
+Next: Plan Phase 24 — Structural Span Checks — /gsd:plan-phase 24

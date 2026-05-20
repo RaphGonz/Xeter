@@ -51,6 +51,7 @@ def trace(
     tools_arg: str | None = None,
     trace_id: str | None = None,
     parent_span_id: str | None = None,
+    expected_output_schema: dict | None = None,
 ) -> Any:
     """Decorator factory.  All parameters are keyword-only.
 
@@ -131,6 +132,8 @@ def trace(
 
         tool_output = result if isinstance(result, str) else str(result)
 
+        expected_output_schema_str = json.dumps(expected_output_schema) if expected_output_schema is not None else None
+
         span: dict = {
             "span_id": str(uuid.uuid4()),
             "trace_id": trace_id,
@@ -140,6 +143,7 @@ def trace(
             "tool_name": tool_name,
             "tool_description": tool_description,
             "tool_arguments": tool_arguments,
+            "expected_output_schema": expected_output_schema_str,
             "tool_output": tool_output,
             "prompt": prompt,
             "response": None,

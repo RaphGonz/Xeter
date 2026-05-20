@@ -23,6 +23,8 @@ from pathlib import Path
 
 import numpy as np
 
+from xeter.services.worker.tool_call_analyzer import ToolCallAnalyzer
+
 # ---------------------------------------------------------------------------
 # Paths / constants
 # ---------------------------------------------------------------------------
@@ -56,6 +58,19 @@ FLAG_TYPES = [
 # Needed when threshold key differs from the emitted flag type (e.g. after a
 # threshold-key rename that preserved the public flag_type string).
 FLAG_TYPE_ALIAS: dict[str, str] = {}
+
+# Maps each flag_type to the analyzer class responsible for evaluating it.
+# Phases 24-27 will add new entries when new analyzer classes are introduced.
+# evaluate_flag_type() uses this registry for instantiation — no hardcoded class.
+FLAG_TYPE_TO_ANALYZER_CLASS: dict[str, type] = {
+    "tool_not_available":   ToolCallAnalyzer,
+    "wrong_tool_choice":    ToolCallAnalyzer,
+    "unnecessary_tool_call": ToolCallAnalyzer,
+    "wrong_tool_args":      ToolCallAnalyzer,
+    "no_tool":              ToolCallAnalyzer,
+    "parsing_error":        ToolCallAnalyzer,
+    "response_anomaly":     ToolCallAnalyzer,
+}
 
 # Binary detectors — no threshold sweep; detected by rank/logic, not cosine threshold.
 # P/R is still measured via a single evaluation pass.
@@ -143,14 +158,13 @@ def evaluate_flag_type(
     If verbose=True, prints each false positive and false negative with span
     details to help diagnose algorithm failures.
     """
-    from xeter.services.worker.tool_call_analyzer import ToolCallAnalyzer
-
     # Resolve the actual emitted flag_type string used in fixture + analyzer
     emitted_flag_type = FLAG_TYPE_ALIAS.get(flag_type, flag_type)
 
     thresholds = dict(current_thresholds)
     thresholds[flag_type] = threshold
-    analyzer = ToolCallAnalyzer(embedder, thresholds)
+    analyzer_cls = FLAG_TYPE_TO_ANALYZER_CLASS[flag_type]
+    analyzer = analyzer_cls(embedder, thresholds)
 
     tp = fp = fn = 0
     false_positives: list[dict] = []

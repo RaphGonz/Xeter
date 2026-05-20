@@ -117,103 +117,38 @@ def test_6_registry_lookup_is_used_by_evaluate_flag_type(monkeypatch):
 # Task 2: Recall floor guard (Tests 7-10)
 # ---------------------------------------------------------------------------
 
-def _make_recall_floor_env(monkeypatch, mock_recall: float):
-    """Helper: patch hill_climb to return controlled best_recall, set up enough
-    mocking so that main()'s calibration loop reaches the recall floor check.
+def _invoke_recall_floor(flag_type: str, best_recall: float):
+    """Call the actual _check_recall_floor() from calibrate.py.
 
-    Returns the patched calibrate module.
+    This ensures tests exercise the real implementation, not a copy.
     """
-    import xeter.scripts.calibrate as calibrate_mod
-
-    # Patch hill_climb to return controlled values
-    def fake_hill_climb(flag_type, spans, embedder, current_thresholds):
-        return 0.5, 0.9, mock_recall, [{"threshold": 0.5, "precision": 0.9, "recall": mock_recall}]
-
-    monkeypatch.setattr(calibrate_mod, "hill_climb", fake_hill_climb)
-    return calibrate_mod
+    from xeter.scripts.calibrate import _check_recall_floor
+    _check_recall_floor(flag_type, best_recall)
 
 
-def _run_recall_floor_for_one_flag_type(monkeypatch, mock_recall: float, capsys=None):
-    """Invoke just the recall-floor logic in main()'s loop for one flag_type.
-
-    We do this by calling the recall floor check inline (extracted test helper)
-    rather than running full main() (which requires live embedder).
-
-    We extract the recall floor check by reproducing the same conditional that
-    main() uses, then verify sys.exit behavior.
-    """
-    import xeter.scripts.calibrate as calibrate_mod
-
-    # Reproduce the recall floor logic exactly as it appears in main()
-    flag_type = "wrong_tool_args"
-    best_recall = mock_recall
-
-    if best_recall < 0.10:
-        print(
-            f"RECALL FLOOR ERROR: flag_type={flag_type} converged to recall={best_recall:.3f} "
-            f"which is below the minimum floor of 0.10. This indicates degenerate P=1.0, R=0.0 "
-            f"convergence. Improve the fixture or check the analyzer logic before calibrating."
-        )
-        sys.exit(1)
-
-
-def _run_recall_floor_from_source(monkeypatch, mock_recall: float):
-    """Run the recall floor check as it appears in calibrate.py main().
-
-    Uses monkeypatching to inject a fake hill_climb that returns mock_recall,
-    then calls a trimmed version of main()'s per-flag-type calibration loop.
-    This directly tests the actual code in calibrate.py rather than a copy.
-    """
-    import xeter.scripts.calibrate as calibrate_mod
-
-    def fake_hill_climb(flag_type, spans, embedder, current_thresholds):
-        return 0.5, 0.9, mock_recall, []
-
-    monkeypatch.setattr(calibrate_mod, "hill_climb", fake_hill_climb)
-
-    # Call hill_climb exactly as main() does, then apply the recall floor check
-    flag_type = "wrong_tool_args"
-    fake_spans: list = []
-    fake_embedder = MagicMock()
-    fake_calibrated: dict = {}
-
-    best_threshold, best_precision, best_recall, history = calibrate_mod.hill_climb(
-        flag_type, fake_spans, fake_embedder, fake_calibrated
-    )
-
-    # This is the recall floor check from main() — tested here
-    if best_recall < 0.10:
-        print(
-            f"RECALL FLOOR ERROR: flag_type={flag_type} converged to recall={best_recall:.3f} "
-            f"which is below the minimum floor of 0.10. This indicates degenerate P=1.0, R=0.0 "
-            f"convergence. Improve the fixture or check the analyzer logic before calibrating."
-        )
-        sys.exit(1)
-
-
-def test_7_recall_floor_triggers_exit_when_recall_below_floor(monkeypatch):
-    """hill_climb returning best_recall=0.05 causes sys.exit(1) (recall < 0.10)."""
+def test_7_recall_floor_triggers_exit_when_recall_below_floor():
+    """_check_recall_floor with best_recall=0.05 causes sys.exit(1) (recall < 0.10)."""
     with pytest.raises(SystemExit) as exc_info:
-        _run_recall_floor_from_source(monkeypatch, mock_recall=0.05)
+        _invoke_recall_floor("wrong_tool_args", 0.05)
     assert exc_info.value.code == 1
 
 
-def test_8_recall_floor_no_exit_at_exactly_floor(monkeypatch):
-    """hill_climb returning best_recall=0.10 does NOT call sys.exit(1) (at floor — acceptable)."""
+def test_8_recall_floor_no_exit_at_exactly_floor():
+    """_check_recall_floor with best_recall=0.10 does NOT call sys.exit(1) (at floor — acceptable)."""
     # Should not raise
-    _run_recall_floor_from_source(monkeypatch, mock_recall=0.10)
+    _invoke_recall_floor("wrong_tool_args", 0.10)
 
 
-def test_9_recall_floor_no_exit_above_floor(monkeypatch):
-    """hill_climb returning best_recall=0.50 does NOT call sys.exit(1) (well above floor)."""
+def test_9_recall_floor_no_exit_above_floor():
+    """_check_recall_floor with best_recall=0.50 does NOT call sys.exit(1) (well above floor)."""
     # Should not raise
-    _run_recall_floor_from_source(monkeypatch, mock_recall=0.50)
+    _invoke_recall_floor("wrong_tool_args", 0.50)
 
 
-def test_10_recall_floor_error_message_contains_flag_type_and_recall(monkeypatch, capsys):
+def test_10_recall_floor_error_message_contains_flag_type_and_recall(capsys):
     """When sys.exit(1) is triggered, stdout contains flag_type name and 'recall'/'RECALL'."""
     with pytest.raises(SystemExit):
-        _run_recall_floor_from_source(monkeypatch, mock_recall=0.05)
+        _invoke_recall_floor("wrong_tool_args", 0.05)
 
     captured = capsys.readouterr()
     output = captured.out + captured.err

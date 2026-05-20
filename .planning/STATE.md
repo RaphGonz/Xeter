@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Silent Failure Detection
 status: executing
-stopped_at: Phase 23 planned (3 plans verified)
-last_updated: "2026-05-20T19:31:38.936Z"
-last_activity: 2026-05-20 — Phase 23 planned; 23-01 (Wave 1), 23-02 + 23-03 (Wave 2 parallel)
+stopped_at: Phase 23 plan 02 complete — expected_output_schema wired end-to-end (SpanPayload, SPAN_COLUMNS, ingest, DDL, ALTER, SDK)
+last_updated: "2026-05-20T19:56:30.481Z"
+last_activity: 2026-05-20 — 23-02 executed; expected_output_schema wired through full ingest pipeline
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 5
-  completed_plans: 3
-  percent: 17
+  completed_plans: 5
+  percent: 33
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-05-18)
 ## Current Position
 
 Phase: 23 — Infrastructure
-Status: Ready to execute (3 plans in 2 waves)
-Last activity: 2026-05-20 — Phase 23 planned; 23-01 (Wave 1), 23-02 + 23-03 (Wave 2 parallel)
+Status: Executing — plan 02 of 03 complete; 23-03 (Wave 2) remaining
+Last activity: 2026-05-20 — 23-02 executed; expected_output_schema wired through full ingest pipeline
 
 ```
-Progress: [██████░░░░] 60%
+Progress: [██████████] 100%
 ```
 
 ## Performance Metrics
@@ -71,12 +71,18 @@ All architectural decisions logged in PROJECT.md Key Decisions table.
 - `flush_scores()` called before `write_scores()` inside try block — same ordering as `process_span()`
 - time.monotonic called internally in helper (not a param) — simplifies both call sites
 
+### Key Decisions (Phase 23 plan 02)
+
+- D-04 dual-write DDL pattern: CREATE TABLE IF NOT EXISTS covers fresh deployments; idempotent ALTER TABLE ADD COLUMN IF NOT EXISTS covers live deployments
+- D-02 decorator kwarg: expected_output_schema is dict at SDK call site; serialized to JSON string before transmission to match SpanPayload Optional[str] field
+- SPAN_COLUMNS position 9 reserved for expected_output_schema (after tool_arguments, before tool_output)
+
 ### Open Blockers
 
 None.
 
 ## Session Continuity
 
-Last session: 2026-05-20T19:31:38.920Z
-Stopped at: Phase 23 planned (3 plans verified)
-Next: Execute Phase 23 — /gsd:execute-phase 23
+Last session: 2026-05-20T19:51:00Z
+Stopped at: Phase 23 plan 02 complete — expected_output_schema wired end-to-end (SpanPayload, SPAN_COLUMNS, ingest, DDL, ALTER, SDK)
+Next: Execute Phase 23 plan 03 — /gsd:execute-phase 23

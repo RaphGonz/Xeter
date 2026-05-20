@@ -114,6 +114,8 @@ def build_span_data(row: dict):
         response=row.get("response"),
         raw_response=row.get("raw_response"),
         available_tools=row.get("available_tools"),
+        expected_output_schema=row.get("expected_output_schema"),
+        parent_span_id=row.get("parent_span_id"),
     )
 
 

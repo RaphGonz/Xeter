@@ -57,6 +57,8 @@ class SpanData:
     response: Optional[str]             # fetched from S3 via response_ref
     raw_response: Optional[str]         # fetched from S3 via raw_response_ref (full API JSON)
     available_tools: Optional[list[dict]]  # fetched from S3 via available_tools_ref, parsed JSON list
+    expected_output_schema: Optional[str] = None  # inline JSON string, same pattern as tool_arguments
+    parent_span_id: Optional[str] = None           # ClickHouse column already exists
 
 
 class EmbedderClient:

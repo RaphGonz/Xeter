@@ -46,12 +46,15 @@ _FETCH_COLUMNS = [
     "response_ref",
     "raw_response_ref",
     "available_tools_ref",
+    "expected_output_schema",
+    "parent_span_id",
 ]
 
 _FETCH_QUERY = (
     "SELECT span_id, trace_id, tenant_id, agent_name, agent_model, "
     "tool_name, tool_description, tool_arguments, tool_output, "
-    "prompt_ref, response_ref, raw_response_ref, available_tools_ref "
+    "prompt_ref, response_ref, raw_response_ref, available_tools_ref, "
+    "expected_output_schema, parent_span_id "
     "FROM spans WHERE span_id = %(span_id)s LIMIT 1"
 )
 
@@ -175,4 +178,6 @@ def fetch_span(span_id: str) -> SpanData:
         response=response,
         raw_response=raw_response,
         available_tools=available_tools,
+        expected_output_schema=row.get("expected_output_schema") or None,
+        parent_span_id=row.get("parent_span_id") or None,
     )

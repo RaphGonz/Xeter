@@ -7,7 +7,7 @@ COPY xeter/ xeter/
 RUN pip install --no-cache-dir -e xeter/
 
 # Worker-specific deps: PostgreSQL, S3, Redis, spaCy NLP
-RUN pip install --no-cache-dir psycopg2-binary boto3 redis httpx spacy && \
+RUN pip install --no-cache-dir psycopg2-binary boto3 redis httpx spacy jsonschema tiktoken rapidfuzz && \
     python -m spacy download en_core_web_md
 
 # Copy Docker entry point

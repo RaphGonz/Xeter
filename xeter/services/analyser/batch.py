@@ -45,6 +45,7 @@ SPAN_COLUMNS = [
     "tool_name",
     "tool_description",
     "tool_arguments",
+    "expected_output_schema",
     "tool_output",
     "prompt_ref",
     "response_ref",

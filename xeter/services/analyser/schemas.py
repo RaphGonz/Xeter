@@ -33,6 +33,7 @@ class SpanPayload(BaseModel):
     tool_name: Optional[str] = None
     tool_description: Optional[str] = None
     tool_arguments: Optional[str] = None  # JSON string, stored inline in ClickHouse
+    expected_output_schema: Optional[str] = None  # inline JSON string, same pattern as tool_arguments
     tool_output: Optional[str] = None
     prompt: Optional[str] = None
     response: Optional[str] = None

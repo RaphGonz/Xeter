@@ -105,8 +105,9 @@ async def ingest_span(
     # Step 2: Build ClickHouse row in SPAN_COLUMNS order
     # SPAN_COLUMNS = [span_id, trace_id, parent_span_id, tenant_id, agent_name,
     #                 agent_model, tool_name, tool_description, tool_arguments,
-    #                 tool_output, prompt_ref, response_ref, raw_response_ref,
-    #                 available_tools_ref, time_begin, time_end, schema_version]
+    #                 expected_output_schema, tool_output, prompt_ref,
+    #                 response_ref, raw_response_ref, available_tools_ref,
+    #                 time_begin, time_end, schema_version]
     row = [
         span.span_id,
         span.trace_id or "",
@@ -117,6 +118,7 @@ async def ingest_span(
         span.tool_name,
         span.tool_description,
         span.tool_arguments,
+        span.expected_output_schema,
         span.tool_output,
         refs["prompt_ref"],
         refs["response_ref"],

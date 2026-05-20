@@ -79,13 +79,14 @@ class TestIngestRowLength:
             span.span_id,
             span.trace_id or "",
             span.parent_span_id,
-            "tenant-123",           # tenant_id (from auth)
+            "tenant-123",                  # tenant_id (from auth)
             span.agent_name,
             span.agent_model,
             span.tool_name,
             span.tool_description,
             span.tool_arguments,
             span.expected_output_schema,   # index 9 — the new field
+            span.tool_output,              # index 10
             stub_refs["prompt_ref"],
             stub_refs["response_ref"],
             stub_refs["raw_response_ref"],

@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS spans (
     tool_name           Nullable(String),
     tool_description    Nullable(String),
     tool_arguments      Nullable(String),
+    expected_output_schema  Nullable(String),
     tool_output         Nullable(String),
     available_tools_ref Nullable(String),
     prompt_ref          String,
@@ -99,6 +100,21 @@ def create_spans_table(client: clickhouse_connect.driver.Client) -> None:
         client: A ClickHouse client returned by get_clickhouse_client().
     """
     client.command(SPANS_TABLE_DDL)
+
+
+def alter_spans_add_expected_output_schema(client: clickhouse_connect.driver.Client) -> None:
+    """Add expected_output_schema column to spans table if it does not exist.
+
+    Idempotent — safe to call on every application startup (IF NOT EXISTS guard).
+    Handles live deployments where the table was created before this column was added.
+
+    Args:
+        client: A ClickHouse client returned by get_clickhouse_client().
+    """
+    client.command(
+        "ALTER TABLE spans ADD COLUMN IF NOT EXISTS "
+        "expected_output_schema Nullable(String)"
+    )
 
 
 # ---------------------------------------------------------------------------

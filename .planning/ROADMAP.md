@@ -106,7 +106,11 @@ Plans:
   3. Worker environment imports `jsonschema`, `tiktoken`, and `rapidfuzz` without error
   4. `SpanData.expected_output_schema` field is populated from ClickHouse when a span carries it; absent on spans that don't
   5. `SpanData.parent_span_id` field is populated from ClickHouse when a span carries it; absent on spans that don't
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 23-01-PLAN.md — New deps (pyproject.toml + Dockerfile) + SpanData fields + span_fetcher + calibrate.py build_span_data
+- [ ] 23-02-PLAN.md — expected_output_schema ingest pipeline (SpanPayload, SPAN_COLUMNS, ingest row, DDL, ALTER, SDK)
+- [ ] 23-03-PLAN.md — calibrate.py FLAG_TYPE_TO_ANALYZER_CLASS registry + recall floor check
 
 ### Phase 24: Structural Span Checks
 **Goal**: System detects output schema violations, truncated outputs, type errors, token overflow, and prompt injection at the span level using only deterministic/heuristic signals — no embedding calls
@@ -184,7 +188,7 @@ Plans:
 | 20. Trace API | v1.4 | 2/2 | Complete | 2026-05-15 |
 | 21. Trace UI | v1.4 | 4/4 | Complete | 2026-05-15 |
 | 22. Bug Fixes | v1.5 | 2/2 | Complete | 2026-05-19 |
-| 23. Infrastructure | v1.5 | 0/? | Not started | - |
+| 23. Infrastructure | v1.5 | 0/3 | Not started | - |
 | 24. Structural Span Checks | v1.5 | 0/? | Not started | - |
 | 25. Semantic Span + Structural Trace Checks | v1.5 | 0/? | Not started | - |
 | 26. Best-Effort Proxy Checks | v1.5 | 0/? | Not started | - |

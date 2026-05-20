@@ -9,7 +9,7 @@
 
 - [x] **INFRA-01**: Worker processes pending trace flushes on BRPOP timeout — idle traces (last trace in queue, no subsequent span arrival) are flushed and analyzed correctly; trace flags fire in test conditions that send exactly N spans and stop
 - [x] **INFRA-02**: TraceAnalyzer score data is persisted — `flush_scores()` called and results written to `span_scores` after each trace flush; calibration dataset includes trace-level metrics
-- [ ] **INFRA-03**: `calibrate.py` supports multiple analyzer classes — new flag types route to the correct analyzer instance; hill-climb enforces a minimum recall floor (R ≥ 0.10) to prevent degenerate `P=1.0, R=0.0` convergence
+- [x] **INFRA-03**: `calibrate.py` supports multiple analyzer classes — new flag types route to the correct analyzer instance; hill-climb enforces a minimum recall floor (R ≥ 0.10) to prevent degenerate `P=1.0, R=0.0` convergence
 - [x] **INFRA-04**: Worker `pyproject.toml` includes `jsonschema==4.26.0`, `tiktoken==0.13.0`, `rapidfuzz==3.14.5`
 - [x] **INFRA-05**: `SpanData` has `expected_output_schema: Optional[dict]` field; corresponding ClickHouse column added (additive, nullable); `span_fetcher.py` maps it
 - [x] **INFRA-06**: `SpanData` has `parent_span_id: Optional[str]` field; confirmed present or added to ClickHouse `spans` table; `span_fetcher.py` maps it

@@ -178,22 +178,107 @@ class OutputSchemaAnalyzer(BaseSpanAnalyzer):
         return []
 
     # ------------------------------------------------------------------
-    # SCHEMA-02: required_fields_missing — stub (Task 2 fills this in)
+    # SCHEMA-02: required_fields_missing
     # ------------------------------------------------------------------
 
     def _check_required_fields_missing(self, span: SpanData) -> list[Flag]:
+        """Fire when tool_arguments JSON is missing required fields per jsonschema Draft7.
+
+        Early guard: return [] when expected_output_schema or tool_arguments is None.
+        Both JSON strings are parsed before validation (Pitfall 1: expected_output_schema
+        is Optional[str], not a dict). On malformed JSON, return [] — not this check's
+        concern (T-24-04 mitigated). SCHEMA-02 and SCHEMA-04 can co-fire independently
+        on the same span (Pitfall 2) because they use separate iter_errors() calls.
+        """
+        if span.expected_output_schema is None or span.tool_arguments is None:
+            return []
+        try:
+            schema = json.loads(span.expected_output_schema)
+            instance = json.loads(span.tool_arguments)
+        except (json.JSONDecodeError, ValueError):
+            return []  # malformed schema or args — not this check's concern
+        errors = [
+            e for e in jsonschema.Draft7Validator(schema).iter_errors(instance)
+            if e.validator == "required"
+        ]
+        if errors:
+            self.log_score("required_fields_missing", 1.0)
+            return [Flag(
+                flag_type="required_fields_missing",
+                score=1.0,
+                detail={
+                    "metric": "required_fields_missing",
+                    "missing_fields": [e.message for e in errors],
+                },
+            )]
+        self.log_score("required_fields_missing", 0.0)
         return []
 
     # ------------------------------------------------------------------
-    # SCHEMA-04: type_coercion_error — stub (Task 2 fills this in)
+    # SCHEMA-04: type_coercion_error
     # ------------------------------------------------------------------
 
     def _check_type_coercion_error(self, span: SpanData) -> list[Flag]:
+        """Fire when tool_arguments contains type violations per jsonschema Draft7.
+
+        Identical structure to _check_required_fields_missing but filters by
+        e.validator == "type". Flag.detail uses key "type_errors" (not "missing_fields").
+        Both SCHEMA-02 and SCHEMA-04 can fire on the same span (Pitfall 2) — they run
+        independently in analyze() and filter different e.validator values.
+        """
+        if span.expected_output_schema is None or span.tool_arguments is None:
+            return []
+        try:
+            schema = json.loads(span.expected_output_schema)
+            instance = json.loads(span.tool_arguments)
+        except (json.JSONDecodeError, ValueError):
+            return []
+        errors = [
+            e for e in jsonschema.Draft7Validator(schema).iter_errors(instance)
+            if e.validator == "type"
+        ]
+        if errors:
+            self.log_score("type_coercion_error", 1.0)
+            return [Flag(
+                flag_type="type_coercion_error",
+                score=1.0,
+                detail={
+                    "metric": "type_coercion_error",
+                    "type_errors": [e.message for e in errors],
+                },
+            )]
+        self.log_score("type_coercion_error", 0.0)
         return []
 
     # ------------------------------------------------------------------
-    # CTX-01: context_overflow — stub (Task 2 fills this in)
+    # CTX-01: context_overflow
     # ------------------------------------------------------------------
 
     def _check_context_overflow(self, span: SpanData) -> list[Flag]:
+        """Fire when prompt token count via tiktoken cl100k_base exceeds threshold.
+
+        Early guard: return [] when prompt is None (D-04 — no log_score when span
+        did not participate). log_score is called with the NUMERIC token_count BEFORE
+        threshold comparison (D-04 invariant: the count IS the calibration signal).
+        Threshold is always read from self._thresholds["context_overflow"] — no
+        numeric literal 8000 here (D-05, D-03). Lazy tiktoken load via _get_tiktoken()
+        avoids cold-start penalty (Pitfall 6).
+        """
+        if span.prompt is None:
+            return []
+        enc = _get_tiktoken()
+        token_count = len(enc.encode(span.prompt))
+        # CRITICAL: log BEFORE threshold comparison (D-04 invariant)
+        self.log_score("prompt_token_count", float(token_count))
+        threshold = self._thresholds["context_overflow"]
+        if token_count > threshold:
+            return [Flag(
+                flag_type="context_overflow",
+                score=1.0,
+                detail={
+                    "metric": "prompt_token_count",
+                    "token_count": token_count,
+                    "threshold": threshold,
+                },
+            )]
         return []

@@ -16,23 +16,29 @@ import pytest
 # Task 1: FLAG_TYPE_TO_ANALYZER_CLASS registry (Tests 1-6)
 # ---------------------------------------------------------------------------
 
-def test_1_registry_has_exactly_7_keys():
-    """FLAG_TYPE_TO_ANALYZER_CLASS is a dict with exactly 7 keys matching FLAG_TYPES."""
+def test_1_registry_has_exactly_12_keys():
+    """FLAG_TYPE_TO_ANALYZER_CLASS is a dict with exactly 12 keys (7 ToolCallAnalyzer + 5 OutputSchemaAnalyzer) matching FLAG_TYPES."""
     from xeter.scripts.calibrate import FLAG_TYPE_TO_ANALYZER_CLASS, FLAG_TYPES
     assert isinstance(FLAG_TYPE_TO_ANALYZER_CLASS, dict)
     assert set(FLAG_TYPE_TO_ANALYZER_CLASS.keys()) == set(FLAG_TYPES)
-    assert len(FLAG_TYPE_TO_ANALYZER_CLASS) == 7
+    assert len(FLAG_TYPE_TO_ANALYZER_CLASS) == 12
 
 
-def test_2_all_values_are_tool_call_analyzer_class():
-    """All 7 values in FLAG_TYPE_TO_ANALYZER_CLASS are the ToolCallAnalyzer class (not an instance)."""
+def test_2_existing_7_keys_still_map_to_tool_call_analyzer():
+    """All 7 pre-Phase-24 keys in FLAG_TYPE_TO_ANALYZER_CLASS still map to the ToolCallAnalyzer class (no regression)."""
     from xeter.scripts.calibrate import FLAG_TYPE_TO_ANALYZER_CLASS
     from xeter.services.worker.tool_call_analyzer import ToolCallAnalyzer
-    for key, value in FLAG_TYPE_TO_ANALYZER_CLASS.items():
-        assert value is ToolCallAnalyzer, (
-            f"Expected FLAG_TYPE_TO_ANALYZER_CLASS[{key!r}] to be the ToolCallAnalyzer "
-            f"class, got {value!r}"
-        )
+    EXPECTED_TOOL_CALL_KEYS = {
+        "tool_not_available",
+        "wrong_tool_choice",
+        "unnecessary_tool_call",
+        "wrong_tool_args",
+        "no_tool",
+        "parsing_error",
+        "response_anomaly",
+    }
+    for key in EXPECTED_TOOL_CALL_KEYS:
+        assert FLAG_TYPE_TO_ANALYZER_CLASS[key] is ToolCallAnalyzer
 
 
 def test_3_wrong_tool_args_maps_to_tool_call_analyzer():
@@ -158,3 +164,60 @@ def test_10_recall_floor_error_message_contains_flag_type_and_recall(capsys):
     assert "recall" in output.lower(), (
         f"Expected 'recall' (case-insensitive) in output but got: {output!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 24: OutputSchemaAnalyzer routing (Tests 11-15)
+# ---------------------------------------------------------------------------
+
+def test_11_output_schema_checks_map_to_output_schema_analyzer():
+    """All 5 Phase 24 flag types route to OutputSchemaAnalyzer via the registry."""
+    from xeter.scripts.calibrate import FLAG_TYPE_TO_ANALYZER_CLASS
+    from xeter.services.worker.output_schema_analyzer import OutputSchemaAnalyzer
+    for flag_type in [
+        "output_schema_violation",
+        "required_fields_missing",
+        "output_truncated",
+        "type_coercion_error",
+        "context_overflow",
+    ]:
+        assert FLAG_TYPE_TO_ANALYZER_CLASS[flag_type] is OutputSchemaAnalyzer
+
+
+def test_12_binary_flag_types_includes_4_phase_24_schema_checks():
+    """BINARY_FLAG_TYPES contains the 4 deterministic Phase 24 schema checks (excludes context_overflow)."""
+    from xeter.scripts.calibrate import BINARY_FLAG_TYPES
+    for flag_type in [
+        "output_schema_violation",
+        "required_fields_missing",
+        "output_truncated",
+        "type_coercion_error",
+    ]:
+        assert flag_type in BINARY_FLAG_TYPES
+
+
+def test_13_context_overflow_not_in_binary_flag_types():
+    """context_overflow is threshold-tunable per D-05 — must NOT appear in BINARY_FLAG_TYPES."""
+    from xeter.scripts.calibrate import BINARY_FLAG_TYPES
+    assert "context_overflow" not in BINARY_FLAG_TYPES
+
+
+def test_14_context_overflow_in_default_thresholds():
+    """DEFAULT_THRESHOLDS contains context_overflow at the D-03 default value of 8000."""
+    from xeter.scripts.calibrate import DEFAULT_THRESHOLDS
+    assert "context_overflow" in DEFAULT_THRESHOLDS
+    assert DEFAULT_THRESHOLDS["context_overflow"] == 8000
+
+
+def test_15_flag_types_list_has_12_entries():
+    """FLAG_TYPES list has exactly 12 entries after Phase 24 — required so calibrate.py main() iterates over all new flag types."""
+    from xeter.scripts.calibrate import FLAG_TYPES
+    assert len(FLAG_TYPES) == 12
+    for flag_type in [
+        "output_schema_violation",
+        "required_fields_missing",
+        "output_truncated",
+        "type_coercion_error",
+        "context_overflow",
+    ]:
+        assert flag_type in FLAG_TYPES

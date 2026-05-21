@@ -122,9 +122,9 @@ Plans:
 
 ### Phase 24: Structural Span Checks
 
-**Goal**: System detects output schema violations, truncated outputs, type errors, token overflow, and prompt injection at the span level using only deterministic/heuristic signals — no embedding calls
+**Goal**: System detects output schema violations, truncated outputs, type errors, and token overflow at the span level using only deterministic/heuristic signals — no embedding calls
 **Depends on**: Phase 23
-**Requirements**: SCHEMA-01, SCHEMA-02, SCHEMA-03, SCHEMA-04, CTX-01 (CTX-03 deferred — see 24-CONTEXT.md D-02)
+**Requirements**: SCHEMA-01, SCHEMA-02, SCHEMA-03, SCHEMA-04, CTX-01
 **Success Criteria** (what must be TRUE):
 
   1. A span with `expected_output_schema` set and a free-text `response` (no JSON / no tool_use block) receives an `output_schema_violation` flag
@@ -132,21 +132,19 @@ Plans:
   3. A span with `finish_reason=length` or an unclosed JSON delimiter in its response receives an `output_truncated` flag
   4. A span whose `tool_arguments` contains a type violation (e.g., number-as-string) against `expected_output_schema` receives a `type_coercion_error` flag
   5. A span whose prompt token count (tiktoken cl100k_base) exceeds the configured threshold receives a `context_overflow` flag
-  6. A span whose `tool_output` matches a pattern in `_INJECTION_PATTERNS` receives a `prompt_injection` flag; a clean span does not — DEFERRED to a later phase per 24-CONTEXT.md D-02 (CTX-03 not in Phase 24 scope)
-
 **Plans**: 3 plans
 Plans:
 **Wave 1**
 
-- [ ] 24-01-PLAN.md — Failing test scaffold for OutputSchemaAnalyzer (RED) — 31 tests covering 5 checks
+- [x] 24-01-PLAN.md — Failing test scaffold for OutputSchemaAnalyzer (RED) — 31 tests covering 5 checks
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 24-02-PLAN.md — Implement OutputSchemaAnalyzer with 5 deterministic checks (GREEN)
+- [x] 24-02-PLAN.md — Implement OutputSchemaAnalyzer with 5 deterministic checks (GREEN)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 24-03-PLAN.md — Wire OutputSchemaAnalyzer into worker main.py + calibrate.py registries; update routing tests
+- [x] 24-03-PLAN.md — Wire OutputSchemaAnalyzer into worker main.py + calibrate.py registries; update routing tests
 
 ### Phase 25: Semantic Span + Structural Trace Checks
 

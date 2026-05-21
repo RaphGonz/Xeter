@@ -16,16 +16,15 @@
 
 ### SCHEMA — Output/Schema Failure Checks (span-level, new OutputSchemaAnalyzer)
 
-- [ ] **SCHEMA-01** (B1): System flags `output_schema_violation` when model returns free text instead of structured output — detected via JSON parse failure on `response` when `expected_output_schema` is set or `raw_response` shows no tool_use/function_call blocks despite `available_tools` being present
-- [ ] **SCHEMA-02** (B2): System flags `required_fields_missing` when `tool_arguments` validates against `expected_output_schema` but required fields are absent or null — detected via `jsonschema` `required` validator errors
-- [ ] **SCHEMA-03** (B3): System flags `output_truncated` when model output is cut short — primary signal: `finish_reason=length` in `raw_response`; fallback: unclosed JSON delimiter in `response` or `tool_arguments`
-- [ ] **SCHEMA-04** (B4): System flags `type_coercion_error` when `tool_arguments` contains type violations against `expected_output_schema` — detected via `jsonschema` `type` validator errors (number-as-string, boolean-as-integer, etc.)
+- [x] **SCHEMA-01** (B1): System flags `output_schema_violation` when model returns free text instead of structured output — detected via JSON parse failure on `response` when `expected_output_schema` is set or `raw_response` shows no tool_use/function_call blocks despite `available_tools` being present
+- [x] **SCHEMA-02** (B2): System flags `required_fields_missing` when `tool_arguments` validates against `expected_output_schema` but required fields are absent or null — detected via `jsonschema` `required` validator errors
+- [x] **SCHEMA-03** (B3): System flags `output_truncated` when model output is cut short — primary signal: `finish_reason=length` in `raw_response`; fallback: unclosed JSON delimiter in `response` or `tool_arguments`
+- [x] **SCHEMA-04** (B4): System flags `type_coercion_error` when `tool_arguments` contains type violations against `expected_output_schema` — detected via `jsonschema` `type` validator errors (number-as-string, boolean-as-integer, etc.)
 
 ### CTX — Context/Content Checks (span-level, new OutputSchemaAnalyzer)
 
-- [ ] **CTX-01** (D3): System flags `context_overflow` when prompt token count exceeds a model-context threshold — counted via `tiktoken` with `cl100k_base` fallback; threshold configurable per `THRESHOLDS` dict
+- [x] **CTX-01** (D3): System flags `context_overflow` when prompt token count exceeds a model-context threshold — counted via `tiktoken` with `cl100k_base` fallback; threshold configurable per `THRESHOLDS` dict
 - [ ] **CTX-02** (D5): System flags `stale_context` (best-effort) when tool output appears reused across spans without re-query — detected via `rapidfuzz` similarity between current span's prompt and a prior span's `tool_output` in the same trace context passed via span metadata; marked `low_confidence: true` in flag detail
-- [ ] **CTX-03** (E3): System flags `prompt_injection` when `tool_output` contains patterns consistent with adversarial instruction injection — detected via curated `_INJECTION_PATTERNS` regex list compiled at module load; optional semantic gate via embedder if regex precision is low post-calibration
 - [ ] **CTX-04** (H2): System flags `missing_details` when `response` does not semantically cover items explicitly requested in `prompt` — detected via hybrid cosine + spaCy entity-recall score between prompt and response; threshold configurable
 
 ### TRACE — Trace-Level Checks (TraceAnalyzer real implementation)
@@ -43,7 +42,7 @@
 
 ### CAL — Calibration
 
-- [ ] **CAL-01**: All 18 new flag types calibrated via extended `calibrate.py`; each check has a threshold key in `THRESHOLDS`; recall floor R ≥ 0.10 enforced; full-suite mean precision ≥ 95% verified
+- [ ] **CAL-01**: All 17 new flag types calibrated via extended `calibrate.py`; each check has a threshold key in `THRESHOLDS`; recall floor R ≥ 0.10 enforced; full-suite mean precision ≥ 95% verified
 
 ---
 
@@ -72,12 +71,11 @@
 | INFRA-04 | Phase 23 | Infrastructure | Pending |
 | INFRA-05 | Phase 23 | Infrastructure | Pending |
 | INFRA-06 | Phase 23 | Infrastructure | Pending |
-| SCHEMA-01 | Phase 24 | Structural Span Checks | Pending |
-| SCHEMA-02 | Phase 24 | Structural Span Checks | Pending |
-| SCHEMA-03 | Phase 24 | Structural Span Checks | Pending |
-| SCHEMA-04 | Phase 24 | Structural Span Checks | Pending |
-| CTX-01 | Phase 24 | Structural Span Checks | Pending |
-| CTX-03 | Phase 24 | Structural Span Checks | Pending |
+| SCHEMA-01 | Phase 24 | Structural Span Checks | Complete |
+| SCHEMA-02 | Phase 24 | Structural Span Checks | Complete |
+| SCHEMA-03 | Phase 24 | Structural Span Checks | Complete |
+| SCHEMA-04 | Phase 24 | Structural Span Checks | Complete |
+| CTX-01 | Phase 24 | Structural Span Checks | Complete |
 | CTX-02 | Phase 25 | Semantic Span + Structural Trace Checks | Pending |
 | CTX-04 | Phase 25 | Semantic Span + Structural Trace Checks | Pending |
 | TRACE-01 | Phase 25 | Semantic Span + Structural Trace Checks | Pending |

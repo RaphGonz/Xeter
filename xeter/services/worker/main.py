@@ -42,6 +42,7 @@ from xeter.services.worker.flag_writer import write_flags
 from xeter.services.worker.score_writer import write_scores
 from xeter.services.worker.span_fetcher import fetch_span
 from xeter.services.worker.tool_call_analyzer import ToolCallAnalyzer
+from xeter.services.worker.output_schema_analyzer import OutputSchemaAnalyzer
 from xeter.services.worker.trace_analyzer import TraceAnalyzer
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,7 @@ THRESHOLDS: dict[str, float] = {
     "wrong_tool_args": float(os.environ.get("WORKER_THRESHOLD_WRONG_TOOL_ARGS", "0.4")),  # [safe-default] calibration value; tune via calibration scripts
     "no_tool": float(os.environ.get("WORKER_THRESHOLD_NO_TOOL", "0.6")),  # [safe-default] calibration value; tune via calibration scripts
     "response_anomaly": float(os.environ.get("WORKER_THRESHOLD_RESPONSE_ANOMALY", "0.4")),  # [safe-default] calibration value; tune via calibration scripts
+    "context_overflow": float(os.environ.get("WORKER_THRESHOLD_CONTEXT_OVERFLOW", "8000")),  # [safe-default] calibration value; tune via calibration scripts
 }
 
 WORKER_TRACE_FLUSH_TIMEOUT_S: float = float(
@@ -174,7 +176,10 @@ def main() -> None:
     embedder = EmbedderClient(embedder_url)
     logger.info("worker: embedder client ready")
 
-    analyzers = [ToolCallAnalyzer(embedder, THRESHOLDS)]
+    analyzers = [
+        ToolCallAnalyzer(embedder, THRESHOLDS),
+        OutputSchemaAnalyzer(embedder, THRESHOLDS),
+    ]
 
     trace_analyzer = TraceAnalyzer(embedder, THRESHOLDS)
 

@@ -24,6 +24,7 @@ from pathlib import Path
 import numpy as np
 
 from xeter.services.worker.tool_call_analyzer import ToolCallAnalyzer
+from xeter.services.worker.output_schema_analyzer import OutputSchemaAnalyzer
 
 # ---------------------------------------------------------------------------
 # Paths / constants
@@ -52,6 +53,12 @@ FLAG_TYPES = [
     "no_tool",
     "parsing_error",
     "response_anomaly",
+    # Phase 24 — OutputSchemaAnalyzer
+    "output_schema_violation",
+    "required_fields_missing",
+    "output_truncated",
+    "type_coercion_error",
+    "context_overflow",
 ]
 
 # Maps threshold key → actual emitted flag_type (and fixture anomaly_type).
@@ -70,11 +77,25 @@ FLAG_TYPE_TO_ANALYZER_CLASS: dict[str, type] = {
     "no_tool":              ToolCallAnalyzer,
     "parsing_error":        ToolCallAnalyzer,
     "response_anomaly":     ToolCallAnalyzer,
+    # Phase 24 — OutputSchemaAnalyzer routing
+    "output_schema_violation": OutputSchemaAnalyzer,
+    "required_fields_missing": OutputSchemaAnalyzer,
+    "output_truncated":        OutputSchemaAnalyzer,
+    "type_coercion_error":     OutputSchemaAnalyzer,
+    "context_overflow":        OutputSchemaAnalyzer,
 }
 
 # Binary detectors — no threshold sweep; detected by rank/logic, not cosine threshold.
 # P/R is still measured via a single evaluation pass.
-BINARY_FLAG_TYPES: set[str] = {"tool_not_available", "wrong_tool_choice", "parsing_error"}
+BINARY_FLAG_TYPES: set[str] = {
+    "tool_not_available",
+    "wrong_tool_choice",
+    "parsing_error",
+    "output_schema_violation",
+    "required_fields_missing",
+    "output_truncated",
+    "type_coercion_error",
+}
 
 # Default starting thresholds (used as baseline when calibrating other flags)
 DEFAULT_THRESHOLDS: dict[str, float] = {
@@ -83,6 +104,7 @@ DEFAULT_THRESHOLDS: dict[str, float] = {
     "wrong_tool_args": 0.4,
     "no_tool": 0.6,
     "response_anomaly": 0.4,
+    "context_overflow": 8000,
 }
 
 HILL_CLIMB_START = 0.10

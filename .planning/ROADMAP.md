@@ -115,15 +115,19 @@ Plans:
 ### Phase 24: Structural Span Checks
 **Goal**: System detects output schema violations, truncated outputs, type errors, token overflow, and prompt injection at the span level using only deterministic/heuristic signals — no embedding calls
 **Depends on**: Phase 23
-**Requirements**: SCHEMA-01, SCHEMA-02, SCHEMA-03, SCHEMA-04, CTX-01, CTX-03
+**Requirements**: SCHEMA-01, SCHEMA-02, SCHEMA-03, SCHEMA-04, CTX-01 (CTX-03 deferred — see 24-CONTEXT.md D-02)
 **Success Criteria** (what must be TRUE):
   1. A span with `expected_output_schema` set and a free-text `response` (no JSON / no tool_use block) receives an `output_schema_violation` flag
   2. A span whose `tool_arguments` passes JSON parse but fails the `required` validator in `expected_output_schema` receives a `required_fields_missing` flag
   3. A span with `finish_reason=length` or an unclosed JSON delimiter in its response receives an `output_truncated` flag
   4. A span whose `tool_arguments` contains a type violation (e.g., number-as-string) against `expected_output_schema` receives a `type_coercion_error` flag
   5. A span whose prompt token count (tiktoken cl100k_base) exceeds the configured threshold receives a `context_overflow` flag
-  6. A span whose `tool_output` matches a pattern in `_INJECTION_PATTERNS` receives a `prompt_injection` flag; a clean span does not
-**Plans**: TBD
+  6. A span whose `tool_output` matches a pattern in `_INJECTION_PATTERNS` receives a `prompt_injection` flag; a clean span does not — DEFERRED to a later phase per 24-CONTEXT.md D-02 (CTX-03 not in Phase 24 scope)
+**Plans**: 3 plans
+Plans:
+- [ ] 24-01-PLAN.md — Failing test scaffold for OutputSchemaAnalyzer (RED) — 31 tests covering 5 checks
+- [ ] 24-02-PLAN.md — Implement OutputSchemaAnalyzer with 5 deterministic checks (GREEN)
+- [ ] 24-03-PLAN.md — Wire OutputSchemaAnalyzer into worker main.py + calibrate.py registries; update routing tests
 
 ### Phase 25: Semantic Span + Structural Trace Checks
 **Goal**: System detects stale context and missing detail at the span level via embeddings, and detects step repetition, termination loops, context propagation failure, and history loss at the trace level via rapidfuzz/spaCy/embeddings
@@ -189,7 +193,7 @@ Plans:
 | 21. Trace UI | v1.4 | 4/4 | Complete | 2026-05-15 |
 | 22. Bug Fixes | v1.5 | 2/2 | Complete | 2026-05-19 |
 | 23. Infrastructure | v1.5 | 3/3 | Complete   | 2026-05-20 |
-| 24. Structural Span Checks | v1.5 | 0/? | Not started | - |
+| 24. Structural Span Checks | v1.5 | 0/3 | Planned | - |
 | 25. Semantic Span + Structural Trace Checks | v1.5 | 0/? | Not started | - |
 | 26. Best-Effort Proxy Checks | v1.5 | 0/? | Not started | - |
 | 27. Calibration Pass | v1.5 | 0/? | Not started | - |

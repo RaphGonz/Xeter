@@ -26,7 +26,7 @@ CTX-03 (`prompt_injection`) is out of Phase 24 scope — see Deferred.
 - **D-01:** `output_schema_violation` fires only on sub-case A: `expected_output_schema` is set AND `response` is not parseable as valid JSON. Sub-case B (available_tools present but no tool_use block in raw_response) is deferred — it overlaps with the existing `no_tool_used` check and adds marginal signal.
 
 ### CTX-03 deferral
-- **D-02:** `prompt_injection` (CTX-03) is removed from Phase 24 scope. Phase 24 is structural schema validation only. CTX-03 belongs in a later phase once the core schema checks are shipped and calibrated.
+- **D-02** [informational]: `prompt_injection` (CTX-03) is removed from Phase 24 scope. Phase 24 is structural schema validation only. CTX-03 belongs in a later phase once the core schema checks are shipped and calibrated.
 
 ### Context overflow threshold
 - **D-03:** `THRESHOLDS['context_overflow'] = 8000` as the default starting value. Rationale: target users run local models (Ollama, Llama 3, Mistral) with 4k–32k context windows; 8k flags genuinely long prompts without firing on normal multi-turn conversations. Calibration will tune from this baseline.

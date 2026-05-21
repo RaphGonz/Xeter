@@ -472,17 +472,19 @@ FLAG_TYPES = [
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Does `context_overflow` need to be added to `FLAG_TYPES` list in calibrate.py?**
    - What we know: `FLAG_TYPES` controls hill-climbing targets. `context_overflow` is NOT in `BINARY_FLAG_TYPES`. It has a threshold, so hill climbing applies.
    - What's unclear: The current `FLAG_TYPES` list has 7 entries (all for `ToolCallAnalyzer`). Adding 5 new entries (the 4 binary ones + `context_overflow`) requires them all in `FLAG_TYPE_TO_ANALYZER_CLASS`. The 4 binary ones will branch to single-evaluation pass (same as `tool_not_available`); `context_overflow` will hill climb.
    - Recommendation: Add all 5 to `FLAG_TYPES` AND `FLAG_TYPE_TO_ANALYZER_CLASS`. Add 4 binary ones to `BINARY_FLAG_TYPES`. This is the complete registration.
+   - **RESOLVED:** Yes — `context_overflow` added to `FLAG_TYPES`. Covered by plan 24-03 Task 2.
 
 2. **Should `_check_output_schema_violation` fire when `response` is None?**
    - What we know: `expected_output_schema` being set means a structured response was expected. `response is None` means the span has no response at all.
    - What's unclear: Is `response=None` already an indicator of a different problem (parsing_error, etc.)?
    - Recommendation: Guard with `if span.response is None: return []` — do not double-flag. The absence of a response is handled by other checks.
+   - **RESOLVED:** Guard with `if span.response is None: return []`. Covered by plan 24-02 Task 1.
 
 ---
 

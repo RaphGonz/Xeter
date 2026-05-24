@@ -43,6 +43,7 @@ from xeter.services.worker.score_writer import write_scores
 from xeter.services.worker.span_fetcher import fetch_span
 from xeter.services.worker.tool_call_analyzer import ToolCallAnalyzer
 from xeter.services.worker.output_schema_analyzer import OutputSchemaAnalyzer
+from xeter.services.worker.semantic_span_analyzer import SemanticSpanAnalyzer
 from xeter.services.worker.trace_analyzer import TraceAnalyzer
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,14 @@ THRESHOLDS: dict[str, float] = {
     "no_tool": float(os.environ.get("WORKER_THRESHOLD_NO_TOOL", "0.6")),  # [safe-default] calibration value; tune via calibration scripts
     "response_anomaly": float(os.environ.get("WORKER_THRESHOLD_RESPONSE_ANOMALY", "0.4")),  # [safe-default] calibration value; tune via calibration scripts
     "context_overflow": float(os.environ.get("WORKER_THRESHOLD_CONTEXT_OVERFLOW", "8000")),  # [safe-default] calibration value; tune via calibration scripts
+    # Phase 25 — SemanticSpanAnalyzer
+    "missing_details": float(os.environ.get("WORKER_THRESHOLD_MISSING_DETAILS", "0.6")),  # [safe-default] calibration value; tune via calibration scripts
+    # Phase 25 — TraceAnalyzer
+    "stale_context": float(os.environ.get("WORKER_THRESHOLD_STALE_CONTEXT", "85.0")),  # [safe-default] calibration value; tune via calibration scripts
+    "context_propagation_failure": float(os.environ.get("WORKER_THRESHOLD_CONTEXT_PROPAGATION_FAILURE", "0.5")),  # [safe-default] calibration value; tune via calibration scripts
+    "history_loss": float(os.environ.get("WORKER_THRESHOLD_HISTORY_LOSS", "0.4")),  # [safe-default] calibration value; tune via calibration scripts
+    "step_repetition": float(os.environ.get("WORKER_THRESHOLD_STEP_REPETITION", "85.0")),  # [safe-default] calibration value; tune via calibration scripts
+    "termination_loop_n": float(os.environ.get("WORKER_THRESHOLD_TERMINATION_LOOP_N", "3")),  # [safe-default] calibration value; tune via calibration scripts
 }
 
 WORKER_TRACE_FLUSH_TIMEOUT_S: float = float(
@@ -179,6 +188,7 @@ def main() -> None:
     analyzers = [
         ToolCallAnalyzer(embedder, THRESHOLDS),
         OutputSchemaAnalyzer(embedder, THRESHOLDS),
+        SemanticSpanAnalyzer(embedder, THRESHOLDS),  # Phase 25 — span-level semantic check
     ]
 
     trace_analyzer = TraceAnalyzer(embedder, THRESHOLDS)

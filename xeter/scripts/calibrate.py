@@ -25,6 +25,9 @@ import numpy as np
 
 from xeter.services.worker.tool_call_analyzer import ToolCallAnalyzer
 from xeter.services.worker.output_schema_analyzer import OutputSchemaAnalyzer
+from xeter.services.worker.semantic_span_analyzer import SemanticSpanAnalyzer
+from xeter.services.worker.trace_analyzer import TraceAnalyzer
+from xeter.services.worker.base import BaseTraceAnalyzer
 
 # ---------------------------------------------------------------------------
 # Paths / constants
@@ -59,6 +62,14 @@ FLAG_TYPES = [
     "output_truncated",
     "type_coercion_error",
     "context_overflow",
+    # Phase 25 — SemanticSpanAnalyzer
+    "missing_details",
+    # Phase 25 — TraceAnalyzer
+    "stale_context",
+    "step_repetition",
+    "termination_loop",
+    "context_propagation_failure",
+    "history_loss",
 ]
 
 # Maps threshold key → actual emitted flag_type (and fixture anomaly_type).
@@ -83,6 +94,14 @@ FLAG_TYPE_TO_ANALYZER_CLASS: dict[str, type] = {
     "output_truncated":        OutputSchemaAnalyzer,
     "type_coercion_error":     OutputSchemaAnalyzer,
     "context_overflow":        OutputSchemaAnalyzer,
+    # Phase 25 — SemanticSpanAnalyzer
+    "missing_details":               SemanticSpanAnalyzer,
+    # Phase 25 — TraceAnalyzer
+    "stale_context":                 TraceAnalyzer,
+    "step_repetition":               TraceAnalyzer,
+    "termination_loop":              TraceAnalyzer,
+    "context_propagation_failure":   TraceAnalyzer,
+    "history_loss":                  TraceAnalyzer,
 }
 
 # Binary detectors — no threshold sweep; detected by rank/logic, not cosine threshold.
@@ -105,6 +124,13 @@ DEFAULT_THRESHOLDS: dict[str, float] = {
     "no_tool": 0.6,
     "response_anomaly": 0.4,
     "context_overflow": 8000,
+    # Phase 25
+    "missing_details": 0.6,
+    "stale_context": 85.0,
+    "context_propagation_failure": 0.5,
+    "history_loss": 0.4,
+    "step_repetition": 85.0,
+    "termination_loop_n": 3,
 }
 
 HILL_CLIMB_START = 0.10
@@ -196,7 +222,10 @@ def evaluate_flag_type(
         labels = row.get("anomaly_types") or [row.get("anomaly_type")]
         actual = emitted_flag_type in labels
         span = build_span_data(row)
-        flags = analyzer.analyze(span)
+        if isinstance(analyzer, BaseTraceAnalyzer):
+            flags = analyzer.analyze([span])
+        else:
+            flags = analyzer.analyze(span)
         scores = analyzer.flush_scores()
 
         predicted = any(f.flag_type == emitted_flag_type for f in flags)

@@ -76,7 +76,7 @@ See `.planning/milestones/v1.4-ROADMAP.md` for full phase details.
 
 - [x] **Phase 22: Bug Fixes** — Fix idle-flush and trace score persistence (gates all trace-level checks)
 - [x] **Phase 23: Infrastructure** — calibrate.py multi-analyzer, new deps, SpanData schema fields (completed 2026-05-20)
-- [ ] **Phase 24: Structural Span Checks** — OutputSchemaAnalyzer with heuristic/deterministic checks; zero embedding calls
+- [x] **Phase 24: Structural Span Checks** — OutputSchemaAnalyzer with heuristic/deterministic checks; zero embedding calls (completed 2026-05-21)
 - [ ] **Phase 25: Semantic Span + Structural Trace Checks** — Embedding-based span checks and first wave of trace checks
 - [ ] **Phase 26: Best-Effort Proxy Checks** — Remaining trace checks; best-effort heuristics; precision floors verified
 - [ ] **Phase 27: Calibration Pass** — All 18 new flag types calibrated; recall floor and full-suite precision verified
@@ -236,7 +236,7 @@ Plans:
 | 21. Trace UI | v1.4 | 4/4 | Complete | 2026-05-15 |
 | 22. Bug Fixes | v1.5 | 2/2 | Complete | 2026-05-19 |
 | 23. Infrastructure | v1.5 | 3/3 | Complete   | 2026-05-20 |
-| 24. Structural Span Checks | v1.5 | 0/3 | Planned | - |
+| 24. Structural Span Checks | v1.5 | 3/3 | Complete | 2026-05-21 |
 | 25. Semantic Span + Structural Trace Checks | v1.5 | 0/5 | Planned | - |
 | 26. Best-Effort Proxy Checks | v1.5 | 0/? | Not started | - |
 | 27. Calibration Pass | v1.5 | 0/? | Not started | - |

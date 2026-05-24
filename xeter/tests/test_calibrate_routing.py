@@ -16,12 +16,12 @@ import pytest
 # Task 1: FLAG_TYPE_TO_ANALYZER_CLASS registry (Tests 1-6)
 # ---------------------------------------------------------------------------
 
-def test_1_registry_has_exactly_12_keys():
-    """FLAG_TYPE_TO_ANALYZER_CLASS is a dict with exactly 12 keys (7 ToolCallAnalyzer + 5 OutputSchemaAnalyzer) matching FLAG_TYPES."""
+def test_1_registry_has_exactly_18_keys():
+    """FLAG_TYPE_TO_ANALYZER_CLASS is a dict with exactly 18 keys (7 ToolCallAnalyzer + 5 OutputSchemaAnalyzer + 1 SemanticSpanAnalyzer + 5 TraceAnalyzer) matching FLAG_TYPES."""
     from xeter.scripts.calibrate import FLAG_TYPE_TO_ANALYZER_CLASS, FLAG_TYPES
     assert isinstance(FLAG_TYPE_TO_ANALYZER_CLASS, dict)
     assert set(FLAG_TYPE_TO_ANALYZER_CLASS.keys()) == set(FLAG_TYPES)
-    assert len(FLAG_TYPE_TO_ANALYZER_CLASS) == 12
+    assert len(FLAG_TYPE_TO_ANALYZER_CLASS) == 18
 
 
 def test_2_existing_7_keys_still_map_to_tool_call_analyzer():
@@ -209,15 +209,83 @@ def test_14_context_overflow_in_default_thresholds():
     assert DEFAULT_THRESHOLDS["context_overflow"] == 8000
 
 
-def test_15_flag_types_list_has_12_entries():
-    """FLAG_TYPES list has exactly 12 entries after Phase 24 — required so calibrate.py main() iterates over all new flag types."""
+def test_15_flag_types_list_has_18_entries():
+    """FLAG_TYPES list has exactly 18 entries after Phase 25 — required so calibrate.py main() iterates over all new flag types."""
     from xeter.scripts.calibrate import FLAG_TYPES
-    assert len(FLAG_TYPES) == 12
+    assert len(FLAG_TYPES) == 18
     for flag_type in [
         "output_schema_violation",
         "required_fields_missing",
         "output_truncated",
         "type_coercion_error",
         "context_overflow",
+        "missing_details",
+        "stale_context",
+        "step_repetition",
+        "termination_loop",
+        "context_propagation_failure",
+        "history_loss",
     ]:
         assert flag_type in FLAG_TYPES
+
+
+# ---------------------------------------------------------------------------
+# Phase 25: SemanticSpanAnalyzer + TraceAnalyzer routing (Tests 16-21)
+# ---------------------------------------------------------------------------
+
+def test_16_missing_details_maps_to_semantic_span_analyzer():
+    """FLAG_TYPE_TO_ANALYZER_CLASS['missing_details'] routes to SemanticSpanAnalyzer (Phase 25 CTX-04)."""
+    from xeter.scripts.calibrate import FLAG_TYPE_TO_ANALYZER_CLASS
+    from xeter.services.worker.semantic_span_analyzer import SemanticSpanAnalyzer
+    assert FLAG_TYPE_TO_ANALYZER_CLASS["missing_details"] is SemanticSpanAnalyzer
+
+
+def test_17_trace_flag_types_map_to_trace_analyzer():
+    """All 5 Phase 25 trace flag types route to TraceAnalyzer via the registry."""
+    from xeter.scripts.calibrate import FLAG_TYPE_TO_ANALYZER_CLASS
+    from xeter.services.worker.trace_analyzer import TraceAnalyzer
+    for flag_type in ["stale_context", "step_repetition", "termination_loop",
+                      "context_propagation_failure", "history_loss"]:
+        assert FLAG_TYPE_TO_ANALYZER_CLASS[flag_type] is TraceAnalyzer
+
+
+def test_18_phase_25_thresholds_in_default_thresholds():
+    """DEFAULT_THRESHOLDS contains all 6 Phase 25 keys with correct D-11 starting values."""
+    from xeter.scripts.calibrate import DEFAULT_THRESHOLDS
+    for key in ["missing_details", "stale_context", "context_propagation_failure",
+                "history_loss", "step_repetition", "termination_loop_n"]:
+        assert key in DEFAULT_THRESHOLDS
+    assert DEFAULT_THRESHOLDS["missing_details"] == 0.6
+    assert DEFAULT_THRESHOLDS["stale_context"] == 85.0
+    assert DEFAULT_THRESHOLDS["termination_loop_n"] == 3
+
+
+def test_19_phase_25_types_not_in_binary_flag_types():
+    """No Phase 25 flag type appears in BINARY_FLAG_TYPES — D-12 constraint."""
+    from xeter.scripts.calibrate import BINARY_FLAG_TYPES
+    for flag_type in ["missing_details", "stale_context", "step_repetition",
+                      "termination_loop", "context_propagation_failure", "history_loss"]:
+        assert flag_type not in BINARY_FLAG_TYPES, (
+            f"{flag_type} must not be in BINARY_FLAG_TYPES (D-12)"
+        )
+
+
+def test_20_evaluate_flag_type_wraps_span_in_list_for_trace_analyzer():
+    """evaluate_flag_type passes [span] (not span) to TraceAnalyzer.analyze()."""
+    import inspect
+    from xeter.scripts.calibrate import evaluate_flag_type
+    source = inspect.getsource(evaluate_flag_type)
+    assert "analyze([span])" in source or "isinstance(analyzer, BaseTraceAnalyzer)" in source, (
+        "evaluate_flag_type must contain the BaseTraceAnalyzer isinstance branch "
+        "that wraps span in a list before calling analyze()"
+    )
+
+
+def test_21_registry_keys_match_flag_types_exactly():
+    """set(FLAG_TYPE_TO_ANALYZER_CLASS.keys()) == set(FLAG_TYPES) — no registry drift."""
+    from xeter.scripts.calibrate import FLAG_TYPE_TO_ANALYZER_CLASS, FLAG_TYPES
+    assert set(FLAG_TYPE_TO_ANALYZER_CLASS.keys()) == set(FLAG_TYPES), (
+        f"Registry keys do not match FLAG_TYPES. "
+        f"Extra in registry: {set(FLAG_TYPE_TO_ANALYZER_CLASS) - set(FLAG_TYPES)}. "
+        f"Missing from registry: {set(FLAG_TYPES) - set(FLAG_TYPE_TO_ANALYZER_CLASS)}"
+    )

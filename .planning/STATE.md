@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Silent Failure Detection
 status: executing
-stopped_at: Phase 25 planned — 5 plans in 4 waves (SemanticSpanAnalyzer + TraceAnalyzer implementation)
-last_updated: "2026-05-24T00:00:00.000Z"
-last_activity: 2026-05-24 -- Phase 25 planned, ready to execute
+stopped_at: Phase 25 complete — SemanticSpanAnalyzer + TraceAnalyzer implemented, verified 13/13
+last_updated: "2026-05-24T12:00:00.000Z"
+last_activity: 2026-05-24 -- Phase 25 complete
 progress:
   total_phases: 6
-  completed_phases: 3
-  total_plans: 16
-  completed_plans: 8
-  percent: 50
+  completed_phases: 4
+  total_plans: 21
+  completed_plans: 13
+  percent: 67
 ---
 
 # Project State
@@ -21,26 +21,26 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-18)
 
 **Core value:** When a tool call fails, tell the developer whether it was the model, the architecture, or the prompt — and why.
-**Current focus:** Phase 25 — Execute: /gsd:execute-phase 25
+**Current focus:** Phase 26 — Best-effort heuristic trace checks
 
 ## Current Position
 
-Phase: 25 — Semantic Span + Structural Trace Checks
-Status: Ready to execute (5 plans in 4 waves)
-Last activity: 2026-05-24 -- Phase 25 planned
+Phase: 26 — Best-effort Trace Checks (next)
+Status: Phase 25 complete — execute Phase 26 next
+Last activity: 2026-05-24 -- Phase 25 complete, 13/13 must-haves verified
 
 ```
-Progress: [████░░░░░░] 50%
+Progress: [██████░░░░] 67%
 ```
 
 ## Performance Metrics
 
 | Metric | Value |
 |--------|-------|
-| Phases complete | 3 / 6 |
-| Plans complete | 8 / 8 (phases 22 + 23 + 24) |
-| Tests passing | 197 passed, 9 skipped (13 pre-existing spacy env failures, not regressions) |
-| Flag types active | 12 (7 pre-v1.5 + 5 new: output_schema_violation, required_fields_missing, output_truncated, type_coercion_error, context_overflow) |
+| Phases complete | 4 / 6 |
+| Plans complete | 13 / 21 (phases 22 + 23 + 24 + 25) |
+| Tests passing | 235 passed, 9 skipped (13 pre-existing spacy env failures, not regressions) |
+| Flag types active | 18 (12 pre-Phase-25 + 6 new: missing_details, stale_context, step_repetition, termination_loop, context_propagation_failure, history_loss) |
 | Flag types targeted | +17 new total (v1.5) — CTX-03 removed from scope |
 
 ## Accumulated Context
@@ -90,12 +90,20 @@ All architectural decisions logged in PROJECT.md Key Decisions table.
 - Code review (CR-01): context_overflow hill-climb path in calibrate.py needs dedicated token-scale calibration — tracked in 24-REVIEW.md
 - Code review (CR-02): patch_docker_compose missing context_overflow in key_to_env — tracked in 24-REVIEW.md
 
+### Key Decisions (Phase 25)
+
+- SemanticSpanAnalyzer inherits BaseAnalyzer directly (BaseSpanAnalyzer not distinct in codebase) — CR-01 from review flags this; tracked in 25-REVIEW.md
+- termination_loop_n calibration via hill-climb produces int cast of 0 for all floats — CR-03 from review; needs integer grid sweep before Phase 27 calibration run
+- stale_context and step_repetition scores stored on 0–100 scale (fuzz output) vs 0–1 for all other metrics — WR-01 from review; cosmetic for now
+
 ### Open Blockers
 
 - CR-01/CR-02 from 24-REVIEW.md: calibrate.py context_overflow calibration path needs fix before Phase 27 calibration run
+- CR-03 from 25-REVIEW.md: termination_loop_n must use integer grid sweep [2,3,4,5] in hill_climb before Phase 27 calibration run
+- CR-02 from 25-REVIEW.md: patch_docker_compose missing 6 new Phase 25 env vars — fix before Phase 27
 
 ## Session Continuity
 
-Last session: 2026-05-21T20:00:00.000Z
-Stopped at: Phase 24 complete — OutputSchemaAnalyzer live; 5 structural checks implemented and wired
-Next: Execute Phase 25 — /gsd:execute-phase 25
+Last session: 2026-05-24T12:00:00.000Z
+Stopped at: Phase 25 complete — SemanticSpanAnalyzer (CTX-04) + TraceAnalyzer (CTX-02, TRACE-01–04) implemented, wired, verified 13/13
+Next: Execute Phase 26 — /gsd:execute-phase 26

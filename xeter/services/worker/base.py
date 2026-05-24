@@ -1,12 +1,23 @@
 """Shared foundation for the Embedding Worker.
 
-BaseAnalyzer ABC provides embed/compare/log_score helpers that all concrete
-analyzers inherit. Subclasses override only:
-  - name (property) — stable string identifier, used as analyzer_name in span_scores
-  - analyze(span) -> list[Flag] — return zero or more Flag instances
+Three-class analyzer hierarchy:
 
-To add a new analyzer: copy ToolCallAnalyzer, rename it, override analyze().
-The ANALYZERS list in worker/main.py is the registry — add your class there.
+  BaseAnalyzer (ABC, generic root)
+      Provides embed/compare/log_score/flush_scores helpers shared by all
+      concrete analyzers.  Subclasses must implement the `name` property.
+      No analyze() abstract method at this level.
+
+  BaseSpanAnalyzer(BaseAnalyzer)
+      Contract for span-level analyzers.  Subclasses implement:
+        analyze(span: SpanData) -> list[Flag]
+
+  BaseTraceAnalyzer(BaseAnalyzer)
+      Contract for trace-level analyzers (full trace flushed after timeout).
+      Subclasses implement:
+        analyze(spans: list[SpanData]) -> list[Flag]
+
+To add a new span-level analyzer: subclass BaseSpanAnalyzer, override name
+and analyze(), and register the instance in the ANALYZERS list in worker/main.py.
 
 Threshold values are injected at construction via the `thresholds` dict.
 No numeric literal should appear in any check method — always read from
@@ -26,7 +37,7 @@ import numpy as np
 
 @dataclass
 class Flag:
-    flag_type: str      # e.g. "wrong_tool", "no_tool", "excessive_tool", "parsing_error", "wrong_tool_args"
+    flag_type: str      # e.g. "tool_not_available", "wrong_tool_choice", "unnecessary_tool_call", "no_tool", "parsing_error"
     score: float        # similarity score that triggered the flag
     detail: dict        # structured detail for dashboard display; always includes "metric" key
 
@@ -46,6 +57,8 @@ class SpanData:
     response: Optional[str]             # fetched from S3 via response_ref
     raw_response: Optional[str]         # fetched from S3 via raw_response_ref (full API JSON)
     available_tools: Optional[list[dict]]  # fetched from S3 via available_tools_ref, parsed JSON list
+    expected_output_schema: Optional[str] = None  # inline JSON string, same pattern as tool_arguments
+    parent_span_id: Optional[str] = None           # ClickHouse column already exists
 
 
 class EmbedderClient:
@@ -121,13 +134,35 @@ class BaseAnalyzer(ABC):
         """Stable analyzer name string used as analyzer_name in span_scores table."""
         ...
 
+
+class BaseSpanAnalyzer(BaseAnalyzer):
+    """Analyzer contract for single-span analysis.
+
+    Subclasses implement analyze(span: SpanData) -> list[Flag].
+    To add a new span-level analyzer: subclass this, override name and analyze().
+    """
+
     @abstractmethod
     def analyze(self, span: SpanData) -> list[Flag]:
-        """Analyze a span and return zero or more Flag instances.
+        """Analyze a single span and return zero or more Flag instances.
 
-        Must call log_score() for every similarity computed, regardless of flag
-        outcome. This ensures the calibration dataset is complete.
+        Must call log_score() for every similarity computed — ensures the
+        calibration dataset is complete regardless of flag outcome.
         """
+        ...
+
+
+class BaseTraceAnalyzer(BaseAnalyzer):
+    """Analyzer contract for full-trace analysis.
+
+    Subclasses implement analyze(spans: list[SpanData]) -> list[Flag].
+    Invoked by the worker after the flush timeout elapses for a trace_id
+    with no new spans (WORKER_TRACE_FLUSH_TIMEOUT_S, default 30s).
+    """
+
+    @abstractmethod
+    def analyze(self, spans: list[SpanData]) -> list[Flag]:
+        """Analyze all spans in a trace and return zero or more Flag instances."""
         ...
 
 

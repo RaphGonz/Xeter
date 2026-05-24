@@ -1,9 +1,9 @@
-"""Unit tests for TraceAnalyzer scaffold.
+"""Unit tests for TraceAnalyzer.
 
-Verifies the Phase 19 scaffold contract:
+Verifies the TraceAnalyzer contract:
   - TraceAnalyzer is a subclass of BaseTraceAnalyzer
   - name property returns "trace_analyzer"
-  - analyze() returns an empty list for any input (no checks yet)
+  - analyze() returns an empty list for all-None minimal spans (all checks guard-exit)
   - analyze() never returns None
 
 No real embedder, Redis, ClickHouse, or S3 connections are needed.
@@ -25,9 +25,16 @@ from xeter.services.worker.base import BaseTraceAnalyzer, SpanData
 
 
 def make_trace_analyzer() -> TraceAnalyzer:
-    """Construct a TraceAnalyzer with a mock embedder and empty thresholds."""
+    """Construct a TraceAnalyzer with a mock embedder and default thresholds."""
     embedder = MagicMock()
-    return TraceAnalyzer(embedder, {})
+    thresholds = {
+        "stale_context": 85.0,
+        "step_repetition": 85.0,
+        "termination_loop_n": 3.0,
+        "context_propagation_failure": 0.5,
+        "history_loss": 0.4,
+    }
+    return TraceAnalyzer(embedder, thresholds)
 
 
 def make_test_span(span_id: str = "s1", trace_id: str = "t1") -> SpanData:
@@ -73,7 +80,7 @@ def test_trace_analyzer_analyze_empty_returns_empty_list():
 
 
 def test_trace_analyzer_analyze_with_spans_returns_empty_list():
-    """analyze() returns [] regardless of how many spans are passed."""
+    """analyze() returns [] for spans with all-None tool/prompt/response fields (all checks guard-exit)."""
     analyzer = make_trace_analyzer()
     spans = [make_test_span("s1", "t1"), make_test_span("s2", "t1")]
     result = analyzer.analyze(spans)

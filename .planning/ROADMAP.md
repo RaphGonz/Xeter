@@ -193,7 +193,19 @@ Plans:
   5. A completed trace with no verification-keyword tool call receives a `no_verification` flag
   6. A trace that has a verification span (no_verification not fired) but covers fewer output entities than were produced receives an `incomplete_verification` flag; `no_verification` and `incomplete_verification` never both fire on the same trace
 
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+**Wave 1**
+
+- [ ] 26-01-PLAN.md — RED test scaffold for all 6 Phase 26 _check_*() methods (30+ failing tests)
+
+**Wave 2** *(blocked on 26-01)*
+
+- [ ] 26-02-PLAN.md — GREEN: implement all 6 _check_*() methods in TraceAnalyzer + __init__ update + _VERIFICATION_KEYWORDS + analyze() mutual-exclusion
+
+**Wave 3** *(blocked on 26-02)*
+
+- [ ] 26-03-PLAN.md — Wire: main.py THRESHOLDS + AGENT_ROUTING_GRAPH parsing + TraceAnalyzer routing_graph kwarg + calibrate.py registrations + 6 routing tests
 
 ### Phase 27: Calibration Pass
 
@@ -238,5 +250,5 @@ Plans:
 | 23. Infrastructure | v1.5 | 3/3 | Complete   | 2026-05-20 |
 | 24. Structural Span Checks | v1.5 | 3/3 | Complete | 2026-05-21 |
 | 25. Semantic Span + Structural Trace Checks | v1.5 | 0/5 | Planned | - |
-| 26. Best-Effort Proxy Checks | v1.5 | 0/? | Not started | - |
+| 26. Best-Effort Proxy Checks | v1.5 | 0/3 | Planned | - |
 | 27. Calibration Pass | v1.5 | 0/? | Not started | - |

@@ -16,12 +16,12 @@ import pytest
 # Task 1: FLAG_TYPE_TO_ANALYZER_CLASS registry (Tests 1-6)
 # ---------------------------------------------------------------------------
 
-def test_1_registry_has_exactly_18_keys():
-    """FLAG_TYPE_TO_ANALYZER_CLASS is a dict with exactly 18 keys (7 ToolCallAnalyzer + 5 OutputSchemaAnalyzer + 1 SemanticSpanAnalyzer + 5 TraceAnalyzer) matching FLAG_TYPES."""
+def test_1_registry_has_exactly_24_keys():
+    """FLAG_TYPE_TO_ANALYZER_CLASS is a dict with exactly 24 keys (7 ToolCallAnalyzer + 5 OutputSchemaAnalyzer + 1 SemanticSpanAnalyzer + 11 TraceAnalyzer: 5 Phase 25 + 6 Phase 26) matching FLAG_TYPES."""
     from xeter.scripts.calibrate import FLAG_TYPE_TO_ANALYZER_CLASS, FLAG_TYPES
     assert isinstance(FLAG_TYPE_TO_ANALYZER_CLASS, dict)
     assert set(FLAG_TYPE_TO_ANALYZER_CLASS.keys()) == set(FLAG_TYPES)
-    assert len(FLAG_TYPE_TO_ANALYZER_CLASS) == 18
+    assert len(FLAG_TYPE_TO_ANALYZER_CLASS) == 24
 
 
 def test_2_existing_7_keys_still_map_to_tool_call_analyzer():
@@ -209,10 +209,10 @@ def test_14_context_overflow_in_default_thresholds():
     assert DEFAULT_THRESHOLDS["context_overflow"] == 8000
 
 
-def test_15_flag_types_list_has_18_entries():
-    """FLAG_TYPES list has exactly 18 entries after Phase 25 — required so calibrate.py main() iterates over all new flag types."""
+def test_15_flag_types_list_has_24_entries():
+    """FLAG_TYPES list has exactly 24 entries after Phase 26 — required so calibrate.py main() iterates over all new flag types."""
     from xeter.scripts.calibrate import FLAG_TYPES
-    assert len(FLAG_TYPES) == 18
+    assert len(FLAG_TYPES) == 24
     for flag_type in [
         "output_schema_violation",
         "required_fields_missing",
@@ -288,4 +288,65 @@ def test_21_registry_keys_match_flag_types_exactly():
         f"Registry keys do not match FLAG_TYPES. "
         f"Extra in registry: {set(FLAG_TYPE_TO_ANALYZER_CLASS) - set(FLAG_TYPES)}. "
         f"Missing from registry: {set(FLAG_TYPES) - set(FLAG_TYPE_TO_ANALYZER_CLASS)}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Phase 26: TraceAnalyzer routing + calibration registration (Tests 22-27)
+# ---------------------------------------------------------------------------
+
+def test_22_phase26_flag_types_map_to_trace_analyzer():
+    """All 6 Phase 26 flag types route to TraceAnalyzer via the registry."""
+    from xeter.scripts.calibrate import FLAG_TYPE_TO_ANALYZER_CLASS
+    from xeter.services.worker.trace_analyzer import TraceAnalyzer
+    for flag_type in ["wrong_agent_handoff", "information_withholding", "conversation_reset",
+                      "clarification_skipped", "no_verification", "incomplete_verification"]:
+        assert FLAG_TYPE_TO_ANALYZER_CLASS[flag_type] is TraceAnalyzer, (
+            f"{flag_type} must map to TraceAnalyzer"
+        )
+
+
+def test_23_phase26_thresholds_in_default_thresholds():
+    """DEFAULT_THRESHOLDS contains all 6 Phase 26 keys with correct starting values."""
+    from xeter.scripts.calibrate import DEFAULT_THRESHOLDS
+    assert DEFAULT_THRESHOLDS["conversation_reset"] == 0.25
+    assert DEFAULT_THRESHOLDS["information_withholding"] == 0.5
+    assert DEFAULT_THRESHOLDS["wrong_agent_handoff"] == 1.0
+    assert DEFAULT_THRESHOLDS["clarification_skipped"] == 1.0
+    assert DEFAULT_THRESHOLDS["no_verification"] == 1.0
+    assert DEFAULT_THRESHOLDS["incomplete_verification"] == 0.7
+
+
+def test_24_phase26_types_not_in_binary_flag_types():
+    """No Phase 26 flag type appears in BINARY_FLAG_TYPES — D-14 constraint (Phase 27 scope)."""
+    from xeter.scripts.calibrate import BINARY_FLAG_TYPES
+    for flag_type in ["wrong_agent_handoff", "information_withholding", "conversation_reset",
+                      "clarification_skipped", "no_verification", "incomplete_verification"]:
+        assert flag_type not in BINARY_FLAG_TYPES, (
+            f"{flag_type} must not be in BINARY_FLAG_TYPES until Phase 27 classification (D-14)"
+        )
+
+
+def test_25_phase26_flag_types_in_flag_types_list():
+    """All 6 Phase 26 flag types are present in FLAG_TYPES list."""
+    from xeter.scripts.calibrate import FLAG_TYPES
+    for flag_type in ["wrong_agent_handoff", "information_withholding", "conversation_reset",
+                      "clarification_skipped", "no_verification", "incomplete_verification"]:
+        assert flag_type in FLAG_TYPES, f"{flag_type} must be in FLAG_TYPES"
+
+
+def test_26_registry_keys_match_flag_types_exactly_24():
+    """set(FLAG_TYPE_TO_ANALYZER_CLASS.keys()) == set(FLAG_TYPES) — no orphan or missing entries after Phase 26."""
+    from xeter.scripts.calibrate import FLAG_TYPE_TO_ANALYZER_CLASS, FLAG_TYPES
+    assert set(FLAG_TYPE_TO_ANALYZER_CLASS.keys()) == set(FLAG_TYPES), (
+        f"Registry mismatch. Extra: {set(FLAG_TYPE_TO_ANALYZER_CLASS) - set(FLAG_TYPES)}. "
+        f"Missing: {set(FLAG_TYPES) - set(FLAG_TYPE_TO_ANALYZER_CLASS)}"
+    )
+
+
+def test_27_default_thresholds_has_18_entries():
+    """DEFAULT_THRESHOLDS has exactly 18 entries (6 pre-P24 + 6 P24 + 6 P25 + 6 P26, with termination_loop_n counting once)."""
+    from xeter.scripts.calibrate import DEFAULT_THRESHOLDS
+    assert len(DEFAULT_THRESHOLDS) == 18, (
+        f"Expected 18 DEFAULT_THRESHOLDS entries, got {len(DEFAULT_THRESHOLDS)}"
     )

@@ -30,6 +30,7 @@ Environment variables:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import signal
@@ -66,7 +67,19 @@ THRESHOLDS: dict[str, float] = {
     "history_loss": float(os.environ.get("WORKER_THRESHOLD_HISTORY_LOSS", "0.4")),  # [safe-default] calibration value; tune via calibration scripts
     "step_repetition": float(os.environ.get("WORKER_THRESHOLD_STEP_REPETITION", "85.0")),  # [safe-default] calibration value; tune via calibration scripts
     "termination_loop_n": float(os.environ.get("WORKER_THRESHOLD_TERMINATION_LOOP_N", "3")),  # [safe-default] calibration value; tune via calibration scripts
+    # Phase 26 — TraceAnalyzer (best-effort proxy checks)
+    "conversation_reset": float(os.environ.get("WORKER_THRESHOLD_CONVERSATION_RESET", "0.25")),  # [safe-default] calibration value; tune via calibration scripts
+    "information_withholding": float(os.environ.get("WORKER_THRESHOLD_INFORMATION_WITHHOLDING", "0.5")),  # [safe-default] calibration value; tune via calibration scripts
+    "wrong_agent_handoff": float(os.environ.get("WORKER_THRESHOLD_WRONG_AGENT_HANDOFF", "1.0")),  # [safe-default] binary 0.0/1.0; tune via calibration scripts
+    "clarification_skipped": float(os.environ.get("WORKER_THRESHOLD_CLARIFICATION_SKIPPED", "1.0")),  # [safe-default] binary 0.0/1.0; tune via calibration scripts
+    "no_verification": float(os.environ.get("WORKER_THRESHOLD_NO_VERIFICATION", "1.0")),  # [safe-default] binary 0.0/1.0; tune via calibration scripts
+    "incomplete_verification": float(os.environ.get("WORKER_THRESHOLD_INCOMPLETE_VERIFICATION", "0.7")),  # [safe-default] calibration value; tune via calibration scripts
 }
+
+_routing_graph_raw = os.environ.get("WORKER_AGENT_ROUTING_GRAPH", "")
+AGENT_ROUTING_GRAPH: dict[str, list[str]] | None = (
+    json.loads(_routing_graph_raw) if _routing_graph_raw.strip() else None
+)
 
 WORKER_TRACE_FLUSH_TIMEOUT_S: float = float(
     os.environ.get("WORKER_TRACE_FLUSH_TIMEOUT_S", "30")  # [safe-default] 30s window; tune for your trace latency
@@ -191,7 +204,7 @@ def main() -> None:
         SemanticSpanAnalyzer(embedder, THRESHOLDS),  # Phase 25 — span-level semantic check
     ]
 
-    trace_analyzer = TraceAnalyzer(embedder, THRESHOLDS)
+    trace_analyzer = TraceAnalyzer(embedder, THRESHOLDS, routing_graph=AGENT_ROUTING_GRAPH)
 
     # Trace buffer: accumulate processed spans by trace_id for trace-level analysis.
     # trace_last_seen tracks time.monotonic() of the last span arrival per trace.

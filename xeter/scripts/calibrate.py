@@ -70,6 +70,13 @@ FLAG_TYPES = [
     "termination_loop",
     "context_propagation_failure",
     "history_loss",
+    # Phase 26 — TraceAnalyzer (best-effort proxy checks)
+    "wrong_agent_handoff",
+    "information_withholding",
+    "conversation_reset",
+    "clarification_skipped",
+    "no_verification",
+    "incomplete_verification",
 ]
 
 # Maps threshold key → actual emitted flag_type (and fixture anomaly_type).
@@ -102,6 +109,13 @@ FLAG_TYPE_TO_ANALYZER_CLASS: dict[str, type] = {
     "termination_loop":              TraceAnalyzer,
     "context_propagation_failure":   TraceAnalyzer,
     "history_loss":                  TraceAnalyzer,
+    # Phase 26 — TraceAnalyzer (best-effort proxy checks)
+    "wrong_agent_handoff":           TraceAnalyzer,
+    "information_withholding":       TraceAnalyzer,
+    "conversation_reset":            TraceAnalyzer,
+    "clarification_skipped":         TraceAnalyzer,
+    "no_verification":               TraceAnalyzer,
+    "incomplete_verification":       TraceAnalyzer,
 }
 
 # Binary detectors — no threshold sweep; detected by rank/logic, not cosine threshold.
@@ -131,6 +145,13 @@ DEFAULT_THRESHOLDS: dict[str, float] = {
     "history_loss": 0.4,
     "step_repetition": 85.0,
     "termination_loop_n": 3,
+    # Phase 26
+    "conversation_reset": 0.25,
+    "information_withholding": 0.5,
+    "wrong_agent_handoff": 1.0,
+    "clarification_skipped": 1.0,
+    "no_verification": 1.0,
+    "incomplete_verification": 0.7,
 }
 
 HILL_CLIMB_START = 0.10

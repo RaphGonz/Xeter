@@ -78,7 +78,7 @@ See `.planning/milestones/v1.4-ROADMAP.md` for full phase details.
 - [x] **Phase 23: Infrastructure** — calibrate.py multi-analyzer, new deps, SpanData schema fields (completed 2026-05-20)
 - [x] **Phase 24: Structural Span Checks** — OutputSchemaAnalyzer with heuristic/deterministic checks; zero embedding calls (completed 2026-05-21)
 - [x] **Phase 25: Semantic Span + Structural Trace Checks** — Embedding-based span checks and first wave of trace checks (completed 2026-05-24)
-- [ ] **Phase 26: Best-Effort Proxy Checks** — Remaining trace checks; best-effort heuristics; precision floors verified
+- [x] **Phase 26: Best-Effort Proxy Checks** — Remaining trace checks; best-effort heuristics; precision floors verified (completed 2026-05-26)
 - [ ] **Phase 27: Calibration Pass** — All 18 new flag types calibrated; recall floor and full-suite precision verified
 
 ## Phase Details
@@ -205,7 +205,7 @@ Plans:
 
 **Wave 3** *(blocked on 26-02)*
 
-- [ ] 26-03-PLAN.md — Wire: main.py THRESHOLDS + AGENT_ROUTING_GRAPH parsing + TraceAnalyzer routing_graph kwarg + calibrate.py registrations + 6 routing tests
+- [x] 26-03-PLAN.md — Wire: main.py THRESHOLDS + AGENT_ROUTING_GRAPH parsing + TraceAnalyzer routing_graph kwarg + calibrate.py registrations + 6 routing tests
 
 ### Phase 27: Calibration Pass
 
@@ -250,5 +250,5 @@ Plans:
 | 23. Infrastructure | v1.5 | 3/3 | Complete   | 2026-05-20 |
 | 24. Structural Span Checks | v1.5 | 3/3 | Complete | 2026-05-21 |
 | 25. Semantic Span + Structural Trace Checks | v1.5 | 5/5 | Complete | 2026-05-24 |
-| 26. Best-Effort Proxy Checks | v1.5 | 2/3 | In Progress|  |
+| 26. Best-Effort Proxy Checks | v1.5 | 3/3 | Complete   | 2026-05-26 |
 | 27. Calibration Pass | v1.5 | 0/? | Not started | - |

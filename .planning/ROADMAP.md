@@ -201,7 +201,7 @@ Plans:
 
 **Wave 2** *(blocked on 26-01)*
 
-- [ ] 26-02-PLAN.md — GREEN: implement all 6 _check_*() methods in TraceAnalyzer + __init__ update + _VERIFICATION_KEYWORDS + analyze() mutual-exclusion
+- [x] 26-02-PLAN.md — GREEN: implement all 6 _check_*() methods in TraceAnalyzer + __init__ update + _VERIFICATION_KEYWORDS + analyze() mutual-exclusion
 
 **Wave 3** *(blocked on 26-02)*
 
@@ -250,5 +250,5 @@ Plans:
 | 23. Infrastructure | v1.5 | 3/3 | Complete   | 2026-05-20 |
 | 24. Structural Span Checks | v1.5 | 3/3 | Complete | 2026-05-21 |
 | 25. Semantic Span + Structural Trace Checks | v1.5 | 5/5 | Complete | 2026-05-24 |
-| 26. Best-Effort Proxy Checks | v1.5 | 1/3 | In Progress|  |
+| 26. Best-Effort Proxy Checks | v1.5 | 2/3 | In Progress|  |
 | 27. Calibration Pass | v1.5 | 0/? | Not started | - |

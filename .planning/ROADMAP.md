@@ -77,7 +77,7 @@ See `.planning/milestones/v1.4-ROADMAP.md` for full phase details.
 - [x] **Phase 22: Bug Fixes** — Fix idle-flush and trace score persistence (gates all trace-level checks)
 - [x] **Phase 23: Infrastructure** — calibrate.py multi-analyzer, new deps, SpanData schema fields (completed 2026-05-20)
 - [x] **Phase 24: Structural Span Checks** — OutputSchemaAnalyzer with heuristic/deterministic checks; zero embedding calls (completed 2026-05-21)
-- [ ] **Phase 25: Semantic Span + Structural Trace Checks** — Embedding-based span checks and first wave of trace checks
+- [x] **Phase 25: Semantic Span + Structural Trace Checks** — Embedding-based span checks and first wave of trace checks (completed 2026-05-24)
 - [ ] **Phase 26: Best-Effort Proxy Checks** — Remaining trace checks; best-effort heuristics; precision floors verified
 - [ ] **Phase 27: Calibration Pass** — All 18 new flag types calibrated; recall floor and full-suite precision verified
 
@@ -164,20 +164,20 @@ Plans:
 Plans:
 **Wave 1** *(parallel — no dependencies)*
 
-- [ ] 25-01-PLAN.md — RED test scaffold for SemanticSpanAnalyzer._check_missing_details (10 tests)
-- [ ] 25-02-PLAN.md — RED test scaffold for TraceAnalyzer 5 checks (22 tests)
+- [x] 25-01-PLAN.md — RED test scaffold for SemanticSpanAnalyzer._check_missing_details (10 tests)
+- [x] 25-02-PLAN.md — RED test scaffold for TraceAnalyzer 5 checks (22 tests)
 
 **Wave 2** *(blocked on 25-01)*
 
-- [ ] 25-03-PLAN.md — GREEN: implement SemanticSpanAnalyzer with _check_missing_details (CTX-04)
+- [x] 25-03-PLAN.md — GREEN: implement SemanticSpanAnalyzer with _check_missing_details (CTX-04)
 
 **Wave 3** *(blocked on 25-02 + 25-03)*
 
-- [ ] 25-04-PLAN.md — GREEN: implement TraceAnalyzer with 5 _check_*() methods (CTX-02, TRACE-01–04)
+- [x] 25-04-PLAN.md — GREEN: implement TraceAnalyzer with 5 _check_*() methods (CTX-02, TRACE-01–04)
 
 **Wave 4** *(blocked on 25-03 + 25-04)*
 
-- [ ] 25-05-PLAN.md — Wire SemanticSpanAnalyzer + TraceAnalyzer into main.py + calibrate.py; fix TraceAnalyzer evaluation path; 6 new routing tests
+- [x] 25-05-PLAN.md — Wire SemanticSpanAnalyzer + TraceAnalyzer into main.py + calibrate.py; fix TraceAnalyzer evaluation path; 6 new routing tests
 
 ### Phase 26: Best-Effort Proxy Checks
 
@@ -249,6 +249,6 @@ Plans:
 | 22. Bug Fixes | v1.5 | 2/2 | Complete | 2026-05-19 |
 | 23. Infrastructure | v1.5 | 3/3 | Complete   | 2026-05-20 |
 | 24. Structural Span Checks | v1.5 | 3/3 | Complete | 2026-05-21 |
-| 25. Semantic Span + Structural Trace Checks | v1.5 | 0/5 | Planned | - |
+| 25. Semantic Span + Structural Trace Checks | v1.5 | 5/5 | Complete | 2026-05-24 |
 | 26. Best-Effort Proxy Checks | v1.5 | 0/3 | Planned | - |
 | 27. Calibration Pass | v1.5 | 0/? | Not started | - |

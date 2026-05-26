@@ -197,7 +197,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 26-01-PLAN.md — RED test scaffold for all 6 Phase 26 _check_*() methods (30+ failing tests)
+- [x] 26-01-PLAN.md — RED test scaffold for all 6 Phase 26 _check_*() methods (30+ failing tests)
 
 **Wave 2** *(blocked on 26-01)*
 
@@ -250,5 +250,5 @@ Plans:
 | 23. Infrastructure | v1.5 | 3/3 | Complete   | 2026-05-20 |
 | 24. Structural Span Checks | v1.5 | 3/3 | Complete | 2026-05-21 |
 | 25. Semantic Span + Structural Trace Checks | v1.5 | 5/5 | Complete | 2026-05-24 |
-| 26. Best-Effort Proxy Checks | v1.5 | 0/3 | Planned | - |
+| 26. Best-Effort Proxy Checks | v1.5 | 1/3 | In Progress|  |
 | 27. Calibration Pass | v1.5 | 0/? | Not started | - |

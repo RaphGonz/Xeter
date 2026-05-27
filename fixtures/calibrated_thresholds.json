@@ -4,7 +4,20 @@
     "unnecessary_tool_call": 0.25,
     "wrong_tool_args": 0.1,
     "no_tool": 0.15,
-    "response_anomaly": 0.1
+    "response_anomaly": 0.1,
+    "context_overflow": 8000,
+    "missing_details": 0.15,
+    "stale_context": 0.95,
+    "context_propagation_failure": 0.35,
+    "history_loss": 0.3,
+    "step_repetition": 0.95,
+    "termination_loop_n": 2.0,
+    "conversation_reset": 0.3,
+    "information_withholding": 0.95,
+    "wrong_agent_handoff": 1.0,
+    "clarification_skipped": 1.0,
+    "no_verification": 1.0,
+    "incomplete_verification": 0.95
   },
   "per_flag_type": {
     "tool_not_available": {
@@ -44,6 +57,108 @@
       "precision": 0.818,
       "recall": 0.8,
       "steps": 2
+    },
+    "output_schema_violation": {
+      "threshold": null,
+      "precision": 1.0,
+      "recall": 1.0,
+      "steps": 1
+    },
+    "required_fields_missing": {
+      "threshold": null,
+      "precision": 1.0,
+      "recall": 1.0,
+      "steps": 1
+    },
+    "output_truncated": {
+      "threshold": null,
+      "precision": 1.0,
+      "recall": 1.0,
+      "steps": 1
+    },
+    "type_coercion_error": {
+      "threshold": null,
+      "precision": 1.0,
+      "recall": 1.0,
+      "steps": 1
+    },
+    "context_overflow": {
+      "threshold": null,
+      "precision": 1.0,
+      "recall": 1.0,
+      "steps": 1
+    },
+    "missing_details": {
+      "threshold": 0.15,
+      "precision": 0.0192,
+      "recall": 0.125,
+      "steps": 3
+    },
+    "stale_context": {
+      "threshold": 0.95,
+      "precision": 0.1538,
+      "recall": 1.0,
+      "steps": 18
+    },
+    "step_repetition": {
+      "threshold": 0.95,
+      "precision": 0.1042,
+      "recall": 1.0,
+      "steps": 18
+    },
+    "termination_loop": {
+      "threshold": 2.0,
+      "precision": 0.625,
+      "recall": 1.0,
+      "steps": 4
+    },
+    "context_propagation_failure": {
+      "threshold": 0.35,
+      "precision": 0.25,
+      "recall": 1.0,
+      "steps": 7
+    },
+    "history_loss": {
+      "threshold": 0.3,
+      "precision": 0.4,
+      "recall": 1.0,
+      "steps": 6
+    },
+    "wrong_agent_handoff": {
+      "threshold": null,
+      "precision": 0.3,
+      "recall": 1.0,
+      "steps": 1
+    },
+    "clarification_skipped": {
+      "threshold": null,
+      "precision": 1.0,
+      "recall": 1.0,
+      "steps": 1
+    },
+    "no_verification": {
+      "threshold": null,
+      "precision": 0.025,
+      "recall": 1.0,
+      "steps": 1
+    },
+    "conversation_reset": {
+      "threshold": 0.3,
+      "precision": 0.6,
+      "recall": 1.0,
+      "steps": 6
+    },
+    "information_withholding": {
+      "threshold": 0.95,
+      "precision": 0.4444,
+      "recall": 1.0,
+      "steps": 18
+    },
+    "incomplete_verification": {
+      "threshold": 0.95,
+      "precision": 0.8,
+      "recall": 0.8,
+      "steps": 18
     }
   }
 }

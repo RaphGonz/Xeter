@@ -317,13 +317,12 @@ def test_23_phase26_thresholds_in_default_thresholds():
     assert DEFAULT_THRESHOLDS["incomplete_verification"] == 0.7
 
 
-def test_24_phase26_types_not_in_binary_flag_types():
-    """No Phase 26 flag type appears in BINARY_FLAG_TYPES — D-14 constraint (Phase 27 scope)."""
+def test_24_threshold_tunable_phase26_types_not_in_binary():
+    """The 3 threshold-tunable Phase 26 types are NOT in BINARY_FLAG_TYPES — classified in Plan 27-02."""
     from xeter.scripts.calibrate import BINARY_FLAG_TYPES
-    for flag_type in ["wrong_agent_handoff", "information_withholding", "conversation_reset",
-                      "clarification_skipped", "no_verification", "incomplete_verification"]:
+    for flag_type in ["conversation_reset", "information_withholding", "incomplete_verification"]:
         assert flag_type not in BINARY_FLAG_TYPES, (
-            f"{flag_type} must not be in BINARY_FLAG_TYPES until Phase 27 classification (D-14)"
+            f"{flag_type} is threshold-tunable (continuous score) and must not be in BINARY_FLAG_TYPES"
         )
 
 
@@ -350,3 +349,12 @@ def test_27_default_thresholds_has_18_entries():
     assert len(DEFAULT_THRESHOLDS) == 18, (
         f"Expected 18 DEFAULT_THRESHOLDS entries, got {len(DEFAULT_THRESHOLDS)}"
     )
+
+
+def test_28_phase26_binary_types_in_binary_flag_types():
+    """The 3 binary Phase 26 types are in BINARY_FLAG_TYPES — classified as binary in Plan 27-02."""
+    from xeter.scripts.calibrate import BINARY_FLAG_TYPES
+    for flag_type in ["wrong_agent_handoff", "clarification_skipped", "no_verification"]:
+        assert flag_type in BINARY_FLAG_TYPES, (
+            f"{flag_type} produces only 0.0 or 1.0 scores and must be in BINARY_FLAG_TYPES"
+        )

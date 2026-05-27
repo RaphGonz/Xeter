@@ -223,7 +223,7 @@ Plans:
 
 **Wave 1**
 
-- [ ] 27-01-PLAN.md — Extend fixture generator for 17 new types + grouped trace evaluation in calibrate.py
+- [x] 27-01-PLAN.md — Extend fixture generator for 17 new types + grouped trace evaluation in calibrate.py
 
 **Wave 2** *(blocked on 27-01 completion)*
 
@@ -263,4 +263,4 @@ Plans:
 | 24. Structural Span Checks | v1.5 | 3/3 | Complete | 2026-05-21 |
 | 25. Semantic Span + Structural Trace Checks | v1.5 | 5/5 | Complete | 2026-05-24 |
 | 26. Best-Effort Proxy Checks | v1.5 | 3/3 | Complete   | 2026-05-26 |
-| 27. Calibration Pass | v1.5 | 0/? | Not started | - |
+| 27. Calibration Pass | v1.5 | 1/3 | In progress | - |

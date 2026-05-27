@@ -196,10 +196,10 @@ def test_12_binary_flag_types_includes_4_phase_24_schema_checks():
         assert flag_type in BINARY_FLAG_TYPES
 
 
-def test_13_context_overflow_not_in_binary_flag_types():
-    """context_overflow is threshold-tunable per D-05 — must NOT appear in BINARY_FLAG_TYPES."""
+def test_13_context_overflow_in_binary_flag_types():
+    """context_overflow is evaluated at its default token-scale threshold — not via hill_climb."""
     from xeter.scripts.calibrate import BINARY_FLAG_TYPES
-    assert "context_overflow" not in BINARY_FLAG_TYPES
+    assert "context_overflow" in BINARY_FLAG_TYPES
 
 
 def test_14_context_overflow_in_default_thresholds():

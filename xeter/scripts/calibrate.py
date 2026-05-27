@@ -128,6 +128,7 @@ BINARY_FLAG_TYPES: set[str] = {
     "required_fields_missing",
     "output_truncated",
     "type_coercion_error",
+    "context_overflow",   # token-scale threshold incompatible with cosine hill_climb range
 }
 
 # Default starting thresholds (used as baseline when calibrating other flags)
@@ -157,6 +158,9 @@ DEFAULT_THRESHOLDS: dict[str, float] = {
 HILL_CLIMB_START = 0.10
 HILL_CLIMB_STEP = 0.05
 HILL_CLIMB_MAX = 0.95
+
+# Integer grid for termination_loop — hill_climb's [0.10, 0.95] range produces int(x)=0 always
+TERMINATION_LOOP_N_VALUES = [2, 3, 4, 5]
 
 
 # ---------------------------------------------------------------------------
@@ -448,12 +452,20 @@ def patch_docker_compose(calibrated: dict[str, float]) -> None:
         return
 
     key_to_env = {
-        "tool_not_available": "WORKER_THRESHOLD_TOOL_NOT_AVAILABLE",
-        "wrong_tool_choice": "WORKER_THRESHOLD_WRONG_TOOL_CHOICE",
-        "unnecessary_tool_call": "WORKER_THRESHOLD_UNNECESSARY_TOOL_CALL",
-        "wrong_tool_args": "WORKER_THRESHOLD_WRONG_TOOL_ARGS",
-        "no_tool": "WORKER_THRESHOLD_NO_TOOL",
-        "response_anomaly": "WORKER_THRESHOLD_RESPONSE_ANOMALY",
+        "tool_not_available":           "WORKER_THRESHOLD_TOOL_NOT_AVAILABLE",
+        "wrong_tool_choice":            "WORKER_THRESHOLD_WRONG_TOOL_CHOICE",
+        "unnecessary_tool_call":        "WORKER_THRESHOLD_UNNECESSARY_TOOL_CALL",
+        "wrong_tool_args":              "WORKER_THRESHOLD_WRONG_TOOL_ARGS",
+        "no_tool":                      "WORKER_THRESHOLD_NO_TOOL",
+        "response_anomaly":             "WORKER_THRESHOLD_RESPONSE_ANOMALY",
+        "context_overflow":             "WORKER_THRESHOLD_CONTEXT_OVERFLOW",
+        # Phase 25
+        "missing_details":              "WORKER_THRESHOLD_MISSING_DETAILS",
+        "stale_context":                "WORKER_THRESHOLD_STALE_CONTEXT",
+        "context_propagation_failure":  "WORKER_THRESHOLD_CONTEXT_PROPAGATION_FAILURE",
+        "history_loss":                 "WORKER_THRESHOLD_HISTORY_LOSS",
+        "step_repetition":              "WORKER_THRESHOLD_STEP_REPETITION",
+        "termination_loop_n":           "WORKER_THRESHOLD_TERMINATION_LOOP_N",
     }
 
     content = DOCKER_COMPOSE_PATH.read_text(encoding="utf-8")
@@ -569,6 +581,24 @@ def main() -> dict:
                 "binary": flag_type in active_binary,
             }
             print(f"    P={precision:.3f}  R={recall:.3f}")
+            continue
+        if flag_type == "termination_loop":
+            print(f"\n  [{flag_type}] integer grid sweep {TERMINATION_LOOP_N_VALUES}")
+            best_p_tl, best_r_tl, best_n_tl = -1.0, 0.0, 3
+            for n_val in TERMINATION_LOOP_N_VALUES:
+                p, r = evaluate_flag_type(flag_type, float(n_val), spans, embedder, calibrated)
+                print(f"    n={n_val}: P={p:.3f}  R={r:.3f}")
+                if p > best_p_tl:
+                    best_p_tl, best_r_tl, best_n_tl = p, r, n_val
+            _check_recall_floor(flag_type, best_r_tl)
+            calibrated["termination_loop_n"] = float(best_n_tl)
+            results[flag_type] = {
+                "best_threshold": float(best_n_tl),
+                "best_precision": best_p_tl,
+                "best_recall": best_r_tl,
+                "history": [],
+                "steps": len(TERMINATION_LOOP_N_VALUES),
+            }
             continue
         best_threshold, best_precision, best_recall, history = hill_climb(
             flag_type, spans, embedder, calibrated

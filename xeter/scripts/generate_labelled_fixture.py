@@ -1,17 +1,21 @@
 """Generate synthetic labelled spans for calibration.
 
-Produces fixtures/labelled_spans.jsonl with 210 spans:
-  - 63 flagged (~30%) covering all six anomaly types
+Produces fixtures/labelled_spans.jsonl with 210 original spans plus new type spans:
+  - 63 flagged (~30%) covering all six original anomaly types
   - 147 clean (~70%)
+  - 17 new flag types (Phases 24/25/26): ≥8 flagged groups + ≥8 clean groups each
 
 Each line is a JSON object with all SpanData fields plus:
   - label: "flagged" | "clean"
-  - anomaly_type: one of the six types, or null for clean spans
+  - anomaly_type: one of the flag types, or null for clean spans
+
+For trace-level types, multiple rows share a trace_id; the LAST row carries the label.
 
 Run:
     python xeter/scripts/generate_labelled_fixture.py
 
-Output: fixtures/labelled_spans.jsonl (deterministic via fixed seed 42)
+Output: fixtures/labelled_spans.jsonl (deterministic via SEED=42 for original rows,
+        NEW_SEED=27 for new type rows)
 """
 
 from __future__ import annotations
@@ -27,6 +31,12 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 SEED = 42
 rng = random.Random(SEED)
+
+# ---------------------------------------------------------------------------
+# New-type seed — separate rng for Phase 24/25/26 additions (NEW_SEED=27)
+# Keeps existing 100 rows stable when new types are added
+# ---------------------------------------------------------------------------
+NEW_SEED = 27
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 FIXTURE_PATH = PROJECT_ROOT / "fixtures" / "labelled_spans.jsonl"
@@ -633,15 +643,816 @@ def generate_flagged_spans() -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# New-type span builders (Phase 24 / 25 / 26)
+# All builders use rng_new = random.Random(NEW_SEED) — never the global rng.
+# Passing rng_new as a parameter keeps each builder stateless/deterministic.
+# ---------------------------------------------------------------------------
+
+# -------- SPAN-LEVEL builders (single row per example) --------
+
+def make_output_schema_violation_span(i: int, rng_new: random.Random) -> dict:
+    """expected_output_schema set; response is free text (not JSON) — violation."""
+    schema = json.dumps({"type": "object", "properties": {"result": {"type": "string"}}})
+    if i % 2 == 0:  # flagged
+        return {
+            "expected_output_schema": schema,
+            "response": "Here is the answer you requested.",
+            "label": "flagged",
+            "anomaly_type": "output_schema_violation",
+            "anomaly_types": ["output_schema_violation"],
+        }
+    else:  # clean
+        return {
+            "expected_output_schema": schema,
+            "response": json.dumps({"result": "The answer is 42."}),
+            "label": "clean",
+            "anomaly_type": None,
+            "anomaly_types": [],
+        }
+
+
+def make_required_fields_missing_span(i: int, rng_new: random.Random) -> dict:
+    """expected_output_schema requires name+email; tool_arguments missing email — violation."""
+    schema = json.dumps({
+        "type": "object",
+        "required": ["name", "email"],
+        "properties": {
+            "name": {"type": "string"},
+            "email": {"type": "string"},
+        },
+    })
+    if i % 2 == 0:  # flagged
+        return {
+            "expected_output_schema": schema,
+            "tool_arguments": json.dumps({"name": "Alice"}),
+            "label": "flagged",
+            "anomaly_type": "required_fields_missing",
+            "anomaly_types": ["required_fields_missing"],
+        }
+    else:  # clean
+        return {
+            "expected_output_schema": schema,
+            "tool_arguments": json.dumps({"name": "Alice", "email": "alice@example.com"}),
+            "label": "clean",
+            "anomaly_type": None,
+            "anomaly_types": [],
+        }
+
+
+def make_output_truncated_span(i: int, rng_new: random.Random) -> dict:
+    """raw_response finish_reason=length → truncated; finish_reason=stop → clean."""
+    if i % 2 == 0:  # flagged
+        raw = json.dumps({
+            "id": "chatcmpl-trunc",
+            "choices": [{"finish_reason": "length", "message": {"content": "partial answer"}}],
+        })
+        return {
+            "raw_response": raw,
+            "response": "Here is the partial answer that got cut off",
+            "label": "flagged",
+            "anomaly_type": "output_truncated",
+            "anomaly_types": ["output_truncated"],
+        }
+    else:  # clean
+        raw = json.dumps({
+            "id": "chatcmpl-ok",
+            "choices": [{"finish_reason": "stop", "message": {"content": "complete answer"}}],
+        })
+        return {
+            "raw_response": raw,
+            "response": "Here is the complete answer.",
+            "label": "clean",
+            "anomaly_type": None,
+            "anomaly_types": [],
+        }
+
+
+def make_type_coercion_error_span(i: int, rng_new: random.Random) -> dict:
+    """expected_output_schema requires count as integer; tool_arguments has string → violation."""
+    schema = json.dumps({
+        "type": "object",
+        "properties": {"count": {"type": "integer"}},
+    })
+    if i % 2 == 0:  # flagged
+        return {
+            "expected_output_schema": schema,
+            "tool_arguments": json.dumps({"count": "42"}),  # string instead of integer
+            "label": "flagged",
+            "anomaly_type": "type_coercion_error",
+            "anomaly_types": ["type_coercion_error"],
+        }
+    else:  # clean
+        return {
+            "expected_output_schema": schema,
+            "tool_arguments": json.dumps({"count": 42}),
+            "label": "clean",
+            "anomaly_type": None,
+            "anomaly_types": [],
+        }
+
+
+# ~700 repetitions × ~9 words ≈ ~6300 tokens; 700 is safe over the 8000-token threshold
+_OVERFLOW_TEXT = ("The quick brown fox jumps over the lazy dog. " * 700).strip()
+_SHORT_TEXT = "What is the capital of France?"
+
+
+def make_context_overflow_span(i: int, rng_new: random.Random) -> dict:
+    """prompt > 9000 tokens → overflow; short prompt → clean."""
+    if i % 2 == 0:  # flagged — use 1100 repetitions to be well above 8000 token threshold
+        long_prompt = ("The quick brown fox jumps over the lazy dog. " * 1100).strip()
+        return {
+            "prompt": long_prompt,
+            "label": "flagged",
+            "anomaly_type": "context_overflow",
+            "anomaly_types": ["context_overflow"],
+        }
+    else:  # clean
+        return {
+            "prompt": _SHORT_TEXT,
+            "label": "clean",
+            "anomaly_type": None,
+            "anomaly_types": [],
+        }
+
+
+_MISSING_DETAILS_FLAGGED = [
+    (
+        "Explain the roles of Alice Johnson and Bob Smith in the Paris Agreement.",
+        "The Paris Agreement is an international treaty on climate change.",
+    ),
+    (
+        "What did Carol White and David Brown contribute to the Apollo programme?",
+        "The Apollo programme successfully landed humans on the Moon.",
+    ),
+    (
+        "Summarise the work of Emma Davis and Frank Wilson in Project Aurora.",
+        "Project Aurora involved advanced research into renewable energy.",
+    ),
+    (
+        "Describe the findings of Grace Lee and Henry Martinez in the 2025 study.",
+        "The 2025 study produced important scientific conclusions.",
+    ),
+    (
+        "What were the conclusions of Iris Chen and James Taylor?",
+        "The research produced interesting results worthy of further study.",
+    ),
+    (
+        "Explain what Kate Anderson and Liam Thompson said about quantum computing.",
+        "Quantum computing offers substantial computational advantages over classical approaches.",
+    ),
+    (
+        "Summarise the contributions of Mia Robinson and Noah Walker to the framework.",
+        "The framework provides a structured approach to problem solving.",
+    ),
+    (
+        "What did Olivia Scott and Paul Harris conclude about neural networks?",
+        "Neural networks are powerful tools for pattern recognition.",
+    ),
+]
+
+_MISSING_DETAILS_CLEAN = [
+    (
+        "Explain the roles of Alice Johnson and Bob Smith in the Paris Agreement.",
+        "Alice Johnson led negotiations for Article 6, while Bob Smith coordinated country pledges.",
+    ),
+    (
+        "What did Carol White and David Brown contribute to the Apollo programme?",
+        "Carol White designed the navigation software; David Brown led astronaut training.",
+    ),
+    (
+        "Summarise the work of Emma Davis and Frank Wilson in Project Aurora.",
+        "Emma Davis directed the energy storage component and Frank Wilson led field trials.",
+    ),
+    (
+        "Describe the findings of Grace Lee and Henry Martinez in the 2025 study.",
+        "Grace Lee found a 30% efficiency gain; Henry Martinez confirmed results via independent review.",
+    ),
+    (
+        "What were the conclusions of Iris Chen and James Taylor?",
+        "Iris Chen concluded that latency was the primary bottleneck; James Taylor proposed a caching solution.",
+    ),
+    (
+        "Explain what Kate Anderson and Liam Thompson said about quantum computing.",
+        "Kate Anderson argued for near-term applications; Liam Thompson focused on long-term error correction.",
+    ),
+    (
+        "Summarise the contributions of Mia Robinson and Noah Walker to the framework.",
+        "Mia Robinson built the data pipeline; Noah Walker wrote the evaluation module.",
+    ),
+    (
+        "What did Olivia Scott and Paul Harris conclude about neural networks?",
+        "Olivia Scott showed transformers outperform CNNs on NLP tasks; Paul Harris extended this to vision.",
+    ),
+]
+
+
+def make_missing_details_span(i: int, rng_new: random.Random) -> dict:
+    """prompt has named entities absent from response → missing_details."""
+    if i % 2 == 0:  # flagged
+        prompt, response = _MISSING_DETAILS_FLAGGED[i // 2 % len(_MISSING_DETAILS_FLAGGED)]
+        return {
+            "prompt": prompt,
+            "response": response,
+            "label": "flagged",
+            "anomaly_type": "missing_details",
+            "anomaly_types": ["missing_details"],
+        }
+    else:  # clean
+        prompt, response = _MISSING_DETAILS_CLEAN[i // 2 % len(_MISSING_DETAILS_CLEAN)]
+        return {
+            "prompt": prompt,
+            "response": response,
+            "label": "clean",
+            "anomaly_type": None,
+            "anomaly_types": [],
+        }
+
+
+# -------- TRACE-LEVEL builders (list of rows, same trace_id, last row carries label) --------
+
+def _new_trace_id(rng_new: random.Random) -> str:
+    """Generate a deterministic trace_id from rng_new."""
+    return str(uuid.UUID(int=rng_new.getrandbits(128)))
+
+
+def make_stale_context_spans(i: int, rng_new: random.Random) -> list[dict]:
+    """2 spans; span[1].prompt copies span[0].tool_output verbatim → stale_context."""
+    trace_id = _new_trace_id(rng_new)
+    tool_output = "Result: 42 active users in North region"
+    if i % 2 == 0:  # flagged
+        spans = [
+            {
+                "span_id": f"new-stale-ctx-{i:04d}-0",
+                "trace_id": trace_id,
+                "tool_output": tool_output,
+                "label": "clean", "anomaly_type": None, "anomaly_types": [],
+            },
+            {
+                "span_id": f"new-stale-ctx-{i:04d}-1",
+                "trace_id": trace_id,
+                "prompt": f"Please process this data: {tool_output}",
+                "label": "flagged",
+                "anomaly_type": "stale_context",
+                "anomaly_types": ["stale_context"],
+            },
+        ]
+    else:  # clean
+        spans = [
+            {
+                "span_id": f"new-stale-ctx-{i:04d}-0",
+                "trace_id": trace_id,
+                "tool_output": tool_output,
+                "label": "clean", "anomaly_type": None, "anomaly_types": [],
+            },
+            {
+                "span_id": f"new-stale-ctx-{i:04d}-1",
+                "trace_id": trace_id,
+                "prompt": "Summarise the database query results and identify outliers.",
+                "label": "clean",
+                "anomaly_type": None,
+                "anomaly_types": [],
+            },
+        ]
+    return spans
+
+
+def make_step_repetition_spans(i: int, rng_new: random.Random) -> list[dict]:
+    """2 spans; near-identical tool_name + tool_arguments → step_repetition."""
+    trace_id = _new_trace_id(rng_new)
+    query = "SELECT * FROM users WHERE id=1"
+    if i % 2 == 0:  # flagged — identical queries
+        spans = [
+            {
+                "span_id": f"new-step-rep-{i:04d}-0",
+                "trace_id": trace_id,
+                "tool_name": "execute_sql",
+                "tool_arguments": json.dumps({"query": query}),
+                "label": "clean", "anomaly_type": None, "anomaly_types": [],
+            },
+            {
+                "span_id": f"new-step-rep-{i:04d}-1",
+                "trace_id": trace_id,
+                "tool_name": "execute_sql",
+                "tool_arguments": json.dumps({"query": query}),
+                "label": "flagged",
+                "anomaly_type": "step_repetition",
+                "anomaly_types": ["step_repetition"],
+            },
+        ]
+    else:  # clean — different queries
+        spans = [
+            {
+                "span_id": f"new-step-rep-{i:04d}-0",
+                "trace_id": trace_id,
+                "tool_name": "execute_sql",
+                "tool_arguments": json.dumps({"query": "SELECT * FROM users WHERE id=1"}),
+                "label": "clean", "anomaly_type": None, "anomaly_types": [],
+            },
+            {
+                "span_id": f"new-step-rep-{i:04d}-1",
+                "trace_id": trace_id,
+                "tool_name": "execute_sql",
+                "tool_arguments": json.dumps({"query": "SELECT * FROM orders WHERE status='pending' LIMIT 50"}),
+                "label": "clean",
+                "anomaly_type": None,
+                "anomaly_types": [],
+            },
+        ]
+    return spans
+
+
+def make_termination_loop_spans(i: int, rng_new: random.Random) -> list[dict]:
+    """4 spans; all same tool_name → termination_loop (n=4 >= default threshold 3)."""
+    trace_id = _new_trace_id(rng_new)
+    if i % 2 == 0:  # flagged — 4 identical tool calls
+        tool_name = "web_search"
+        spans = []
+        for k in range(4):
+            spans.append({
+                "span_id": f"new-term-loop-{i:04d}-{k}",
+                "trace_id": trace_id,
+                "tool_name": tool_name,
+                "tool_arguments": json.dumps({"query": f"search query {k}"}),
+                "label": "clean" if k < 3 else "flagged",
+                "anomaly_type": None if k < 3 else "termination_loop",
+                "anomaly_types": [] if k < 3 else ["termination_loop"],
+            })
+    else:  # clean — 4 different tool names
+        tool_names = ["web_search", "execute_sql", "send_email", "get_weather"]
+        spans = []
+        for k in range(4):
+            spans.append({
+                "span_id": f"new-term-loop-{i:04d}-{k}",
+                "trace_id": trace_id,
+                "tool_name": tool_names[k],
+                "tool_arguments": json.dumps({"param": f"value{k}"}),
+                "label": "clean",
+                "anomaly_type": None,
+                "anomaly_types": [],
+            })
+    return spans
+
+
+def make_context_propagation_failure_spans(i: int, rng_new: random.Random) -> list[dict]:
+    """2 spans; span[1].prompt ignores span[0].tool_output → context_propagation_failure."""
+    trace_id = _new_trace_id(rng_new)
+    tool_output = "Customer ID: C-9912, Account: Premium, Balance: $5,432"
+    if i % 2 == 0:  # flagged
+        spans = [
+            {
+                "span_id": f"new-ctx-prop-{i:04d}-0",
+                "trace_id": trace_id,
+                "tool_output": tool_output,
+                "label": "clean", "anomaly_type": None, "anomaly_types": [],
+            },
+            {
+                "span_id": f"new-ctx-prop-{i:04d}-1",
+                "trace_id": trace_id,
+                "prompt": "Update the billing address for the account.",
+                "label": "flagged",
+                "anomaly_type": "context_propagation_failure",
+                "anomaly_types": ["context_propagation_failure"],
+            },
+        ]
+    else:  # clean — span[1] references the prior tool_output
+        spans = [
+            {
+                "span_id": f"new-ctx-prop-{i:04d}-0",
+                "trace_id": trace_id,
+                "tool_output": tool_output,
+                "label": "clean", "anomaly_type": None, "anomaly_types": [],
+            },
+            {
+                "span_id": f"new-ctx-prop-{i:04d}-1",
+                "trace_id": trace_id,
+                "prompt": "Update the billing address for Customer ID C-9912 (Premium account, Balance $5,432).",
+                "label": "clean",
+                "anomaly_type": None,
+                "anomaly_types": [],
+            },
+        ]
+    return spans
+
+
+def make_history_loss_spans(i: int, rng_new: random.Random) -> list[dict]:
+    """3 spans about database migration; span[2] topic jumps to weather → history_loss."""
+    trace_id = _new_trace_id(rng_new)
+    if i % 2 == 0:  # flagged
+        spans = [
+            {
+                "span_id": f"new-hist-loss-{i:04d}-0",
+                "trace_id": trace_id,
+                "prompt": "Prepare the database migration script for the user_accounts table.",
+                "label": "clean", "anomaly_type": None, "anomaly_types": [],
+            },
+            {
+                "span_id": f"new-hist-loss-{i:04d}-1",
+                "trace_id": trace_id,
+                "prompt": "Validate the database migration against staging environment.",
+                "label": "clean", "anomaly_type": None, "anomaly_types": [],
+            },
+            {
+                "span_id": f"new-hist-loss-{i:04d}-2",
+                "trace_id": trace_id,
+                "prompt": "What is the weather in Tokyo?",
+                "label": "flagged",
+                "anomaly_type": "history_loss",
+                "anomaly_types": ["history_loss"],
+            },
+        ]
+    else:  # clean — all prompts stay on topic
+        spans = [
+            {
+                "span_id": f"new-hist-loss-{i:04d}-0",
+                "trace_id": trace_id,
+                "prompt": "Prepare the database migration script for the user_accounts table.",
+                "label": "clean", "anomaly_type": None, "anomaly_types": [],
+            },
+            {
+                "span_id": f"new-hist-loss-{i:04d}-1",
+                "trace_id": trace_id,
+                "prompt": "Validate the database migration against staging environment.",
+                "label": "clean", "anomaly_type": None, "anomaly_types": [],
+            },
+            {
+                "span_id": f"new-hist-loss-{i:04d}-2",
+                "trace_id": trace_id,
+                "prompt": "Execute the database migration script and verify row counts match.",
+                "label": "clean",
+                "anomaly_type": None,
+                "anomaly_types": [],
+            },
+        ]
+    return spans
+
+
+def make_wrong_agent_handoff_spans(i: int, rng_new: random.Random) -> list[dict]:
+    """2 spans; orchestrator → billing_agent (not in routing graph) → wrong_agent_handoff."""
+    trace_id = _new_trace_id(rng_new)
+    if i % 2 == 0:  # flagged — billing_agent not in orchestrator's allowed destinations
+        spans = [
+            {
+                "span_id": f"new-wrong-handoff-{i:04d}-0",
+                "trace_id": trace_id,
+                "agent_name": "orchestrator",
+                "prompt": "Route this task to the appropriate agent.",
+                "label": "clean", "anomaly_type": None, "anomaly_types": [],
+            },
+            {
+                "span_id": f"new-wrong-handoff-{i:04d}-1",
+                "trace_id": trace_id,
+                "agent_name": "billing_agent",
+                "prompt": "Process the request.",
+                "label": "flagged",
+                "anomaly_type": "wrong_agent_handoff",
+                "anomaly_types": ["wrong_agent_handoff"],
+            },
+        ]
+    else:  # clean — orchestrator → search_agent (valid destination)
+        spans = [
+            {
+                "span_id": f"new-wrong-handoff-{i:04d}-0",
+                "trace_id": trace_id,
+                "agent_name": "orchestrator",
+                "prompt": "Route this search task to the search agent.",
+                "label": "clean", "anomaly_type": None, "anomaly_types": [],
+            },
+            {
+                "span_id": f"new-wrong-handoff-{i:04d}-1",
+                "trace_id": trace_id,
+                "agent_name": "search_agent",
+                "prompt": "Search for relevant documents.",
+                "label": "clean",
+                "anomaly_type": None,
+                "anomaly_types": [],
+            },
+        ]
+    return spans
+
+
+def make_information_withholding_spans(i: int, rng_new: random.Random) -> list[dict]:
+    """2 spans; span[1].prompt omits entities from span[0].response → information_withholding."""
+    trace_id = _new_trace_id(rng_new)
+    response_with_entities = "Alice Johnson approved the $50,000 budget for Project Aurora."
+    if i % 2 == 0:  # flagged — span[1] ignores Alice Johnson, $50,000, Project Aurora
+        spans = [
+            {
+                "span_id": f"new-info-with-{i:04d}-0",
+                "trace_id": trace_id,
+                "response": response_with_entities,
+                "label": "clean", "anomaly_type": None, "anomaly_types": [],
+            },
+            {
+                "span_id": f"new-info-with-{i:04d}-1",
+                "trace_id": trace_id,
+                "prompt": "Send the approval confirmation.",
+                "label": "flagged",
+                "anomaly_type": "information_withholding",
+                "anomaly_types": ["information_withholding"],
+            },
+        ]
+    else:  # clean — span[1] references key entities
+        spans = [
+            {
+                "span_id": f"new-info-with-{i:04d}-0",
+                "trace_id": trace_id,
+                "response": response_with_entities,
+                "label": "clean", "anomaly_type": None, "anomaly_types": [],
+            },
+            {
+                "span_id": f"new-info-with-{i:04d}-1",
+                "trace_id": trace_id,
+                "prompt": "Send confirmation to Alice Johnson that the $50,000 budget for Project Aurora has been approved.",
+                "label": "clean",
+                "anomaly_type": None,
+                "anomaly_types": [],
+            },
+        ]
+    return spans
+
+
+def make_conversation_reset_spans(i: int, rng_new: random.Random) -> list[dict]:
+    """3 spans; first 2 about kubernetes; span[2] completely off-topic → conversation_reset."""
+    trace_id = _new_trace_id(rng_new)
+    if i % 2 == 0:  # flagged
+        spans = [
+            {
+                "span_id": f"new-conv-reset-{i:04d}-0",
+                "trace_id": trace_id,
+                "prompt": "Deploy the kubernetes cluster to the production environment.",
+                "label": "clean", "anomaly_type": None, "anomaly_types": [],
+            },
+            {
+                "span_id": f"new-conv-reset-{i:04d}-1",
+                "trace_id": trace_id,
+                "prompt": "Check the status of the kubernetes pods in the production namespace.",
+                "label": "clean", "anomaly_type": None, "anomaly_types": [],
+            },
+            {
+                "span_id": f"new-conv-reset-{i:04d}-2",
+                "trace_id": trace_id,
+                "prompt": "I love pizza. What toppings do you recommend?",
+                "label": "flagged",
+                "anomaly_type": "conversation_reset",
+                "anomaly_types": ["conversation_reset"],
+            },
+        ]
+    else:  # clean — all on kubernetes topic
+        spans = [
+            {
+                "span_id": f"new-conv-reset-{i:04d}-0",
+                "trace_id": trace_id,
+                "prompt": "Deploy the kubernetes cluster to the production environment.",
+                "label": "clean", "anomaly_type": None, "anomaly_types": [],
+            },
+            {
+                "span_id": f"new-conv-reset-{i:04d}-1",
+                "trace_id": trace_id,
+                "prompt": "Check the status of the kubernetes pods in the production namespace.",
+                "label": "clean", "anomaly_type": None, "anomaly_types": [],
+            },
+            {
+                "span_id": f"new-conv-reset-{i:04d}-2",
+                "trace_id": trace_id,
+                "prompt": "Scale the kubernetes deployment to 5 replicas for the production namespace.",
+                "label": "clean",
+                "anomaly_type": None,
+                "anomaly_types": [],
+            },
+        ]
+    return spans
+
+
+def make_clarification_skipped_spans(i: int, rng_new: random.Random) -> list[dict]:
+    """1 span; disjunctive prompt without question in response → clarification_skipped."""
+    if i % 2 == 0:  # flagged — no "?" in response
+        row = {
+            "prompt": "Should we deploy to production or staging environment?",
+            "response": "I will proceed with the deployment immediately.",
+            "label": "flagged",
+            "anomaly_type": "clarification_skipped",
+            "anomaly_types": ["clarification_skipped"],
+        }
+    else:  # clean — response has a question
+        row = {
+            "prompt": "Should we deploy to production or staging environment?",
+            "response": "Which environment has been validated — production or staging?",
+            "label": "clean",
+            "anomaly_type": None,
+            "anomaly_types": [],
+        }
+    return [row]  # single-span, wrapped in list for uniform interface
+
+
+def make_no_verification_spans(i: int, rng_new: random.Random) -> list[dict]:
+    """3 spans; none has verification keyword in tool_name → no_verification."""
+    trace_id = _new_trace_id(rng_new)
+    if i % 2 == 0:  # flagged — no verification step
+        tool_names = ["execute_sql", "web_search", "send_email"]
+        spans = []
+        for k in range(3):
+            is_last = k == 2
+            spans.append({
+                "span_id": f"new-no-ver-{i:04d}-{k}",
+                "trace_id": trace_id,
+                "tool_name": tool_names[k],
+                "tool_description": f"Tool {tool_names[k]} performs data operations",
+                "label": "clean" if not is_last else "flagged",
+                "anomaly_type": None if not is_last else "no_verification",
+                "anomaly_types": [] if not is_last else ["no_verification"],
+            })
+    else:  # clean — one span has validate_output tool
+        spans = [
+            {
+                "span_id": f"new-no-ver-{i:04d}-0",
+                "trace_id": trace_id,
+                "tool_name": "execute_sql",
+                "tool_description": "Execute SQL query against database",
+                "label": "clean", "anomaly_type": None, "anomaly_types": [],
+            },
+            {
+                "span_id": f"new-no-ver-{i:04d}-1",
+                "trace_id": trace_id,
+                "tool_name": "validate_output",
+                "tool_description": "Verify and validate the output results",
+                "label": "clean", "anomaly_type": None, "anomaly_types": [],
+            },
+            {
+                "span_id": f"new-no-ver-{i:04d}-2",
+                "trace_id": trace_id,
+                "tool_name": "send_email",
+                "tool_description": "Send email notification",
+                "label": "clean",
+                "anomaly_type": None,
+                "anomaly_types": [],
+            },
+        ]
+    return spans
+
+
+def make_incomplete_verification_spans(i: int, rng_new: random.Random) -> list[dict]:
+    """3 spans; verification covers only Alice Smith, missing Bob Jones and Carol Williams."""
+    trace_id = _new_trace_id(rng_new)
+    if i % 2 == 0:  # flagged — verification covers only 1 of 3 entities
+        spans = [
+            {
+                "span_id": f"new-inc-ver-{i:04d}-0",
+                "trace_id": trace_id,
+                "response": "Processing completed for Alice Smith, Bob Jones, and Carol Williams.",
+                "label": "clean", "anomaly_type": None, "anomaly_types": [],
+            },
+            {
+                "span_id": f"new-inc-ver-{i:04d}-1",
+                "trace_id": trace_id,
+                "tool_name": "verify_output",
+                "tool_description": "verify output completeness",
+                "prompt": "Verify that Alice Smith was processed correctly.",
+                "label": "clean", "anomaly_type": None, "anomaly_types": [],
+            },
+            {
+                "span_id": f"new-inc-ver-{i:04d}-2",
+                "trace_id": trace_id,
+                "prompt": "Confirm the verification step is complete.",
+                "label": "flagged",
+                "anomaly_type": "incomplete_verification",
+                "anomaly_types": ["incomplete_verification"],
+            },
+        ]
+    else:  # clean — verification covers all three names
+        spans = [
+            {
+                "span_id": f"new-inc-ver-{i:04d}-0",
+                "trace_id": trace_id,
+                "response": "Processing completed for Alice Smith, Bob Jones, and Carol Williams.",
+                "label": "clean", "anomaly_type": None, "anomaly_types": [],
+            },
+            {
+                "span_id": f"new-inc-ver-{i:04d}-1",
+                "trace_id": trace_id,
+                "tool_name": "verify_output",
+                "tool_description": "verify output completeness",
+                "prompt": "Verify that Alice Smith, Bob Jones, and Carol Williams were all processed correctly.",
+                "label": "clean", "anomaly_type": None, "anomaly_types": [],
+            },
+            {
+                "span_id": f"new-inc-ver-{i:04d}-2",
+                "trace_id": trace_id,
+                "prompt": "Confirm the verification step is complete for all three.",
+                "label": "clean",
+                "anomaly_type": None,
+                "anomaly_types": [],
+            },
+        ]
+    return spans
+
+
+# ---------------------------------------------------------------------------
+# New-type span generation orchestrator
+# ---------------------------------------------------------------------------
+
+# Maps flag_type → (builder_fn, n_flagged_examples, n_clean_examples).
+# Each flagged call uses even i, each clean call uses odd i.
+# Trace-level builders return a list of rows; span-level builders return a dict.
+# We wrap span-level single dicts in a list below for uniform processing.
+
+_NEW_TYPE_BUILDERS = [
+    ("output_schema_violation",        make_output_schema_violation_span,        8, 8),
+    ("required_fields_missing",         make_required_fields_missing_span,         8, 8),
+    ("output_truncated",                make_output_truncated_span,                8, 8),
+    ("type_coercion_error",             make_type_coercion_error_span,             8, 8),
+    ("context_overflow",                make_context_overflow_span,                8, 8),
+    ("missing_details",                 make_missing_details_span,                 8, 8),
+    ("stale_context",                   make_stale_context_spans,                  8, 8),
+    ("step_repetition",                 make_step_repetition_spans,                8, 8),
+    ("termination_loop",                make_termination_loop_spans,               8, 8),
+    ("context_propagation_failure",     make_context_propagation_failure_spans,    8, 8),
+    ("history_loss",                    make_history_loss_spans,                   8, 8),
+    ("wrong_agent_handoff",             make_wrong_agent_handoff_spans,            8, 8),
+    ("information_withholding",         make_information_withholding_spans,        8, 8),
+    ("conversation_reset",              make_conversation_reset_spans,             8, 8),
+    ("clarification_skipped",           make_clarification_skipped_spans,          8, 8),
+    ("no_verification",                 make_no_verification_spans,                8, 8),
+    ("incomplete_verification",         make_incomplete_verification_spans,        8, 8),
+]
+
+
+def _apply_defaults(rows: list[dict], flag_type: str, group_idx: int, rng_new: random.Random) -> None:
+    """Apply SpanData field defaults to a group of rows in-place.
+
+    If any row in the group already has a span_id (set by the builder), keep it.
+    Otherwise assign a deterministic id: new-{flag_type}-g{group_idx}-{row_idx}.
+    All rows in the same group share a trace_id (set by builder or generated here).
+    """
+    # Determine shared trace_id for this group (all rows must share it)
+    # Prefer the first non-None trace_id already set by a builder
+    shared_trace_id = next(
+        (r["trace_id"] for r in rows if r.get("trace_id")),
+        str(uuid.UUID(int=rng_new.getrandbits(128))),
+    )
+
+    for row_idx, row in enumerate(rows):
+        # Stable span_id: builder-set ID takes priority
+        if "span_id" not in row or row.get("span_id") is None:
+            row["span_id"] = f"new-{flag_type}-g{group_idx:04d}-{row_idx}"
+        row.setdefault("trace_id", shared_trace_id)
+        # Force all rows to share the same trace_id (trace-level groups must share it)
+        row["trace_id"] = shared_trace_id
+        row.setdefault("tenant_id", "calibration-tenant")
+        row.setdefault("agent_name", "calibration-agent")
+        row.setdefault("agent_model", AGENT_MODEL)
+        row.setdefault("tool_name", None)
+        row.setdefault("tool_description", None)
+        row.setdefault("tool_arguments", None)
+        row.setdefault("tool_output", None)
+        row.setdefault("prompt", None)
+        row.setdefault("response", None)
+        row.setdefault("raw_response", CLEAN_RAW_RESPONSE)
+        row.setdefault("available_tools", None)
+        row.setdefault("expected_output_schema", None)
+        row.setdefault("parent_span_id", None)
+
+
+def generate_new_type_spans() -> list[dict]:
+    """Generate spans for all 17 new flag types using rng_new (NEW_SEED=27).
+
+    Returns a flat list of span dicts. Trace-level builders produce multiple
+    rows per call; they are flattened here. Existing 100 rows are NOT touched.
+    """
+    rng_new = random.Random(NEW_SEED)
+    all_new: list[dict] = []
+
+    for flag_type, builder, n_flagged, n_clean in _NEW_TYPE_BUILDERS:
+        # Generate n_flagged groups (even i values)
+        for group_idx in range(n_flagged):
+            i = group_idx * 2  # even → flagged
+            result = builder(i, rng_new)
+            # Span-level builders return a single dict; trace-level return list
+            rows = [result] if isinstance(result, dict) else result
+            _apply_defaults(rows, flag_type, group_idx * 2, rng_new)
+            all_new.extend(rows)
+
+        # Generate n_clean groups (odd i values)
+        for group_idx in range(n_clean):
+            i = group_idx * 2 + 1  # odd → clean
+            result = builder(i, rng_new)
+            rows = [result] if isinstance(result, dict) else result
+            _apply_defaults(rows, flag_type, group_idx * 2 + 1, rng_new)
+            all_new.extend(rows)
+
+    return all_new
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
 def main() -> None:
     FIXTURE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-    flagged = generate_flagged_spans()   # 63 spans
-    clean = generate_clean_spans(147)    # 147 spans
-    all_spans = flagged + clean
+    flagged = generate_flagged_spans()   # 63 spans (original 7 types)
+    clean = generate_clean_spans(147)    # 147 spans (original clean)
+    new_type_spans = generate_new_type_spans()  # 17 new types (Phase 24/25/26)
+    all_spans = flagged + clean + new_type_spans
 
     # Shuffle reproducibly so flagged spans aren't all bunched at the top
     rng.shuffle(all_spans)

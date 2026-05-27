@@ -162,6 +162,35 @@ HILL_CLIMB_MAX = 0.95
 # Integer grid for termination_loop — hill_climb's [0.10, 0.95] range produces int(x)=0 always
 TERMINATION_LOOP_N_VALUES = [2, 3, 4, 5]
 
+# Flag types that require multi-span grouped trace evaluation.
+# These checks rely on comparing spans within a trace, so the evaluator must
+# feed the full group (all rows sharing a trace_id) to analyzer.analyze().
+# Note: "clarification_skipped" is NOT here — it is a syntactic single-span check.
+# Note: "missing_details" is NOT here — it is a SemanticSpanAnalyzer (span-level) check.
+TRACE_LEVEL_TYPES: frozenset[str] = frozenset({
+    "stale_context",
+    "step_repetition",
+    "termination_loop",
+    "context_propagation_failure",
+    "history_loss",
+    "wrong_agent_handoff",
+    "information_withholding",
+    "conversation_reset",
+    "no_verification",
+    "incomplete_verification",
+})
+
+# Hardcoded routing graph for calibration runs of wrong_agent_handoff.
+# Matches the routing topology embedded in the fixture rows produced by
+# make_wrong_agent_handoff_spans(): orchestrator → search_agent / data_agent,
+# billing_agent → payment_agent, search_agent → data_agent.
+# This is a calibration-only constant — not a production secret (T-27-01-02).
+CALIBRATION_ROUTING_GRAPH: dict[str, list[str]] = {
+    "orchestrator": ["search_agent", "data_agent"],
+    "billing_agent": ["payment_agent"],
+    "search_agent": ["data_agent"],
+}
+
 
 # ---------------------------------------------------------------------------
 # Fixture loading
@@ -208,6 +237,32 @@ def build_span_data(row: dict):
 
 
 # ---------------------------------------------------------------------------
+# Trace grouping helper
+# ---------------------------------------------------------------------------
+
+def group_spans_by_trace(spans: list[dict]) -> list[list[dict]]:
+    """Group fixture rows by trace_id, preserving insertion order within each group.
+
+    Returns a list of groups (each group is a list of rows sharing a trace_id).
+    Single-span rows with unique trace_ids form single-element groups.
+    All rows are preserved — no filtering occurs.
+
+    Within each group rows are in insertion (list) order, which corresponds to
+    the order they were appended in generate_new_type_spans() (natural ordering
+    = ascending span_id when the builder sets span_id suffixes 0, 1, 2…).
+    """
+    seen: dict[str, list[dict]] = {}
+    order: list[str] = []
+    for row in spans:
+        tid = row.get("trace_id") or ""
+        if tid not in seen:
+            seen[tid] = []
+            order.append(tid)
+        seen[tid].append(row)
+    return [seen[tid] for tid in order]
+
+
+# ---------------------------------------------------------------------------
 # Per-flag-type evaluation
 # ---------------------------------------------------------------------------
 
@@ -237,48 +292,98 @@ def evaluate_flag_type(
     thresholds = dict(current_thresholds)
     thresholds[flag_type] = threshold
     analyzer_cls = FLAG_TYPE_TO_ANALYZER_CLASS[flag_type]
-    analyzer = analyzer_cls(embedder, thresholds)
+
+    # wrong_agent_handoff requires CALIBRATION_ROUTING_GRAPH injected at instantiation
+    if flag_type == "wrong_agent_handoff":
+        analyzer = analyzer_cls(embedder, thresholds, routing_graph=CALIBRATION_ROUTING_GRAPH)
+    else:
+        analyzer = analyzer_cls(embedder, thresholds)
 
     tp = fp = fn = 0
     false_positives: list[dict] = []
     false_negatives: list[dict] = []
 
-    for row in spans:
-        labels = row.get("anomaly_types") or [row.get("anomaly_type")]
-        actual = emitted_flag_type in labels
-        span = build_span_data(row)
-        if isinstance(analyzer, BaseTraceAnalyzer):
-            flags = analyzer.analyze([span])
-        else:
-            flags = analyzer.analyze(span)
-        scores = analyzer.flush_scores()
+    if emitted_flag_type in TRACE_LEVEL_TYPES:
+        # -----------------------------------------------------------------
+        # Grouped trace evaluation path — for checks that require N>=2 spans
+        # -----------------------------------------------------------------
+        groups = group_spans_by_trace(spans)
+        for group in groups:
+            # The LAST row in the group carries the authoritative label
+            last_row = group[-1]
+            labels = last_row.get("anomaly_types") or [last_row.get("anomaly_type")]
+            actual = emitted_flag_type in labels
 
-        predicted = any(f.flag_type == emitted_flag_type for f in flags)
-        matched_flags = [f for f in flags if f.flag_type == emitted_flag_type]
+            span_list = [build_span_data(row) for row in group]
+            flags = analyzer.analyze(span_list)
+            scores = analyzer.flush_scores()
 
-        if predicted and actual:
-            tp += 1
-        elif predicted and not actual:
-            fp += 1
-            if verbose:
-                false_positives.append({
-                    "span_id": row.get("span_id"),
-                    "prompt": (row.get("prompt") or "")[:120],
-                    "tool_name": row.get("tool_name"),
-                    "available_tools": [t.get("name") for t in (row.get("available_tools") or [])],
-                    "flag_detail": matched_flags[0].detail if matched_flags else {},
-                    "scores": [(m, round(s, 3)) for _, m, s in scores],
-                })
-        elif not predicted and actual:
-            fn += 1
-            if verbose:
-                false_negatives.append({
-                    "span_id": row.get("span_id"),
-                    "prompt": (row.get("prompt") or "")[:120],
-                    "tool_name": row.get("tool_name"),
-                    "available_tools": [t.get("name") for t in (row.get("available_tools") or [])],
-                    "scores": [(m, round(s, 3)) for _, m, s in scores],
-                })
+            predicted = any(f.flag_type == emitted_flag_type for f in flags)
+            matched_flags = [f for f in flags if f.flag_type == emitted_flag_type]
+
+            if predicted and actual:
+                tp += 1
+            elif predicted and not actual:
+                fp += 1
+                if verbose:
+                    false_positives.append({
+                        "span_id": last_row.get("span_id"),
+                        "prompt": (last_row.get("prompt") or "")[:120],
+                        "tool_name": last_row.get("tool_name"),
+                        "available_tools": [t.get("name") for t in (last_row.get("available_tools") or [])],
+                        "flag_detail": matched_flags[0].detail if matched_flags else {},
+                        "scores": [(m, round(s, 3)) for _, m, s in scores],
+                    })
+            elif not predicted and actual:
+                fn += 1
+                if verbose:
+                    false_negatives.append({
+                        "span_id": last_row.get("span_id"),
+                        "prompt": (last_row.get("prompt") or "")[:120],
+                        "tool_name": last_row.get("tool_name"),
+                        "available_tools": [t.get("name") for t in (last_row.get("available_tools") or [])],
+                        "scores": [(m, round(s, 3)) for _, m, s in scores],
+                    })
+    else:
+        # -----------------------------------------------------------------
+        # Per-row evaluation path (original behaviour — unchanged)
+        # -----------------------------------------------------------------
+        for row in spans:
+            labels = row.get("anomaly_types") or [row.get("anomaly_type")]
+            actual = emitted_flag_type in labels
+            span = build_span_data(row)
+            if isinstance(analyzer, BaseTraceAnalyzer):
+                flags = analyzer.analyze([span])
+            else:
+                flags = analyzer.analyze(span)
+            scores = analyzer.flush_scores()
+
+            predicted = any(f.flag_type == emitted_flag_type for f in flags)
+            matched_flags = [f for f in flags if f.flag_type == emitted_flag_type]
+
+            if predicted and actual:
+                tp += 1
+            elif predicted and not actual:
+                fp += 1
+                if verbose:
+                    false_positives.append({
+                        "span_id": row.get("span_id"),
+                        "prompt": (row.get("prompt") or "")[:120],
+                        "tool_name": row.get("tool_name"),
+                        "available_tools": [t.get("name") for t in (row.get("available_tools") or [])],
+                        "flag_detail": matched_flags[0].detail if matched_flags else {},
+                        "scores": [(m, round(s, 3)) for _, m, s in scores],
+                    })
+            elif not predicted and actual:
+                fn += 1
+                if verbose:
+                    false_negatives.append({
+                        "span_id": row.get("span_id"),
+                        "prompt": (row.get("prompt") or "")[:120],
+                        "tool_name": row.get("tool_name"),
+                        "available_tools": [t.get("name") for t in (row.get("available_tools") or [])],
+                        "scores": [(m, round(s, 3)) for _, m, s in scores],
+                    })
 
     precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
     recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0

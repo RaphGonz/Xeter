@@ -129,6 +129,10 @@ BINARY_FLAG_TYPES: set[str] = {
     "output_truncated",
     "type_coercion_error",
     "context_overflow",   # token-scale threshold incompatible with cosine hill_climb range
+    # Phase 26 binary classifications (Plan 27-02):
+    "wrong_agent_handoff",      # topological graph membership — produces only 0.0 or 1.0
+    "clarification_skipped",    # syntactic rule (disjunctive marker + no ?) — binary
+    "no_verification",          # keyword scan — fires or not; no continuous score
 }
 
 # Default starting thresholds (used as baseline when calibrating other flags)
@@ -671,7 +675,10 @@ def main() -> dict:
     if cli_args.flag_type and THRESHOLDS_PATH.exists():
         try:
             existing_data = json.load(THRESHOLDS_PATH.open(encoding="utf-8"))
-            calibrated = dict(existing_data.get("thresholds", DEFAULT_THRESHOLDS))
+            # Merge existing thresholds into DEFAULT_THRESHOLDS so new keys (e.g.
+            # context_overflow, phase 25/26 keys) are always present even when the
+            # existing file was written before those keys were added (Rule 1 fix).
+            calibrated = {**DEFAULT_THRESHOLDS, **existing_data.get("thresholds", {})}
         except (json.JSONDecodeError, KeyError, ValueError):
             calibrated = dict(DEFAULT_THRESHOLDS)
     else:

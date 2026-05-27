@@ -227,7 +227,7 @@ Plans:
 
 **Wave 2** *(blocked on 27-01 completion)*
 
-- [ ] 27-02-PLAN.md — Run per-type calibration, classify Phase 26 binary types, write calibrated_thresholds.json
+- [x] 27-02-PLAN.md — Run per-type calibration, classify Phase 26 binary types, write calibrated_thresholds.json
 
 **Wave 3** *(blocked on 27-02 completion)*
 
@@ -263,4 +263,4 @@ Plans:
 | 24. Structural Span Checks | v1.5 | 3/3 | Complete | 2026-05-21 |
 | 25. Semantic Span + Structural Trace Checks | v1.5 | 5/5 | Complete | 2026-05-24 |
 | 26. Best-Effort Proxy Checks | v1.5 | 3/3 | Complete   | 2026-05-26 |
-| 27. Calibration Pass | v1.5 | 1/3 | In progress | - |
+| 27. Calibration Pass | v1.5 | 2/3 | In progress | - |

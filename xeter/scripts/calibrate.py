@@ -559,8 +559,18 @@ def main() -> dict:
         active_flag_types = FLAG_TYPES
         active_binary = BINARY_FLAG_TYPES
 
-    # Calibrate each flag type independently via hill climbing
-    calibrated = dict(DEFAULT_THRESHOLDS)
+    # Calibrate each flag type independently via hill climbing.
+    # In single-type mode (--flag-type), seed from the existing JSON so previous
+    # per-type results are preserved when merging back. Full-suite runs always
+    # start from DEFAULT_THRESHOLDS (fresh baseline).
+    if cli_args.flag_type and THRESHOLDS_PATH.exists():
+        try:
+            existing_data = json.load(THRESHOLDS_PATH.open(encoding="utf-8"))
+            calibrated = dict(existing_data.get("thresholds", DEFAULT_THRESHOLDS))
+        except (json.JSONDecodeError, KeyError, ValueError):
+            calibrated = dict(DEFAULT_THRESHOLDS)
+    else:
+        calibrated = dict(DEFAULT_THRESHOLDS)
     results: dict[str, dict] = {}
 
     for flag_type in active_flag_types:
@@ -647,19 +657,31 @@ def main() -> dict:
 
     plot_pr_curves(results)
 
-    # Write thresholds to dedicated file
+    # Write thresholds to dedicated file.
+    # In single-type mode, merge new results into existing per_flag_type so
+    # previous per-type calibrations are not erased.
     THRESHOLDS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    new_per_flag_type = {
+        ft: {
+            "threshold": res["best_threshold"],
+            "precision": round(res["best_precision"], 4) if res["best_precision"] is not None else None,
+            "recall": round(res["best_recall"], 4) if res["best_recall"] is not None else None,
+            "steps": res["steps"],
+        }
+        for ft, res in results.items()
+    }
+    if cli_args.flag_type and THRESHOLDS_PATH.exists():
+        try:
+            existing_data = json.load(THRESHOLDS_PATH.open(encoding="utf-8"))
+            merged_per_flag_type = dict(existing_data.get("per_flag_type", {}))
+            merged_per_flag_type.update(new_per_flag_type)
+        except (json.JSONDecodeError, KeyError, ValueError):
+            merged_per_flag_type = new_per_flag_type
+    else:
+        merged_per_flag_type = new_per_flag_type
     threshold_output = {
         "thresholds": calibrated,
-        "per_flag_type": {
-            ft: {
-                "threshold": res["best_threshold"],
-                "precision": round(res["best_precision"], 4) if res["best_precision"] is not None else None,
-                "recall": round(res["best_recall"], 4) if res["best_recall"] is not None else None,
-                "steps": res["steps"],
-            }
-            for ft, res in results.items()
-        },
+        "per_flag_type": merged_per_flag_type,
     }
     with THRESHOLDS_PATH.open("w", encoding="utf-8") as f:
         json.dump(threshold_output, f, indent=2)

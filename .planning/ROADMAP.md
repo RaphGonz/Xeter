@@ -219,7 +219,19 @@ Plans:
   3. Full-suite mean precision across all flag types (old + new) is ≥ 95% as reported by calibrate.py
   4. The calibration report identifies which of the 18 new checks are binary (no threshold sweep) versus threshold-tuned
 
-**Plans**: TBD
+**Plans**: 3 plans
+
+**Wave 1**
+
+- [ ] 27-01-PLAN.md — Extend fixture generator for 17 new types + grouped trace evaluation in calibrate.py
+
+**Wave 2** *(blocked on 27-01 completion)*
+
+- [ ] 27-02-PLAN.md — Run per-type calibration, classify Phase 26 binary types, write calibrated_thresholds.json
+
+**Wave 3** *(blocked on 27-02 completion)*
+
+- [ ] 27-03-PLAN.md — Full-suite run, mean precision verification, docker-compose patch, final commit
 
 ## Progress
 

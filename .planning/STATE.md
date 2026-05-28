@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Silent Failure Detection
-status: completed
+status: in_progress
 stopped_at: Phase 25 complete — SemanticSpanAnalyzer (CTX-04) + TraceAnalyzer (CTX-02, TRACE-01–04) implemented, wired, verified 13/13
 last_updated: "2026-05-26T21:46:56.409Z"
-last_activity: 2026-05-26 -- Phase 26 marked complete
+last_activity: 2026-05-28 -- Phase 28 planned (4 plans, 3 waves)
 progress:
-  total_phases: 6
+  total_phases: 7
   completed_phases: 5
   total_plans: 16
   completed_plans: 16

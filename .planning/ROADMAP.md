@@ -7,7 +7,7 @@
 - ✅ **v1.2 Diagnosticer** — Phases 11–13 (shipped 2026-04-25)
 - ✅ **v1.3 Security Hardening** — Phases 14–17 (shipped 2026-05-02)
 - ✅ **v1.4 Trace Hierarchy + TraceAnalyzer Foundation** — Phases 18–21 (shipped 2026-05-15)
-- 🔄 **v1.5 Silent Failure Detection** — Phases 22–27 (in progress)
+- 🔄 **v1.5 Silent Failure Detection** — Phases 22–28 (in progress)
 
 ## Phases
 
@@ -72,7 +72,7 @@ See `.planning/milestones/v1.4-ROADMAP.md` for full phase details.
 
 </details>
 
-### v1.5 Silent Failure Detection (Phases 22–27)
+### v1.5 Silent Failure Detection (Phases 22–28)
 
 - [x] **Phase 22: Bug Fixes** — Fix idle-flush and trace score persistence (gates all trace-level checks)
 - [x] **Phase 23: Infrastructure** — calibrate.py multi-analyzer, new deps, SpanData schema fields (completed 2026-05-20)
@@ -80,6 +80,7 @@ See `.planning/milestones/v1.4-ROADMAP.md` for full phase details.
 - [x] **Phase 25: Semantic Span + Structural Trace Checks** — Embedding-based span checks and first wave of trace checks (completed 2026-05-24)
 - [x] **Phase 26: Best-Effort Proxy Checks** — Remaining trace checks; best-effort heuristics; precision floors verified (completed 2026-05-26)
 - [ ] **Phase 27: Calibration Pass** — All 18 new flag types calibrated; recall floor and full-suite precision verified
+- [ ] **Phase 28: Precision Improvements** — Fix algorithm precision for 14 flag types; re-calibrate; enable Phase 27 plan 27-03
 
 ## Phase Details
 
@@ -229,9 +230,36 @@ Plans:
 
 - [x] 27-02-PLAN.md — Run per-type calibration, classify Phase 26 binary types, write calibrated_thresholds.json
 
-**Wave 3** *(blocked on 27-02 completion)*
+**Wave 3** *(blocked on 27-02 completion AND Phase 28 completion)*
 
 - [ ] 27-03-PLAN.md — Full-suite run, mean precision verification, docker-compose patch, final commit
+
+### Phase 28: Precision Improvements
+
+**Goal**: Fix algorithm precision for 14 flag types identified during Phase 27 calibration; re-calibrate all 14 types; enable mean precision >= 95% target for Phase 27 plan 27-03
+**Depends on**: Phase 27 (plan 27-02)
+**Requirements**: CAL-01 (enabler — Phase 28 fixes unblock Phase 27's precision target)
+**Success Criteria** (what must be TRUE):
+
+  1. All 14 fixed flag types show precision improved vs Phase 27 baselines after re-calibration
+  2. No RECALL FLOOR ERROR for any of the 14 re-calibrated types (R >= 0.10 for all)
+  3. Full-suite mean precision across all 24 flag types is >= 95%
+  4. 28 routing tests pass throughout (no regressions to calibration infrastructure)
+
+**Plans**: 4 plans
+
+**Wave 1** *(parallel — non-overlapping files)*
+
+- [ ] 28-01-PLAN.md — Fix 9 trace-level flag types in trace_analyzer.py (stale_context, step_repetition, termination_loop, context_propagation_failure, history_loss, wrong_agent_handoff, information_withholding, conversation_reset, no_verification)
+- [ ] 28-02-PLAN.md — Fix 5 span/tool flag types in tool_call_analyzer.py + semantic_span_analyzer.py (tool_not_available, wrong_tool_choice, wrong_tool_args, response_anomaly, missing_details)
+
+**Wave 2** *(blocked on 28-01 AND 28-02)*
+
+- [ ] 28-03-PLAN.md — Re-calibrate all 14 fixed types individually; verify precision improved; update calibrated_thresholds.json
+
+**Wave 3** *(blocked on 28-03)*
+
+- [ ] 28-04-PLAN.md — Full-suite calibration run; verify mean precision >= 95%; confirm 28 routing tests pass; Phase 28 complete
 
 ## Progress
 
@@ -264,3 +292,4 @@ Plans:
 | 25. Semantic Span + Structural Trace Checks | v1.5 | 5/5 | Complete | 2026-05-24 |
 | 26. Best-Effort Proxy Checks | v1.5 | 3/3 | Complete   | 2026-05-26 |
 | 27. Calibration Pass | v1.5 | 2/3 | In progress | - |
+| 28. Precision Improvements | v1.5 | 0/4 | Planned | - |

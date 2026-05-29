@@ -240,16 +240,20 @@ class TraceAnalyzer(BaseTraceAnalyzer):
         """Detect when span[i].prompt is missing key information from span[i-1].tool_output.
 
         Uses hybrid cosine+BOW scoring (hybrid_score utility from base.py).
-        Fires when score < self._thresholds["context_propagation_failure"].
+        Fires only when score < threshold for 2+ consecutive span pairs (low_score_streak >= 2).
+        This prevents single-pair anomalies from triggering a flag.
         """
         if len(spans) < 2:
             return []
 
         flags: list[Flag] = []
+        low_score_streak = 0
         for i in range(1, len(spans)):
             if spans[i - 1].tool_output is None:
+                low_score_streak = 0
                 continue
             if spans[i].prompt is None:
+                low_score_streak = 0
                 continue
 
             cosine = self.compare(
@@ -261,6 +265,10 @@ class TraceAnalyzer(BaseTraceAnalyzer):
             # CRITICAL: log BEFORE threshold comparison (D-04 invariant)
             self.log_score("context_propagation_failure", score)
             if score < self._thresholds["context_propagation_failure"]:
+                low_score_streak += 1
+            else:
+                low_score_streak = 0
+            if low_score_streak >= 2:
                 flags.append(Flag(
                     flag_type="context_propagation_failure",
                     score=score,
@@ -288,7 +296,7 @@ class TraceAnalyzer(BaseTraceAnalyzer):
             return []
 
         flags: list[Flag] = []
-        for i in range(2, len(spans)):
+        for i in range(3, len(spans)):
             if spans[i].prompt is None:
                 continue
 
@@ -322,9 +330,9 @@ class TraceAnalyzer(BaseTraceAnalyzer):
         """Detect unexpected agent-name transitions given the routing graph.
 
         No-op (returns []) when routing_graph is None or empty (D-07).
-        Fires when a consecutive agent pair (src→dst) is not permitted by the graph:
-          - src not in routing_graph → flag (unknown source treated as violation)
-          - dst not in routing_graph[src] → flag (unlisted destination)
+        Fires only when src IS a known agent AND dst is not in routing_graph[src].
+        Unknown source agents (None or unregistered) are silently skipped — they
+        cannot be evaluated against the graph and would cause spurious false positives.
         Same-agent consecutive spans (src == dst) are skipped — no handoff occurred.
         Marks detail["low_confidence"] = True per TRACE-05 (D-08).
         """
@@ -337,10 +345,14 @@ class TraceAnalyzer(BaseTraceAnalyzer):
         for i in range(1, len(spans)):
             src = spans[i - 1].agent_name
             dst = spans[i].agent_name
+            # Skip pairs with missing agent names — cannot evaluate routing
+            if src is None or dst is None:
+                continue
             if src == dst:
                 # No handoff when same agent stays
                 continue
-            violation = (src not in self._routing_graph) or (dst not in self._routing_graph[src])
+            # Only flag when src IS a known agent but dst is not permitted
+            violation = src in self._routing_graph and dst not in self._routing_graph[src]
             score = 1.0 if violation else 0.0
             # CRITICAL: log BEFORE threshold comparison (D-04 invariant)
             self.log_score("wrong_agent_handoff", score)
@@ -366,8 +378,11 @@ class TraceAnalyzer(BaseTraceAnalyzer):
         """Detect when named entities from span[i-1].response are absent in span[i].prompt.
 
         Uses spaCy NE extraction (doc.ents). Recall ratio = len(produced ∩ present) / len(produced).
-        Fires when recall < self._thresholds["information_withholding"].
-        Guard: skips log_score when produced entity set is empty (no NEs to check).
+        Preconditions (both required before log_score):
+          - produced set must have >= 2 NEs (single-NE responses too noisy)
+          - score must be < 0.5 (> 50% entities withheld — hard precondition)
+        After preconditions pass, calibrated threshold controls the final flag decision.
+        Guard: skips log_score when produced entity set is empty or under-populated.
         """
         if len(spans) < 2:
             return []
@@ -389,8 +404,15 @@ class TraceAnalyzer(BaseTraceAnalyzer):
             if not produced:
                 # Guard: no NEs to check — skip log_score (avoid division-by-zero)
                 continue
+            if len(produced) < 2:
+                # Guard: under-populated NE set too noisy — skip log_score
+                continue
             present = {ent.text.lower() for ent in nlp(spans[i].prompt).ents}
             score = len(produced & present) / len(produced)
+            # Hard precondition: only proceed when > 50% of entities are withheld
+            if score >= 0.5:
+                # Not significant enough withholding — skip log_score (guard exit)
+                continue
             # CRITICAL: log BEFORE threshold comparison (D-04 invariant)
             self.log_score("information_withholding", score)
             if score < self._thresholds.get("information_withholding", 0.5):
@@ -412,16 +434,17 @@ class TraceAnalyzer(BaseTraceAnalyzer):
     def _check_conversation_reset(self, spans: list[SpanData]) -> list[Flag]:
         """Detect abrupt centroid cosine drop mid-trace (same mechanism as history_loss).
 
-        Copies _check_history_loss exactly with "conversation_reset" label and lower
-        threshold (D-01, D-02, D-03). Marks detail["low_confidence"] = True per D-04.
-        Guard: skips entirely when len(spans) < 3.
-        Fires when score < self._thresholds["conversation_reset"] (default 0.25).
+        Requires at least 4 prior spans (range starts at i=4) so the centroid is stable.
+        Fires only when score < threshold AND the drop from the previous step is abrupt
+        (prev_score - score >= 0.15), distinguishing sudden resets from gradual drift.
+        Marks detail["low_confidence"] = True per TRACE-07 (D-04).
         """
         if len(spans) < 3:
             return []
 
         flags: list[Flag] = []
-        for i in range(2, len(spans)):
+        prev_score: float = 1.0
+        for i in range(4, len(spans)):
             if spans[i].prompt is None:
                 continue
 
@@ -435,7 +458,7 @@ class TraceAnalyzer(BaseTraceAnalyzer):
             score = self.compare(current_vec, centroid)
             # CRITICAL: log BEFORE threshold comparison (D-04 invariant)
             self.log_score("conversation_reset", score)
-            if score < self._thresholds.get("conversation_reset", 0.25):
+            if score < self._thresholds.get("conversation_reset", 0.25) and (prev_score - score) >= 0.15:
                 flags.append(Flag(
                     flag_type="conversation_reset",
                     score=score,
@@ -445,6 +468,7 @@ class TraceAnalyzer(BaseTraceAnalyzer):
                         "low_confidence": True,
                     },
                 ))
+            prev_score = score
 
         return flags
 
@@ -498,17 +522,29 @@ class TraceAnalyzer(BaseTraceAnalyzer):
 
         Uses module-level _VERIFICATION_KEYWORDS frozenset (D-13).
         Binary check: returns one Flag when no verification span found.
+        Precondition: the trace must contain at least one write/mutate tool call.
+        Traces that only read data have no obligation to verify — flagging them is vacuous.
         Mutual-exclusion partner with _check_incomplete_verification (D-12):
         analyze() skips incomplete_verification when this check fires.
         Guard: if len(spans) < 2: return [] — single-span traces skip all trace-level checks.
+        Guard exits (no write/mutate found) do NOT call log_score per D-04 invariant.
         """
         if len(spans) < 2:
             return []
 
-        # Guard: only apply when the trace has at least one tool-calling span.
-        # Traces with no tool calls have nothing to verify — check is vacuous.
-        has_any_tool = any(span.tool_name is not None or span.tool_description is not None for span in spans)
-        if not has_any_tool:
+        # Guard: only apply when the trace has at least one write/mutate tool call.
+        # Read-only traces have nothing to verify — check would fire vacuously.
+        WRITE_MUTATE_KEYWORDS: frozenset[str] = frozenset({
+            "write", "create", "update", "delete", "insert", "save",
+            "post", "put", "patch", "modify", "set",
+        })
+        has_write_mutate = any(
+            kw in (span.tool_name or "").lower() or kw in (span.tool_description or "").lower()
+            for span in spans
+            for kw in WRITE_MUTATE_KEYWORDS
+        )
+        if not has_write_mutate:
+            # Guard exit: no write/mutate call present — do NOT log_score (D-04)
             return []
 
         has_verification = False

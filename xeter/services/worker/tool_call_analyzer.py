@@ -291,6 +291,14 @@ class ToolCallAnalyzer(BaseSpanAnalyzer):
         if rank == 1:
             return []
 
+        # Require a minimum score gap between the best alternative and the
+        # called tool (D-11). A gap < 0.10 means the ranking difference is a
+        # near-coin-toss in embedding space and should not be flagged.
+        score_gap = top_score - called_score
+        self.log_score("score_gap", score_gap)
+        if score_gap < 0.10:
+            return []
+
         # Case B: a better tool existed
         return [Flag(
             flag_type="wrong_tool_choice",

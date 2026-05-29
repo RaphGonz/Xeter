@@ -125,7 +125,7 @@ class TraceAnalyzer(BaseTraceAnalyzer):
             if spans[i].prompt is None:
                 continue
 
-            score = fuzz.ratio(spans[i].prompt, spans[i - 1].tool_output)
+            score = fuzz.ratio(spans[i].prompt, spans[i - 1].tool_output) / 100
             # CRITICAL: log BEFORE threshold comparison (D-04 invariant)
             self.log_score("stale_context", score)
             if score >= self._thresholds["stale_context"]:
@@ -166,7 +166,7 @@ class TraceAnalyzer(BaseTraceAnalyzer):
                     continue
                 key_b = f"{spans[b].tool_name} {spans[b].tool_arguments or ''}".strip()
 
-                score = fuzz.token_sort_ratio(key_a, key_b)
+                score = fuzz.token_sort_ratio(key_a, key_b) / 100
                 # CRITICAL: log BEFORE threshold comparison (D-04 invariant)
                 self.log_score("step_repetition", score)
                 if score >= self._thresholds["step_repetition"]:

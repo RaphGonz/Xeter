@@ -191,7 +191,7 @@ class TraceAnalyzer(BaseTraceAnalyzer):
 
         Counts consecutive run length (not total occurrences).
         Fires when run_length >= int(self._thresholds["termination_loop_n"]).
-        No log_score — count-based, not similarity-based (no calibration threshold).
+        log_score emitted on every span so calibration harness has a score signal.
         """
         if len(spans) < 2:
             return []
@@ -214,6 +214,9 @@ class TraceAnalyzer(BaseTraceAnalyzer):
             else:
                 current_tool = span.tool_name
                 run_length = 1
+
+            # CRITICAL: log BEFORE threshold comparison (D-04 invariant)
+            self.log_score("termination_loop", float(run_length))
 
             if run_length >= n and current_tool not in flagged_tools:
                 flags.append(Flag(

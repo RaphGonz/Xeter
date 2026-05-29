@@ -534,9 +534,12 @@ class TraceAnalyzer(BaseTraceAnalyzer):
 
         # Guard: only apply when the trace has at least one write/mutate tool call.
         # Read-only traces have nothing to verify — check would fire vacuously.
+        # "send" covers send_email/send_message; "execute"/"sql" covers execute_sql;
+        # "submit" covers form submissions — all are write/side-effect operations.
         WRITE_MUTATE_KEYWORDS: frozenset[str] = frozenset({
             "write", "create", "update", "delete", "insert", "save",
             "post", "put", "patch", "modify", "set",
+            "send", "email", "execute", "sql", "submit", "publish", "deploy",
         })
         has_write_mutate = any(
             kw in (span.tool_name or "").lower() or kw in (span.tool_description or "").lower()

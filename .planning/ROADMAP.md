@@ -250,8 +250,8 @@ Plans:
 
 **Wave 1** *(parallel — non-overlapping files)*
 
-- [ ] 28-01-PLAN.md — Fix 9 trace-level flag types in trace_analyzer.py (stale_context, step_repetition, termination_loop, context_propagation_failure, history_loss, wrong_agent_handoff, information_withholding, conversation_reset, no_verification)
-- [ ] 28-02-PLAN.md — Fix 5 span/tool flag types in tool_call_analyzer.py + semantic_span_analyzer.py (tool_not_available, wrong_tool_choice, wrong_tool_args, response_anomaly, missing_details)
+- [x] 28-01-PLAN.md — Fix 9 trace-level flag types in trace_analyzer.py (stale_context, step_repetition, termination_loop, context_propagation_failure, history_loss, wrong_agent_handoff, information_withholding, conversation_reset, no_verification)
+- [x] 28-02-PLAN.md — Fix 5 span/tool flag types in tool_call_analyzer.py + semantic_span_analyzer.py (tool_not_available, wrong_tool_choice, wrong_tool_args, response_anomaly, missing_details)
 
 **Wave 2** *(blocked on 28-01 AND 28-02)*
 
@@ -292,4 +292,4 @@ Plans:
 | 25. Semantic Span + Structural Trace Checks | v1.5 | 5/5 | Complete | 2026-05-24 |
 | 26. Best-Effort Proxy Checks | v1.5 | 3/3 | Complete   | 2026-05-26 |
 | 27. Calibration Pass | v1.5 | 2/3 | In progress | - |
-| 28. Precision Improvements | v1.5 | 0/4 | Planned | - |
+| 28. Precision Improvements | v1.5 | 2/4 | In progress | - |

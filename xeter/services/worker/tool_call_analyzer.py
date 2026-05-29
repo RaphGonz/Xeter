@@ -418,6 +418,11 @@ class ToolCallAnalyzer(BaseSpanAnalyzer):
             if "\n" in str_value or _SQL_KEYWORD_RE.search(str_value):
                 continue
 
+            # Skip — very short values (e.g. "yes", "no", "all") that embed poorly
+            # against any long prompt without being semantically wrong (D-14)
+            if len(str_value.strip()) <= 3:
+                continue
+
             # Check 2 — argument in prompt (substring match)
             if _strip_punctuation(str_value) in prompt_stripped:
                 continue
@@ -609,6 +614,10 @@ class ToolCallAnalyzer(BaseSpanAnalyzer):
 
         # MUST call log_score BEFORE threshold comparison (FLAG-10 / calibration-first)
         self.log_score("prompt_vs_response", score)
+
+        # Short prompts produce low cosine similarity with any response; do not flag (D-15)
+        if len(span.prompt.split()) < 10:
+            return []
 
         if score < self._thresholds["response_anomaly"]:
             return [

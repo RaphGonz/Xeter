@@ -87,6 +87,20 @@ class SemanticSpanAnalyzer(BaseAnalyzer):
         if span.response is None:
             return []
 
+        # Guard: vacuous prompts (too few NEs and too few content words) cannot
+        # meaningfully be missing details — suppress to avoid FPs (D-07).
+        # This is a guard exit (no log_score) per D-04 invariant.
+        nlp = _get_spacy()
+        prompt_doc = nlp(span.prompt)
+        prompt_ents = prompt_doc.ents
+        prompt_lemmas = {
+            t.lemma_.lower()
+            for t in prompt_doc
+            if t.is_alpha and not t.is_stop
+        }
+        if len(prompt_ents) < 3 and len(prompt_lemmas) < 5:
+            return []
+
         # Compute cosine similarity between prompt and response embeddings
         prompt_vec = self.embed(span.prompt)
         response_vec = self.embed(span.response)

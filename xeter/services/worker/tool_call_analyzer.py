@@ -188,6 +188,17 @@ class ToolCallAnalyzer(BaseSpanAnalyzer):
         Two sub-cases:
           - WTOOL-03: available_tools is None or empty — tool called with no list
           - tool_not_in_list: called tool name is absent from available_tools
+
+        # NOTE: P=0 in Phase 27 calibration is fixture-driven — see 28-CONTEXT.md D-04
+        # and deferred section. The 738-row fixture (as of Phase 27) has zero rows
+        # labelled anomaly_type='tool_not_available', so TP=0 at all times.
+        # Additionally, the fixture contains ~136 clean rows where tool_name is set
+        # but available_tools is None (because those spans were generated without a
+        # tool list), causing WTOOL-03 to produce ~160 FPs → P=0/R=0. This is a
+        # fixture issue (generators did not populate available_tools for clean spans
+        # that use tool calls), not a logic error in the check itself. Adding
+        # tool_not_available fixture rows is deferred per 28-CONTEXT.md deferred
+        # section.
         """
         if span.tool_name is None:
             return []
@@ -278,6 +289,14 @@ class ToolCallAnalyzer(BaseSpanAnalyzer):
             return []
 
         if rank == 1:
+            return []
+
+        # Require a minimum score gap between the best alternative and the
+        # called tool (D-11). A gap < 0.10 means the ranking difference is a
+        # near-coin-toss in embedding space and should not be flagged.
+        score_gap = top_score - called_score
+        self.log_score("score_gap", score_gap)
+        if score_gap < 0.10:
             return []
 
         # Case B: a better tool existed
@@ -397,6 +416,11 @@ class ToolCallAnalyzer(BaseSpanAnalyzer):
 
             # Skip — multi-line or SQL values (model-generated content)
             if "\n" in str_value or _SQL_KEYWORD_RE.search(str_value):
+                continue
+
+            # Skip — very short values (e.g. "yes", "no", "all") that embed poorly
+            # against any long prompt without being semantically wrong (D-14)
+            if len(str_value.strip()) <= 3:
                 continue
 
             # Check 2 — argument in prompt (substring match)
@@ -590,6 +614,10 @@ class ToolCallAnalyzer(BaseSpanAnalyzer):
 
         # MUST call log_score BEFORE threshold comparison (FLAG-10 / calibration-first)
         self.log_score("prompt_vs_response", score)
+
+        # Short prompts produce low cosine similarity with any response; do not flag (D-15)
+        if len(span.prompt.split()) < 10:
+            return []
 
         if score < self._thresholds["response_anomaly"]:
             return [

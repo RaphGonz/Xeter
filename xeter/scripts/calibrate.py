@@ -295,6 +295,9 @@ def evaluate_flag_type(
 
     thresholds = dict(current_thresholds)
     thresholds[flag_type] = threshold
+    # termination_loop is special: the analyzer reads "termination_loop_n", not "termination_loop"
+    if flag_type == "termination_loop":
+        thresholds["termination_loop_n"] = threshold
     analyzer_cls = FLAG_TYPE_TO_ANALYZER_CLASS[flag_type]
 
     # wrong_agent_handoff requires CALIBRATION_ROUTING_GRAPH injected at instantiation
@@ -580,6 +583,10 @@ def patch_docker_compose(calibrated: dict[str, float]) -> None:
         "history_loss":                 "WORKER_THRESHOLD_HISTORY_LOSS",
         "step_repetition":              "WORKER_THRESHOLD_STEP_REPETITION",
         "termination_loop_n":           "WORKER_THRESHOLD_TERMINATION_LOOP_N",
+        # Phase 26
+        "conversation_reset":           "WORKER_THRESHOLD_CONVERSATION_RESET",
+        "information_withholding":      "WORKER_THRESHOLD_INFORMATION_WITHHOLDING",
+        "incomplete_verification":      "WORKER_THRESHOLD_INCOMPLETE_VERIFICATION",
     }
 
     content = DOCKER_COMPOSE_PATH.read_text(encoding="utf-8")
@@ -694,7 +701,8 @@ def main() -> dict:
         if flag_type in active_binary or cli_args.eval_only:
             label = "binary" if flag_type in active_binary else f"threshold={calibrated.get(flag_type, 'N/A')}"
             print(f"\n  [{flag_type}] {label} — single evaluation pass")
-            threshold = calibrated.get(flag_type, 1.0)
+            thr_key = "termination_loop_n" if flag_type == "termination_loop" else flag_type
+            threshold = calibrated.get(thr_key, 1.0)
             precision, recall = evaluate_flag_type(
                 flag_type, threshold, spans, embedder, calibrated,
                 verbose=cli_args.verbose,

@@ -128,3 +128,69 @@ class TestFormatContext:
             importlib.reload(context_assembly)
         except Exception:
             pass
+
+
+class TestPromptContent:
+    """Content-presence tests for DIAG-02 — assert required sections render.
+
+    These tests assert on durable substrings rather than exact prose, so minor
+    wording edits do not break them, but removing a required section does.
+    """
+
+    def _render(self) -> str:
+        """Render _format_context with a minimal stub span."""
+        span = {
+            "span_id": "s1",
+            "trace_id": "t1",
+            "agent_name": "a",
+            "agent_model": "m",
+            "tool_name": "tool",
+            "tool_description": "desc",
+            "tool_arguments": "{}",
+            "tool_output": "out",
+            "time_begin": "2026-01-01T00:00:00Z",
+        }
+        return context_assembly._format_context(span, [], "P", "R")
+
+    def test_prompt_content_system_message(self):
+        """Rendered output frames root-cause analysis and references record_diagnosis."""
+        out = self._render().lower()
+        assert "root" in out, "System message must contain 'root' (root-cause framing)"
+        assert "record_diagnosis" in self._render(), (
+            "System message must reference the record_diagnosis tool"
+        )
+        # Must not frame itself as general Q&A — presence of diagnostic intent
+        assert "root-cause" in out or "root cause" in out, (
+            "System message must use 'root-cause' or 'root cause'"
+        )
+
+    def test_prompt_content_four_verdicts(self):
+        """Rendered output contains all four verdict names with surrounding decision guidance."""
+        out = self._render().lower()
+        for verdict in ("model", "architecture", "prompt", "unknown"):
+            assert verdict in out, (
+                f"Prompt must contain verdict name '{verdict}' with decision guidance"
+            )
+
+    def test_prompt_content_severity(self):
+        """Rendered output contains high, medium, and low severity guidance."""
+        out = self._render().lower()
+        for level in ("high", "medium", "low"):
+            assert level in out, (
+                f"Prompt must contain severity level '{level}'"
+            )
+
+    def test_prompt_content_cot_scaffold(self):
+        """Rendered output contains a per-flag reasoning instruction before the verdict."""
+        out = self._render().lower()
+        # The CoT scaffold must instruct working through each flag; check for
+        # durable keywords from the Reasoning Steps section.
+        has_flag_instruction = (
+            "each flag" in out
+            or "flag type" in out
+            or "flag above" in out
+        )
+        assert has_flag_instruction, (
+            "Prompt must contain a per-flag reasoning instruction "
+            "(e.g. 'each flag', 'flag type', or 'flag above')"
+        )

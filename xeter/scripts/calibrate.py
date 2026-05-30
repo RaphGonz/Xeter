@@ -313,10 +313,15 @@ def evaluate_flag_type(
         # -----------------------------------------------------------------
         groups = group_spans_by_trace(spans)
         for group in groups:
-            # The LAST row in the group carries the authoritative label
+            # ANY row in the group may carry the authoritative label.
+            # Fixture traces sometimes store the labeled span first (e.g. span_id suffix=1
+            # appears before suffix=0 in JSONL order), so checking only the last row misses
+            # many true positives. Use ANY-row convention to handle both orderings.
             last_row = group[-1]
-            labels = last_row.get("anomaly_types") or [last_row.get("anomaly_type")]
-            actual = emitted_flag_type in labels
+            actual = any(
+                emitted_flag_type in (row.get("anomaly_types") or [row.get("anomaly_type") or ""])
+                for row in group
+            )
 
             span_list = [build_span_data(row) for row in group]
             flags = analyzer.analyze(span_list)
@@ -413,7 +418,7 @@ def _print_failures(
             detail = fp["flag_detail"]
             rank = detail.get("rank", "?")
             top = detail.get("top_candidate", "?")
-            scores_str = "  ".join(f"{m}={s}" for m, s in fp["scores"] if "tool" in m or "containment" in m or "embedding" in m or "coherence" in m)
+            scores_str = "  ".join(f"{m}={s}" for m, s in fp["scores"] if "tool" in m or "containment" in m or "embedding" in m or "coherence" in m or "missing" in m or "recall" in m)
             print(f"    [{i}] {fp['span_id']}")
             print(f"        prompt:  {fp['prompt']}")
             print(f"        called:  {fp['tool_name']}  |  available: [{tools_str}]")
@@ -423,7 +428,7 @@ def _print_failures(
         print(f"\n  FALSE NEGATIVES ({len(false_negatives)}) — {flag_type} spans missed:")
         for i, fn in enumerate(false_negatives, 1):
             tools_str = ", ".join(fn["available_tools"])
-            scores_str = "  ".join(f"{m}={s}" for m, s in fn["scores"] if "tool" in m or "containment" in m or "embedding" in m or "coherence" in m)
+            scores_str = "  ".join(f"{m}={s}" for m, s in fn["scores"] if "tool" in m or "containment" in m or "embedding" in m or "coherence" in m or "missing" in m or "recall" in m)
             print(f"    [{i}] {fn['span_id']}")
             print(f"        prompt:  {fn['prompt']}")
             print(f"        called:  {fn['tool_name']}  |  available: [{tools_str}]")

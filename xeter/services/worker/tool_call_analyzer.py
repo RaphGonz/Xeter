@@ -183,40 +183,12 @@ class ToolCallAnalyzer(BaseSpanAnalyzer):
     # ------------------------------------------------------------------
 
     def _check_tool_not_available(self, span: SpanData) -> list[Flag]:
-        """Detect when the called tool was not offered to the agent.
-
-        Two sub-cases:
-          - WTOOL-03: available_tools is None or empty — tool called with no list
-          - tool_not_in_list: called tool name is absent from available_tools
-
-        # NOTE: P=0 in Phase 27 calibration is fixture-driven — see 28-CONTEXT.md D-04
-        # and deferred section. The 738-row fixture (as of Phase 27) has zero rows
-        # labelled anomaly_type='tool_not_available', so TP=0 at all times.
-        # Additionally, the fixture contains ~136 clean rows where tool_name is set
-        # but available_tools is None (because those spans were generated without a
-        # tool list), causing WTOOL-03 to produce ~160 FPs → P=0/R=0. This is a
-        # fixture issue (generators did not populate available_tools for clean spans
-        # that use tool calls), not a logic error in the check itself. Adding
-        # tool_not_available fixture rows is deferred per 28-CONTEXT.md deferred
-        # section.
-        """
+        """Detect when the called tool was not offered to the agent."""
         if span.tool_name is None:
             return []
 
-        # WTOOL-03: tool called but none available
-        if not span.available_tools:
-            self.log_score("no_available_tools", 1.0)
-            return [Flag(
-                flag_type="tool_not_available",
-                score=1.0,
-                detail={
-                    "metric": "no_available_tools",
-                    "actual_tool": span.tool_name,
-                },
-            )]
-
-        # Called tool absent from the offered list
-        if not any(t.get("name") == span.tool_name for t in span.available_tools):
+        # Called tool absent from the offered list (includes empty-list case)
+        if not any(t.get("name") == span.tool_name for t in (span.available_tools or [])):
             self.log_score("tool_not_in_list", 1.0)
             return [Flag(
                 flag_type="tool_not_available",
@@ -224,7 +196,7 @@ class ToolCallAnalyzer(BaseSpanAnalyzer):
                 detail={
                     "metric": "tool_not_in_list",
                     "actual_tool": span.tool_name,
-                    "available_tools": [t.get("name") for t in span.available_tools],
+                    "available_tools": [t.get("name") for t in (span.available_tools or [])],
                 },
             )]
 

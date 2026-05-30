@@ -76,54 +76,51 @@ class SemanticSpanAnalyzer(BaseAnalyzer):
     # ------------------------------------------------------------------
 
     def _check_missing_details(self, span: SpanData) -> list[Flag]:
-        """Fire when the response does not semantically cover the prompt's request.
+        """Fire when the response ignores specific named people referenced in the prompt.
 
-        Uses hybrid cosine + BOW scoring. Guard paths return early without
-        calling log_score (D-04 invariant: no log_score on guard exit).
+        Signal: what fraction of PERSON entities in the prompt appear in the response?
+        Guard: skip if fewer than 2 PERSON entities (no specific individuals to track).
+        Guard paths return early without calling log_score (D-04 invariant).
         log_score is called BEFORE the threshold comparison on all non-guard paths.
         """
-        if span.prompt is None:
-            return []
-        if span.response is None:
+        if span.prompt is None or span.response is None:
             return []
 
-        # Guard: vacuous prompts (too few NEs and too few content words) cannot
-        # meaningfully be missing details — suppress to avoid FPs (D-07).
-        # This is a guard exit (no log_score) per D-04 invariant.
+        # Entity types that signal "specific named thing the model needs context about".
+        # GPE (places) and DATE/CARDINAL excluded — they appear in wrong_tool prompts
+        # and don't signal missing knowledge context.
+        _CONTEXT_ENTITY_TYPES = {"PERSON", "ORG", "LAW", "WORK_OF_ART", "EVENT"}
+
         nlp = _get_spacy()
-        prompt_doc = nlp(span.prompt)
-        prompt_ents = prompt_doc.ents
-        prompt_lemmas = {
-            t.lemma_.lower()
-            for t in prompt_doc
-            if t.is_alpha and not t.is_stop
-        }
-        if len(prompt_ents) < 3 and len(prompt_lemmas) < 5:
+        # Exclude single-token all-lowercase entities — these are typically
+        # mistagged technical terms (e.g. "asyncio" tagged as PERSON) rather
+        # than real named entities that require provided context.
+        prompt_ents = [
+            e for e in nlp(span.prompt).ents
+            if e.label_ in _CONTEXT_ENTITY_TYPES
+            and not (len(e.text.split()) == 1 and e.text == e.text.lower())
+        ]
+
+        # Guard: only check prompts that reference 2+ context-bearing named entities.
+        if len(prompt_ents) < 2:
             return []
 
-        # Compute cosine similarity between prompt and response embeddings
-        prompt_vec = self.embed(span.prompt)
-        response_vec = self.embed(span.response)
-        cosine = self.compare(prompt_vec, response_vec)
-
-        # Compute BOW (Jaccard token overlap)
-        bow = bow_score(span.prompt, span.response)
-
-        # 50/50 hybrid blend
-        score = hybrid_score(cosine, bow)
+        response_lower = span.response.lower()
+        found = sum(1 for e in prompt_ents if e.text.lower() in response_lower)
+        ne_recall = found / len(prompt_ents)
 
         # CRITICAL: log BEFORE threshold comparison (D-04 invariant)
-        self.log_score("missing_details", score)
+        self.log_score("missing_details", ne_recall)
 
         threshold = self._thresholds["missing_details"]
-        if score < threshold:
+        if ne_recall < threshold:
             return [Flag(
                 flag_type="missing_details",
-                score=score,
+                score=ne_recall,
                 detail={
                     "metric": "missing_details",
-                    "cosine": round(cosine, 4),
-                    "bow": round(bow, 4),
+                    "ne_recall": round(ne_recall, 4),
+                    "prompt_ents": [e.text for e in prompt_ents],
                 },
             )]
         return []

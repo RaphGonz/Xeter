@@ -10,15 +10,15 @@ Ship Xeter publicly: apply a license, clean up dev artifacts, improve the diagno
 
 ### Licensing
 
-- [ ] **LICENSE-01**: A `LICENSE` file exists at repo root containing GPL-3.0 full text followed by a Commons Clause 1.0 addendum that explicitly prohibits selling Xeter as a service
-- [ ] **LICENSE-02**: SPDX license identifier header (`SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0`) added to all top-level Python source files across analyser, presenter, worker, diagnosticer, and SDK
+- [x] **LICENSE-01**: A `LICENSE` file exists at repo root containing GPL-3.0 full text followed by a Commons Clause 1.0 addendum that explicitly prohibits selling Xeter as a service
+- [x] **LICENSE-02**: SPDX license identifier header (`SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0`) added to all top-level Python source files across analyser, presenter, worker, diagnosticer, and SDK
 - [ ] **LICENSE-03**: README displays a license badge linked to the LICENSE file
 
 ### Assets & Housekeeping
 
-- [ ] **ASSETS-01**: `assets/` folder created at repo root; `logo+typo.png` moved from root to `assets/logo+typo.png`; `.gitignore` and any path references updated
-- [ ] **CLEAN-01**: `check_tier4.py` deleted from repo root (dead calibration dev script, no longer needed)
-- [ ] **CLEAN-02**: `VALIDATION-REPORT.md` deleted from repo root (stale dev artifact, not part of public release)
+- [x] **ASSETS-01**: `assets/` folder created at repo root; `logo+typo.png` moved from root to `assets/logo+typo.png`; `.gitignore` and any path references updated
+- [x] **CLEAN-01**: `check_tier4.py` deleted from repo root (dead calibration dev script, no longer needed)
+- [x] **CLEAN-02**: `VALIDATION-REPORT.md` deleted from repo root (stale dev artifact, not part of public release)
 
 ### Diagnosticer Prompt
 
@@ -60,11 +60,11 @@ Ship Xeter publicly: apply a license, clean up dev artifacts, improve the diagno
 
 | REQ-ID | Phase | Status | Notes |
 |--------|-------|--------|-------|
-| LICENSE-01 | 29 | Pending | |
-| LICENSE-02 | 29 | Pending | |
-| ASSETS-01 | 29 | Pending | |
-| CLEAN-01 | 29 | Pending | |
-| CLEAN-02 | 29 | Pending | |
+| LICENSE-01 | 29 | Complete | |
+| LICENSE-02 | 29 | Complete | |
+| ASSETS-01 | 29 | Complete | |
+| CLEAN-01 | 29 | Complete | |
+| CLEAN-02 | 29 | Complete | |
 | DIAG-01 | 30 | Pending | |
 | DIAG-02 | 30 | Pending | |
 | LICENSE-03 | 31 | Pending | Part of README |

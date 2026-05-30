@@ -111,9 +111,9 @@ See `.planning/milestones/v1.5-ROADMAP.md` for full phase details.
   5. `VALIDATION-REPORT.md` is absent from the repo root (deleted, not just moved)
 **Plans**: 3 plans
 Plans:
-- [ ] 29-01-PLAN.md � Write GPL-3.0 + Commons Clause LICENSE file at repo root
-- [ ] 29-02-PLAN.md � Create assets/, move logo, delete check_tier4.py and VALIDATION-REPORT.md
-- [ ] 29-03-PLAN.md � Add SPDX headers to all substantive Python source files
+- [x] 29-01-PLAN.md � Write GPL-3.0 + Commons Clause LICENSE file at repo root
+- [x] 29-02-PLAN.md � Create assets/, move logo, delete check_tier4.py and VALIDATION-REPORT.md
+- [x] 29-03-PLAN.md � Add SPDX headers to all substantive Python source files
 
 ### Phase 30: Diagnosticer Prompt
 
@@ -173,6 +173,6 @@ Plans:
 | 26. Best-Effort Proxy Checks | v1.5 | 3/3 | Complete | 2026-05-26 |
 | 27. Calibration Pass | v1.5 | 3/3 | Complete | 2026-05-30 |
 | 28. Precision Improvements | v1.5 | 4/4 | Complete | 2026-05-30 |
-| 29. License, Assets & Cleanup | v1.6 | 3/3 | Complete | 2026-05-30 |
+| 29. License, Assets & Cleanup | v1.6 | 3/3 | Complete    | 2026-05-30 |
 | 30. Diagnosticer Prompt | v1.6 | 0/TBD | Not started | - |
 | 31. README Overhaul | v1.6 | 0/TBD | Not started | - |

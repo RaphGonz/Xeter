@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: Release
-status: executing
-stopped_at: Phase 29 complete — LICENSE file, assets/, and SPDX headers shipped
-last_updated: "2026-05-30T18:00:00.000Z"
+status: ready_to_plan
+stopped_at: Phase 29 complete (3/3) — ready to discuss Phase 30
+last_updated: 2026-05-30T18:33:54.818Z
 last_activity: 2026-05-30 -- Phase 29 Plan 03 complete (SPDX headers in 90 files)
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 3
-  completed_plans: 3
-  percent: 33
+  completed_plans: 26
+  percent: 0
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-30)
 
 **Core value:** When a tool call fails, tell the developer whether it was the model, the architecture, or the prompt — and why.
-**Current focus:** Phase 29 — license-assets-cleanup
+**Current focus:** Phase 30 — diagnosticer prompt
 
 ## Current Position
 
-Phase: 29 (license-assets-cleanup) — COMPLETE
-Plan: 3 of 3 (all complete)
-Status: Phase 29 fully executed
-Last activity: 2026-05-30 -- Phase 29 Plan 03 complete (SPDX headers in 90 files)
+Phase: 30
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-05-30
 
 ```
 Progress: [###       ] 33%

@@ -91,7 +91,7 @@ See `.planning/milestones/v1.5-ROADMAP.md` for full phase details.
 ### v1.6 Release (Phases 29–31)
 
 - [x] **Phase 29: License, Assets & Cleanup** — Apply GPL-3.0 + Commons Clause, move assets, delete dev artifacts (completed 2026-05-30)
-- [ ] **Phase 30: Diagnosticer Prompt** — Extract and rewrite the diagnosticer prompt with system message + CoT scaffold
+- [x] **Phase 30: Diagnosticer Prompt** — Extract and rewrite the diagnosticer prompt with system message + CoT scaffold (completed 2026-05-31)
 - [ ] **Phase 31: README Overhaul** — Comprehensive public README covering all 24 checks, install, SDK, calibration, LLM config, optimization
 
 ## Phase Details
@@ -127,8 +127,8 @@ Plans:
   4. The chain-of-thought scaffold walks through each flag before reaching a verdict, with explicit decision criteria distinguishing `model`, `architecture`, `prompt`, and `unknown`
 **Plans**: 2 plans
 Plans:
-- [ ] 30-01-PLAN.md — Extract prompt f-string into prompt.md, read at import + format_map substitution, add test_context_assembly.py (DIAG-01)
-- [ ] 30-02-PLAN.md — Rewrite prompt.md with system message, CoT scaffold, four-verdict criteria, severity calibration + content tests (DIAG-02)
+- [x] 30-01-PLAN.md — Extract prompt f-string into prompt.md, read at import + format_map substitution, add test_context_assembly.py (DIAG-01)
+- [x] 30-02-PLAN.md — Rewrite prompt.md with system message, CoT scaffold, four-verdict criteria, severity calibration + content tests (DIAG-02)
 
 ### Phase 31: README Overhaul
 
@@ -177,5 +177,5 @@ Plans:
 | 27. Calibration Pass | v1.5 | 3/3 | Complete | 2026-05-30 |
 | 28. Precision Improvements | v1.5 | 4/4 | Complete | 2026-05-30 |
 | 29. License, Assets & Cleanup | v1.6 | 3/3 | Complete    | 2026-05-30 |
-| 30. Diagnosticer Prompt | v1.6 | 0/2 | Not started | - |
+| 30. Diagnosticer Prompt | v1.6 | 2/2 | Complete    | 2026-05-31 |
 | 31. README Overhaul | v1.6 | 0/TBD | Not started | - |

@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: Release
 status: ready_to_plan
-stopped_at: Phase 29 complete (3/3) — ready to discuss Phase 30
-last_updated: 2026-05-30T18:33:54.818Z
-last_activity: 2026-05-30 -- Phase 29 Plan 03 complete (SPDX headers in 90 files)
+stopped_at: Phase 30 complete (2/2) — ready to discuss Phase 31
+last_updated: 2026-05-31T00:00:00.000Z
+last_activity: 2026-05-31 -- Phase 30 Plan 02 complete (prompt.md rewritten with CoT scaffold + four-verdict criteria)
 progress:
   total_phases: 3
-  completed_phases: 0
-  total_plans: 3
-  completed_plans: 26
-  percent: 0
+  completed_phases: 2
+  total_plans: 5
+  completed_plans: 28
+  percent: 67
 ---
 
 # Project State
@@ -21,18 +21,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-30)
 
 **Core value:** When a tool call fails, tell the developer whether it was the model, the architecture, or the prompt — and why.
-**Current focus:** Phase 30 — diagnosticer prompt
+**Current focus:** Phase 31 — README Overhaul
 
 ## Current Position
 
-Phase: 30
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-05-30
+Phase: 30 complete → Phase 31 next
+Plan: All complete
+Status: Ready to plan Phase 31
+Last activity: 2026-05-31
 
 ```
-Progress: [###       ] 33%
-Phase 29 [x] | Phase 30 [ ] | Phase 31 [ ]
+Progress: [######    ] 67%
+Phase 29 [x] | Phase 30 [x] | Phase 31 [ ]
 ```
 
 ## Accumulated Context

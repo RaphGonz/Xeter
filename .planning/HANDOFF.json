@@ -10,25 +10,32 @@
     {"id": "28-01", "name": "Algorithm fixes for 14 flag types", "status": "done"},
     {"id": "28-02", "name": "More algorithm fixes", "status": "done"},
     {"id": "28-03", "name": "Re-calibrate 14 fixed types", "status": "done"},
-    {"id": "fixture-fix", "name": "Extend history_loss and conversation_reset fixtures", "status": "done", "commit": "uncommitted"}
+    {"id": "fixture-fix", "name": "Extend history_loss and conversation_reset fixtures", "status": "done"},
+    {"id": "tool_not_available", "name": "Fix + calibrate: P=1.0 R=1.0", "status": "done", "commit": "80fa5c1"},
+    {"id": "missing_details", "name": "Fix + calibrate: P=1.0 R=1.0", "status": "done", "commit": "80fa5c1"}
   ],
   "remaining_tasks": [
-    {"id": "precision-push", "name": "Get all 10 low-precision types to P>=0.80 via verbose diagnosis + fix loop", "status": "in_progress"},
+    {"id": "context_propagation_failure", "name": "P=0.250 R=0.250 — streak gate / fixture-short", "status": "not_started"},
+    {"id": "no_verification", "name": "P=0.250 R=1.000 — binary FPs remain after write/mutate gate", "status": "not_started"},
+    {"id": "termination_loop", "name": "P=0.333 R=1.000 — regression from P=0.625", "status": "not_started"},
+    {"id": "response_anomaly", "name": "P=0.417 R=0.455 — recall also dropped", "status": "not_started"},
+    {"id": "wrong_tool_choice", "name": "P=0.429 R=0.818 — binary FPs", "status": "not_started"},
+    {"id": "information_withholding", "name": "P=0.444 R=0.500 — hard gate over-filtering", "status": "not_started"},
+    {"id": "wrong_tool_args", "name": "P=0.455 R=1.000 — binary FPs", "status": "not_started"},
+    {"id": "step_repetition", "name": "P=0.500 R=1.000 — at max threshold still 50% FP", "status": "not_started"},
     {"id": "28-04", "name": "Full-suite calibration + mean precision >= 95% check", "status": "not_started"}
   ],
   "blockers": [],
   "human_actions_pending": [
-    {"action": "Run verbose diagnostics one by one and paste output", "context": "10 types below P=0.80, each needs --eval-only --verbose run to diagnose", "blocking": true}
+    {"action": "Run verbose diagnostics one by one and paste output", "context": "8 types remaining below P=0.80, each needs --eval-only --verbose run to diagnose", "blocking": true}
   ],
   "decisions": [
     {"decision": "history_loss P=0.500 accepted", "rationale": "Cross-contamination with conversation_reset is inherent"},
-    {"decision": "Keep Phase 28 algorithm changes, extend fixtures instead of reverting", "rationale": "Algorithm logic is better; fixtures were built for pre-Phase-28 loop ranges"},
-    {"decision": "tool_not_available included in precision push", "rationale": "User explicitly asked for it"}
+    {"decision": "tool_not_available: WTOOL-03 removed as separate branch; unified into tool_not_in_list via (available_tools or [])", "rationale": "Empty list still fires correctly; 160 null-available_tools FPs fixed via fixture patch"},
+    {"decision": "missing_details: replaced cosine+BOW with NE recall (PERSON/ORG/LAW/WORK_OF_ART/EVENT)", "rationale": "Old signal overlapped with wrong_tool; new signal directly measures entity coverage"},
+    {"decision": "missing_details: exclude single-token all-lowercase entities from guard", "rationale": "Filters spaCy mistagging of technical terms (asyncio as PERSON, etc.)"}
   ],
-  "uncommitted_files": [
-    "fixtures/labelled_spans.jsonl",
-    "fixtures/calibrated_thresholds.json"
-  ],
+  "uncommitted_files": [],
   "next_action": "Run: python -m xeter.scripts.calibrate --flag-type context_propagation_failure --eval-only --verbose",
-  "context_notes": "Collaborative diagnostic session: user runs one type at a time, pastes verbose output, we fix together. Plan file at .claude/plans/no-i-want-you-happy-candy.md has full list."
+  "context_notes": "Precision push for plan file .claude/plans/no-i-want-you-happy-candy.md. 2 of 10 types done (tool_not_available, missing_details). 8 remain. Approach: user runs verbose one type at a time, pastes output, we diagnose+fix together. CONSTRAINT: always use 'timeout 900 python -m xeter.scripts.calibrate --flag-type <X>' for calibration commands. Docker embedder must be running."
 }

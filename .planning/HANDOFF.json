@@ -1,0 +1,34 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-05-30",
+  "phase": "28",
+  "phase_name": "precision-improvements",
+  "phase_dir": ".planning/phases/28-precision-improvements",
+  "plan": 3,
+  "status": "paused",
+  "completed_tasks": [
+    {"id": "28-01", "name": "Algorithm fixes for 14 flag types", "status": "done"},
+    {"id": "28-02", "name": "More algorithm fixes", "status": "done"},
+    {"id": "28-03", "name": "Re-calibrate 14 fixed types", "status": "done"},
+    {"id": "fixture-fix", "name": "Extend history_loss and conversation_reset fixtures", "status": "done", "commit": "uncommitted"}
+  ],
+  "remaining_tasks": [
+    {"id": "precision-push", "name": "Get all 10 low-precision types to P>=0.80 via verbose diagnosis + fix loop", "status": "in_progress"},
+    {"id": "28-04", "name": "Full-suite calibration + mean precision >= 95% check", "status": "not_started"}
+  ],
+  "blockers": [],
+  "human_actions_pending": [
+    {"action": "Run verbose diagnostics one by one and paste output", "context": "10 types below P=0.80, each needs --eval-only --verbose run to diagnose", "blocking": true}
+  ],
+  "decisions": [
+    {"decision": "history_loss P=0.500 accepted", "rationale": "Cross-contamination with conversation_reset is inherent"},
+    {"decision": "Keep Phase 28 algorithm changes, extend fixtures instead of reverting", "rationale": "Algorithm logic is better; fixtures were built for pre-Phase-28 loop ranges"},
+    {"decision": "tool_not_available included in precision push", "rationale": "User explicitly asked for it"}
+  ],
+  "uncommitted_files": [
+    "fixtures/labelled_spans.jsonl",
+    "fixtures/calibrated_thresholds.json"
+  ],
+  "next_action": "Run: python -m xeter.scripts.calibrate --flag-type context_propagation_failure --eval-only --verbose",
+  "context_notes": "Collaborative diagnostic session: user runs one type at a time, pastes verbose output, we fix together. Plan file at .claude/plans/no-i-want-you-happy-candy.md has full list."
+}

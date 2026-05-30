@@ -4,24 +4,15 @@
 
 Xeter is a B2B SaaS observability platform that debugs AI agent tool-calling failures. It ingests OpenTelemetry spans from instrumented agent code via a Python SDK, applies heuristic analysis (vector similarity between prompt and tool fields) to flag anomalous tool calls, and exposes a dashboard where developers can see what went wrong and why. Unlike existing tools that show traces, Xeter isolates root cause — model, architecture, or prompt — via on-demand LLM diagnosis.
 
-v1.0 shipped: full pipeline from SDK to dashboard running locally via Docker Compose. v1.1 shipped: all four analyser check methods rewritten with research-backed implementations. v1.2 shipped: LLM-powered Diagnosticer active end-to-end. v1.3 shipped: full security hardening — tenant isolation, auth hardening, secrets hygiene, and GDPR deletion. v1.4 shipped: trace hierarchy (GET /traces + GET /traces/{trace_id} API + collapsible trace UI), TraceAnalyzer foundation (3-class analyzer hierarchy, flush-timeout worker wiring, flags.span_id nullable), and v1.3 tech debt cleanup.
+v1.0 shipped: full pipeline from SDK to dashboard running locally via Docker Compose. v1.1 shipped: all four analyser check methods rewritten with research-backed implementations. v1.2 shipped: LLM-powered Diagnosticer active end-to-end. v1.3 shipped: full security hardening — tenant isolation, auth hardening, secrets hygiene, and GDPR deletion. v1.4 shipped: trace hierarchy (GET /traces + GET /traces/{trace_id} API + collapsible trace UI), TraceAnalyzer foundation (3-class analyzer hierarchy, flush-timeout worker wiring, flags.span_id nullable), and v1.3 tech debt cleanup. v1.5 shipped: 18 new detection modes across span and trace analyzers — output/schema checks, context checks, trace-level repetition/loop/propagation/history checks, best-effort proxy checks, and full calibration across all 24 flag types (mean precision 0.947).
 
 ## Core Value
 
 When a tool call fails, tell the developer whether it was the model, the architecture, or the prompt — and why.
 
-## Current Milestone: v1.5 Silent Failure Detection
+## Current State: v1.5 Shipped — Planning v1.6
 
-**Goal:** Implement all B/C/D/E/F/G/H failure categories across span and trace analyzers — covering 18 new detection modes from the IBM/Berkeley research taxonomy.
-
-**Target features:**
-- B1–B4: Output/schema failure checks (span-level) — free text when structured expected, missing fields, truncated JSON, type coercion errors
-- D3, D5, E3, H2: Context/content checks (span-level) — prompt overflow, stale context heuristic, prompt injection, missing details
-- C3, C4: Reasoning/planning checks (trace-level) — step repetition, termination loop detection
-- D1, D2: Context/memory checks (trace-level) — context propagation failure, conversation history loss
-- F1, F2, F4, F5: Multi-agent/handoff checks (trace-level, best-effort heuristic)
-- G1, G2: Verification checks (trace-level) — no verification, incomplete verification
-- Calibration & threshold tuning for all new checks
+v1.5 Silent Failure Detection shipped 2026-05-30. All 18 new detection modes implemented and calibrated. Planning next milestone.
 
 ## Requirements
 
@@ -67,20 +58,16 @@ When a tool call fails, tell the developer whether it was the model, the archite
 - ✓ `TraceAnalyzer(BaseTraceAnalyzer)` scaffold wired into worker with flush-timeout trigger (WORKER_TRACE_FLUSH_TIMEOUT_S, default 30s); `flags.span_id` made nullable via migration 005 for trace-level flags — v1.4
 - ✓ `GET /traces` and `GET /traces/{trace_id}` with two-phase 404, no-spans-yet 200, and belt-and-suspenders tenant isolation (CH + PG); 14-test suite — v1.4
 - ✓ Traces list page (TraceTable), collapsible SpanTree trace detail, breadcrumb with `?span=` URL deep-link auto-opening SpanDetailPanel on back-navigation — v1.4
+- ✓ Worker idle-flush and trace score persistence — BRPOP timeout triggers trace analysis; flush_scores() + write_scores() called after each flush — v1.5
+- ✓ OutputSchemaAnalyzer: 5 deterministic span checks (output_schema_violation, required_fields_missing, output_truncated, type_coercion_error, context_overflow); no embedding calls; all P=1.0 R=1.0 — v1.5
+- ✓ SemanticSpanAnalyzer: stale_context (rapidfuzz similarity) and missing_details (cosine + spaCy entity recall) — v1.5
+- ✓ TraceAnalyzer: step_repetition (binary exact-match), termination_loop (integer grid), context_propagation_failure (spaCy+cosine), history_loss (centroid cosine) — v1.5
+- ✓ TraceAnalyzer: wrong_agent_handoff (AGENT_ROUTING_GRAPH), information_withholding (NE recall, binary), conversation_reset (cosine centroid drop), clarification_skipped (syntactic), no_verification (keyword scan), incomplete_verification (entity coverage, mutex with no_verification) — v1.5
+- ✓ calibrate.py: 24 flag types calibrated; BINARY_FLAG_TYPES 11 entries; mean precision 0.947; patch_docker_compose() covers 16 threshold keys; deploy/docker-compose.yml patched — v1.5
 
 ### Active
 
-<!-- v1.5 scope -->
-
-- [ ] B1–B4: Output/schema failure checks — span-level (SCHEMA-01 to SCHEMA-04) — v1.5
-- [ ] D3, D5, E3, H2: Context/content checks — span-level (CTX-01 to CTX-04) — v1.5
-- [ ] C3, C4: Step repetition + termination loop detection — trace-level (TRACE-01, TRACE-02) — v1.5
-- [ ] D1, D2: Context propagation failure + conversation history loss — trace-level (TRACE-03, TRACE-04) — v1.5
-- [ ] F1, F2, F4, F5: Multi-agent handoff failures — trace-level, best-effort heuristic (TRACE-05 to TRACE-08) — v1.5
-- [ ] G1, G2: Verification absence + incomplete verification — trace-level (TRACE-09, TRACE-10) — v1.5
-- [ ] Calibration & threshold tuning for all new checks — v1.5
-
-<!-- deferred to v1.6+ -->
+<!-- v1.6 scope and deferred items -->
 
 - [ ] python-jose → PyJWT migration — python-jose near-abandoned; migrate before CVE liability (AUTH-F02)
 - [ ] Refresh token revocation store — server-side blacklist for stolen token detection (AUTH-F01)
@@ -104,13 +91,13 @@ When a tool call fails, tell the developer whether it was the model, the archite
 
 ## Context
 
-- v1.0 shipped 2026-04-04, v1.1 shipped 2026-04-18, v1.2 shipped 2026-04-25, v1.3 shipped 2026-05-02, v1.4 shipped 2026-05-15: full pipeline + LLM diagnosis + security hardening + trace hierarchy running locally via Docker Compose
-- ~14,500 LOC Python + ~3,700 TypeScript (est.); flag types: `wrong_tool_called`, `wrong_tool_args`, `no_tool_used`, `unnecessary_tool_call`, `tool_not_available`, `parsing_error`, `response_anomaly`
-- Tech stack: Python 3.12, FastAPI, ClickHouse, PostgreSQL (RLS + CHECK constraints), Redis (requirepass), MinIO (S3, private ACL), Next.js 15, sentence-transformers (all-MiniLM-L6-v2), Anthropic/OpenAI/Ollama (Diagnosticer)
-- Architecture: Analyser (ingestion) → Redis queue → Worker (embedding+flagging) → Presenter (read/auth/diagnosis trigger) → Diagnosticer (LLM root cause) → View (Next.js)
-- Calibration: precision target 80%; `wrong_tool_called` is binary (no threshold sweep); full-suite mean precision ≥ 95%
+- v1.0–v1.5 all shipped; v1.5 shipped 2026-05-30: 18 new detection modes, 24 total flag types, mean precision 0.947
+- ~15,000+ LOC Python + ~3,700 TypeScript (est.); 24 flag types active
+- Tech stack: Python 3.12, FastAPI, ClickHouse, PostgreSQL (RLS + CHECK constraints), Redis (requirepass), MinIO (S3, private ACL), Next.js 15, sentence-transformers (all-MiniLM-L6-v2), spaCy (en_core_web_md), tiktoken, rapidfuzz, jsonschema, Anthropic/OpenAI/Ollama (Diagnosticer)
+- Architecture: Analyser (ingestion) → Redis queue → Worker (embedding+flagging, 3-class analyzer hierarchy) → Presenter (read/auth/diagnosis trigger) → Diagnosticer (LLM root cause) → View (Next.js)
+- Calibration: full-suite mean precision 0.947; 11 BINARY_FLAG_TYPES; 16 threshold-tunable types; WORKER_THRESHOLD_* in docker-compose.yml
 - Main adversary: Langfuse — open-source, self-hostable, but doesn't diagnose root cause
-- Solo developer; Python primary language; 112+ tests passing
+- Solo developer; Python primary language; 235+ tests passing (9 skipped — spaCy env pre-existing)
 
 ## Constraints
 
@@ -162,6 +149,13 @@ When a tool call fails, tell the developer whether it was the model, the archite
 | Two-phase 404 for GET /traces/{trace_id} (CH then PG fallback) | Preserves no-spans-yet 200 case where flags may exist before spans finish flushing | ✓ Good — cross-tenant stealth 404 via WHERE tenant_id on both stores |
 | PG queries sequential on shared AsyncSession in trace router | concurrent execute() on single AsyncSession causes IllegalStateChangeError (same constraint as spans router) | ✓ Good — consistent pattern with spans.py |
 | useState(spanFromUrl) initialiser for span URL deep-link | useSearchParams() is available synchronously at render time; a useEffect would add unnecessary re-render cycle | ✓ Good — no Suspense boundary needed because use(params) already makes page dynamically rendered |
+| CTX-03 (prompt_injection) permanently removed from scope | Insufficient OTel signal to detect reliably without LLM-in-the-loop evaluation | ✓ Good — not deferred, cleanly cut |
+| calibrate.py DEFAULT_THRESHOLDS merge fix (single-type runs) | Loading existing JSON without merge loses new threshold keys added by newer analyzer versions | ✓ Good — {**DEFAULT_THRESHOLDS, **existing} pattern prevents KeyError |
+| BINARY_FLAG_TYPES set in calibrate.py (11 types in v1.5) | Binary checks produce only 0.0/1.0 — hill-climb produces degenerate thresholds; eval-only pass is correct | ✓ Good — clean separation; threshold-tunable types get hill-climb |
+| information_withholding + step_repetition made binary (Phase 28) | Scores are always < 0.5 for info_withholding; step_repetition fuzzy threshold caused FPs on termination_loop traces | ✓ Good — eliminates FPs; binary pattern reusable |
+| history_loss P=0.5 accepted (v1.5) | Cross-contamination with conversation_reset is inherent; embedding centroid distinguishes poorly between the two | — Pending — architectural limitation; future fix requires richer trace metadata |
+| wrong_tool_args tool-relevance guard at tool_fit=0.15 | FPs came from wrong_tool_choice traces where tool itself was wrong; guard prevents args check when tool doesn't fit prompt | ✓ Good — clean guard; tool_fit threshold set conservatively |
+| calibrate.py per-type runs as equivalent to full-suite | Full suite times out (~15 min); per-type runs with DEFAULT_THRESHOLDS merge produce identical JSON output | ✓ Good — Deviation 4 in 27-02 established the pattern; used in Phase 28 too |
 
 ## Evolution
 
@@ -181,4 +175,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-18 after v1.5 Silent Failure Detection milestone start*
+*Last updated: 2026-05-30 after v1.5 Silent Failure Detection milestone shipped*

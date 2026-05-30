@@ -118,3 +118,29 @@
 
 ---
 
+
+## v1.5 Silent Failure Detection (Shipped: 2026-05-30)
+
+**Phases completed:** 7 phases (Phases 22–28), 23 plans
+**Timeline:** 2026-05-18 → 2026-05-30 (12 days)
+**Code:** 235+ tests passing; ~15,000+ LOC Python; 24 flag types active
+
+**Key accomplishments:**
+- Worker idle-flush gap closed (Phase 22) — BRPOP timeout triggers trace analysis; trace score persistence confirmed
+- calibrate.py multi-analyzer routing and recall floor (R ≥ 0.10) enforcement — foundation for all new check types (Phase 23)
+- OutputSchemaAnalyzer: 5 deterministic span checks (output_schema_violation, required_fields_missing, output_truncated, type_coercion_error, context_overflow) — all P=1.0 R=1.0, zero embedding calls (Phase 24)
+- SemanticSpanAnalyzer + TraceAnalyzer: 6 embedding/heuristic checks (stale_context, missing_details, step_repetition, termination_loop, context_propagation_failure, history_loss) (Phase 25)
+- 6 best-effort proxy trace checks (wrong_agent_handoff, information_withholding, conversation_reset, clarification_skipped, no_verification, incomplete_verification) — no_verification + incomplete_verification mutually exclusive (Phase 26)
+- Full calibration: all 24 flag types calibrated; 11 BINARY_FLAG_TYPES; mean precision 0.947; deploy/docker-compose.yml patched with all WORKER_THRESHOLD_* values (Phases 27–28)
+- Precision improvements: 14 flag types fixed across 4 plans; key rewrites: information_withholding → binary, step_repetition → binary exact-match, wrong_tool_args → tool-relevance guard (Phase 28)
+
+**Known scope changes (accepted):**
+- CTX-03 (prompt_injection) permanently removed — insufficient OTel signal without LLM-in-the-loop
+- history_loss P=0.5 accepted — architectural cross-contamination with conversation_reset; deferred to v1.6+
+
+**Archive:**
+- Roadmap: `.planning/milestones/v1.5-ROADMAP.md`
+- Requirements: `.planning/milestones/v1.5-REQUIREMENTS.md`
+
+---
+

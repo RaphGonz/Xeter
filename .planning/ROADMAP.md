@@ -7,7 +7,7 @@
 - ✅ **v1.2 Diagnosticer** — Phases 11–13 (shipped 2026-04-25)
 - ✅ **v1.3 Security Hardening** — Phases 14–17 (shipped 2026-05-02)
 - ✅ **v1.4 Trace Hierarchy + TraceAnalyzer Foundation** — Phases 18–21 (shipped 2026-05-15)
-- 🔄 **v1.5 Silent Failure Detection** — Phases 22–28 (in progress)
+- ✅ **v1.5 Silent Failure Detection** — Phases 22–28 (shipped 2026-05-30)
 
 ## Phases
 
@@ -72,17 +72,24 @@ See `.planning/milestones/v1.4-ROADMAP.md` for full phase details.
 
 </details>
 
-### v1.5 Silent Failure Detection (Phases 22–28)
+<details>
+<summary>✅ v1.5 Silent Failure Detection (Phases 22–28) — SHIPPED 2026-05-30</summary>
 
-- [x] **Phase 22: Bug Fixes** — Fix idle-flush and trace score persistence (gates all trace-level checks)
-- [x] **Phase 23: Infrastructure** — calibrate.py multi-analyzer, new deps, SpanData schema fields (completed 2026-05-20)
-- [x] **Phase 24: Structural Span Checks** — OutputSchemaAnalyzer with heuristic/deterministic checks; zero embedding calls (completed 2026-05-21)
-- [x] **Phase 25: Semantic Span + Structural Trace Checks** — Embedding-based span checks and first wave of trace checks (completed 2026-05-24)
-- [x] **Phase 26: Best-Effort Proxy Checks** — Remaining trace checks; best-effort heuristics; precision floors verified (completed 2026-05-26)
-- [ ] **Phase 27: Calibration Pass** — All 18 new flag types calibrated; recall floor and full-suite precision verified
-- [ ] **Phase 28: Precision Improvements** — Fix algorithm precision for 14 flag types; re-calibrate; enable Phase 27 plan 27-03
+- [x] Phase 22: Bug Fixes (2/2 plans) — completed 2026-05-19
+- [x] Phase 23: Infrastructure (3/3 plans) — completed 2026-05-20
+- [x] Phase 24: Structural Span Checks (3/3 plans) — completed 2026-05-21
+- [x] Phase 25: Semantic Span + Structural Trace Checks (5/5 plans) — completed 2026-05-24
+- [x] Phase 26: Best-Effort Proxy Checks (3/3 plans) — completed 2026-05-26
+- [x] Phase 27: Calibration Pass (3/3 plans) — completed 2026-05-30
+- [x] Phase 28: Precision Improvements (4/4 plans) — completed 2026-05-30
+
+See `.planning/milestones/v1.5-ROADMAP.md` for full phase details.
+
+</details>
 
 ## Phase Details
+
+*(All v1.5 phase details archived to `.planning/milestones/v1.5-ROADMAP.md`)*
 
 ### Phase 22: Bug Fixes
 
@@ -291,5 +298,5 @@ Plans:
 | 24. Structural Span Checks | v1.5 | 3/3 | Complete | 2026-05-21 |
 | 25. Semantic Span + Structural Trace Checks | v1.5 | 5/5 | Complete | 2026-05-24 |
 | 26. Best-Effort Proxy Checks | v1.5 | 3/3 | Complete   | 2026-05-26 |
-| 27. Calibration Pass | v1.5 | 2/3 | In progress | - |
-| 28. Precision Improvements | v1.5 | 2/4 | In progress | - |
+| 27. Calibration Pass | v1.5 | 3/3 | Complete | 2026-05-30 |
+| 28. Precision Improvements | v1.5 | 4/4 | Complete | 2026-05-30 |

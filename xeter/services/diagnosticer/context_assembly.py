@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from pathlib import Path
 from typing import Any
 
 import aioboto3
@@ -27,6 +28,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from xeter.shared.db.postgres import tenant_session
 from xeter.shared.models import Flag
+
+# ---------------------------------------------------------------------------
+# Prompt template (read once at import time)
+# ---------------------------------------------------------------------------
+
+_PROMPT_TEMPLATE: str = (Path(__file__).parent / "prompt.md").read_text(encoding="utf-8")
 
 # ---------------------------------------------------------------------------
 # ClickHouse span query
@@ -139,31 +146,20 @@ def _format_context(
         )
     flags_section = "\n".join(flag_lines) if flag_lines else "  (no flags)"
 
-    return f"""You are diagnosing a failing AI agent tool call. Analyze the data below and identify the root cause.
-
-## Span Information
-- span_id: {span.get('span_id', 'unknown')}
-- trace_id: {span.get('trace_id', 'unknown')}
-- agent_name: {span.get('agent_name', 'unknown')}
-- agent_model: {span.get('agent_model', 'unknown')}
-- tool_name: {span.get('tool_name', 'unknown')}
-- tool_description: {span.get('tool_description', 'unknown')}
-- tool_arguments: {span.get('tool_arguments', 'unknown')}
-- tool_output: {span.get('tool_output', 'unknown')}
-- time_begin: {span.get('time_begin', 'unknown')}
-
-## Prompt Text (full content)
-{prompt_text}
-
-## Response Text (full content)
-{response_text}
-
-## Anomaly Flags (all flags for this span, with scores)
-{flags_section}
-
-## Task
-Based on the above, call the `record_diagnosis` tool with your root-cause analysis.
-"""
+    return _PROMPT_TEMPLATE.format_map({
+        "span_id": span.get("span_id", "unknown"),
+        "trace_id": span.get("trace_id", "unknown"),
+        "agent_name": span.get("agent_name", "unknown"),
+        "agent_model": span.get("agent_model", "unknown"),
+        "tool_name": span.get("tool_name", "unknown"),
+        "tool_description": span.get("tool_description", "unknown"),
+        "tool_arguments": span.get("tool_arguments", "unknown"),
+        "tool_output": span.get("tool_output", "unknown"),
+        "time_begin": span.get("time_begin", "unknown"),
+        "prompt_text": prompt_text,
+        "response_text": response_text,
+        "flags_section": flags_section,
+    })
 
 
 # ---------------------------------------------------------------------------

@@ -109,7 +109,11 @@ See `.planning/milestones/v1.5-ROADMAP.md` for full phase details.
   3. `assets/logo+typo.png` exists; `logo+typo.png` no longer exists at repo root; `.gitignore` and any path references reflect the new location
   4. `check_tier4.py` is absent from the repo root (deleted, not just moved)
   5. `VALIDATION-REPORT.md` is absent from the repo root (deleted, not just moved)
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 29-01-PLAN.md — Write GPL-3.0 + Commons Clause LICENSE file at repo root
+- [ ] 29-02-PLAN.md — Create assets/, move logo, delete check_tier4.py and VALIDATION-REPORT.md
+- [ ] 29-03-PLAN.md — Add SPDX headers to all substantive Python source files
 
 ### Phase 30: Diagnosticer Prompt
 

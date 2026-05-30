@@ -10,9 +10,16 @@ v1.0 shipped: full pipeline from SDK to dashboard running locally via Docker Com
 
 When a tool call fails, tell the developer whether it was the model, the architecture, or the prompt — and why.
 
-## Current State: v1.5 Shipped — Planning v1.6
+## Current Milestone: v1.6 Release
 
-v1.5 Silent Failure Detection shipped 2026-05-30. All 18 new detection modes implemented and calibrated. Planning next milestone.
+**Goal:** Ship Xeter publicly — license, clean up dev artifacts, improve the diagnosticer prompt, and write exhaustive documentation.
+
+**Target features:**
+- LICENSE file (GPL-3.0 + Commons Clause) with SPDX headers in source files
+- Assets folder — move logo+typo.png → assets/, wire banner into README
+- Root cleanup — delete check_tier4.py, VALIDATION-REPORT.md (dead dev artifacts)
+- Diagnosticer prompt overhaul — extract from context_assembly.py into a dedicated prompt file; rewrite with system message, chain-of-thought scaffold, clear verdict decision criteria
+- Comprehensive README — banner, install, Docker Compose deploy, SDK instrumentation examples, all 24 flag types table, calibration workflow, pluggable LLM config, performance optimization hints, license section
 
 ## Requirements
 

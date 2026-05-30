@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.5
-milestone_name: Silent Failure Detection
-status: complete
-stopped_at: milestone complete (2026-05-30)
+milestone: v1.6
+milestone_name: Release
+status: planning
+stopped_at: ~
 last_updated: "2026-05-30"
-last_activity: 2026-05-30 -- v1.5 milestone shipped
+last_activity: 2026-05-30 -- Roadmap created; 3 phases defined (29-31)
 progress:
-  total_phases: 7
-  completed_phases: 7
-  total_plans: 23
-  completed_plans: 23
-  percent: 100
+  total_phases: 3
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -21,47 +21,37 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-30)
 
 **Core value:** When a tool call fails, tell the developer whether it was the model, the architecture, or the prompt — and why.
-**Current focus:** v1.5 complete — planning v1.6
+**Current focus:** v1.6 Release — license, cleanup, diagnosticer prompt, comprehensive README
 
 ## Current Position
 
-Phase: 28 — COMPLETE
-Status: v1.5 milestone shipped 2026-05-30
-Last activity: 2026-05-30 -- v1.5 milestone complete
+Phase: 29 (License, Assets & Cleanup) — not started
+Plan: —
+Status: Roadmap defined; ready to plan Phase 29
+Last activity: 2026-05-30 — Roadmap created (3 phases, 15 requirements mapped)
 
 ```
-Progress: [██████████] 100%
+Progress: [          ] 0%
+Phase 29 [ ] | Phase 30 [ ] | Phase 31 [ ]
 ```
-
-## Performance Metrics
-
-| Metric | Value |
-|--------|-------|
-| Phases complete | 7 / 7 |
-| Plans complete | 23 / 23 |
-| Tests passing | 235 passed, 9 skipped (pre-existing spaCy env) |
-| Flag types active | 24 (7 pre-v1.5 + 17 new v1.5) |
-| Mean precision | 0.947 (history_loss P=0.5 accepted exception) |
-| BINARY_FLAG_TYPES | 11 |
 
 ## Accumulated Context
 
 All architectural decisions logged in PROJECT.md Key Decisions table.
 
-### Key Decisions (v1.5)
+### Key Decisions (v1.6)
 
-- CTX-03 (prompt_injection) permanently cut — insufficient OTel signal
-- BINARY_FLAG_TYPES: 11 types; information_withholding + step_repetition made binary in Phase 28
-- history_loss P=0.5 accepted — cross-contamination with conversation_reset is architectural
-- calibrate.py per-type runs = full-suite (merge logic; full suite times out at ~15 min)
-- wrong_tool_args tool-relevance guard at tool_fit=0.15
+- GPL-3.0 + Commons Clause licensing: prevents anyone reselling Xeter-as-a-service
+- Diagnosticer prompt extracted to dedicated file + rewritten with system message and CoT scaffold
+- Root dev artifacts (check_tier4.py, VALIDATION-REPORT.md) deleted — not part of public release
+- Phase 29 before Phase 30: assets/ path must exist before prompt.md references are wired; Phase 30 before Phase 31: README references both assets/ banner and prompt.md structure
 
 ### Open Blockers
 
-None. v1.5 complete.
+None.
 
 ## Session Continuity
 
 Last session: 2026-05-30
-Stopped at: v1.5 milestone shipped
-Next: /gsd:new-milestone for v1.6
+Stopped at: Roadmap created — 3 phases (29-31), 15/15 requirements mapped
+Next: /gsd:plan-phase 29

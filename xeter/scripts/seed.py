@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """
 Seed script: creates a fixed dev tenant, user, and API key for local development.
 Run: python -m xeter.scripts.seed  (or: make seed)
@@ -20,8 +21,9 @@ import asyncio
 import os
 import sys
 
+from pathlib import Path
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parents[2] / "deploy" / ".env")
 
 import bcrypt
 from sqlalchemy import select

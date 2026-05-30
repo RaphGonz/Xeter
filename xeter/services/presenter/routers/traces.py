@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """
 Presenter traces router — trace list and trace detail endpoints.
 
@@ -170,10 +171,8 @@ async def list_traces(
     params = {"tenant_id": tenant_id, "limit": limit, "offset": offset}
     count_params = {"tenant_id": tenant_id}
 
-    ch_list_result, ch_count_result = await asyncio.gather(
-        asyncio.to_thread(ch_client.query, list_query, params),
-        asyncio.to_thread(ch_client.query, count_query, count_params),
-    )
+    ch_list_result = await asyncio.to_thread(ch_client.query, list_query, params)
+    ch_count_result = await asyncio.to_thread(ch_client.query, count_query, count_params)
 
     rows = ch_list_result.result_rows
     total = ch_count_result.result_rows[0][0] if ch_count_result.result_rows else 0

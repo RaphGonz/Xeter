@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """Integration tests for the Embedding Worker loop.
 
 All I/O (fetch_span, write_scores, write_flags) is fully mocked — no real Redis,

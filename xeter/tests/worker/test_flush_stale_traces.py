@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """Tests for _flush_stale_traces() helper. All I/O is fully mocked. time.monotonic is patched to control staleness without real time.sleep calls."""
 from __future__ import annotations
 

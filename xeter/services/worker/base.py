@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """Shared foundation for the Embedding Worker.
 
 Three-class analyzer hierarchy:

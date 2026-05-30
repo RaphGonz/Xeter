@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """E2E smoke test for Xeter.
 
 Exercises the full pipeline once — register, login, ingest a span,

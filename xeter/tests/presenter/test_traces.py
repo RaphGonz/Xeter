@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """
 Unit tests for GET /traces and GET /traces/{trace_id} endpoints.
 

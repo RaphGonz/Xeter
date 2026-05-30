@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """
 Pydantic v2 schema for the POST /v1/spans request body.
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """xeter-sdk decorator — @xeter.trace captures all span fields and fires them to
 the Analyser in a background daemon thread (fire-and-forget, zero added latency).
 

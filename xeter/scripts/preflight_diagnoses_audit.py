@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """Pre-flight audit for migration 004 CHECK constraints.
 
 Run before: alembic upgrade head (when upgrading to revision 004).

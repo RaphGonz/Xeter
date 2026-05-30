@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """Add diagnoses table with RLS and tenant isolation.
 
 Adds a new `diagnoses` table for LLM root-cause diagnoses (Phase 11 v1.2).

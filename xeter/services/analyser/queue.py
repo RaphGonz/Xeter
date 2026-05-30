@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """Redis queue operations for the Analyser.
 
 Span IDs are pushed to the analysis queue after acceptance.

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """Tests for SpanData new fields: expected_output_schema and parent_span_id.
 
 Covers:

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """Unit tests for trace buffer accumulation and flush-timeout behavior.
 
 Tests exercise:

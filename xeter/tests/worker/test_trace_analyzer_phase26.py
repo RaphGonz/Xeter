@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """Tests for TraceAnalyzer — Phase 26 proxy checks (RED scaffold).
 
 Covers all 6 new check methods:

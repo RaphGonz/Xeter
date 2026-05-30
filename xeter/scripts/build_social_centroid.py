@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """Build the social-prompt centroid vector for unnecessary_tool_call detection.
 
 Reads fixtures/social_prompts.txt (one prompt per line, # comments ignored),

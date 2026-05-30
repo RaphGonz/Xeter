@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """TraceAnalyzer for the Embedding Worker.
 
 Concrete implementation of BaseTraceAnalyzer providing 11 trace-level detection

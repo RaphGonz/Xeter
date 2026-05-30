@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """Add span_scores table for embedding similarity calibration data
 
 Revision ID: 002

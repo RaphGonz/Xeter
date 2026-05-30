@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """Tests for TraceAnalyzer — 5 trace-level checks. Plan: 25-02
 
 Covers all 5 check methods in the TraceAnalyzer implementation:

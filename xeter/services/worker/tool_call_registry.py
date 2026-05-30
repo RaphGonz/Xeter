@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """Tool Call Format Registry — pure data, no logic dependencies.
 
 Each model entry maps a model name to its tool-call format, transport type,

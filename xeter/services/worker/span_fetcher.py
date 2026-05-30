@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """Span fetcher for the Embedding Worker.
 
 Fetches a span row from ClickHouse by span_id (full table scan — span_id is not

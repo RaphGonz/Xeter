@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """DB Foundation — span_scores RLS, FORCE RLS on all tables, diagnoses CHECK constraints.
 
 Changes (Phase 14 v1.3 Security Hardening):

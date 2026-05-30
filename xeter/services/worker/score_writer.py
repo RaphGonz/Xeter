@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """Score writer for the Embedding Worker.
 
 Inserts one row per (analyzer_name, metric_name, score) tuple into the

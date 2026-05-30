@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """Tests for FLAG_TYPE_TO_ANALYZER_CLASS registry and recall floor guard.
 
 Plan: 23-03 (Task 1 — Tests 1-6 + Task 2 — Tests 7-10)

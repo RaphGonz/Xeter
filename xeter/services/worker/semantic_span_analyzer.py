@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """SemanticSpanAnalyzer — embedding-based span checks.
 
 Implements _check_missing_details (CTX-04): fires when response does not

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """Flags table schema extension for trace-level flags.
 
 Changes (Phase 19 v1.4 TraceAnalyzer Scaffold):

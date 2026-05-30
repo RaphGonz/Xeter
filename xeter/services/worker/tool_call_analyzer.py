@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """ToolCallAnalyzer — concrete analyzer for tool-call anomaly detection.
 
 Detects seven categories of tool-call anomaly by computing cosine similarities

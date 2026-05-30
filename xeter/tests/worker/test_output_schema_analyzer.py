@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """Unit tests for OutputSchemaAnalyzer — TDD RED phase.
 
 All checks are deterministic; mock embedder is passed through constructor but

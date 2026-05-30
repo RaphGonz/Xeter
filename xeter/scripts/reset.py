@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """
 Reset script: drops all DB schemas and recreates them from scratch, then re-runs seed.
 Run: python -m xeter.scripts.reset  (or: make reset)
@@ -24,8 +25,9 @@ import subprocess
 import sys
 import time
 
+from pathlib import Path
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parents[2] / "deploy" / ".env")
 
 from xeter.shared.db.clickhouse import get_clickhouse_client, create_spans_table
 from xeter.scripts.seed import main as seed_main

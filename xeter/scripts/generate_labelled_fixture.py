@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """Generate synthetic labelled spans for calibration.
 
 Produces fixtures/labelled_spans.jsonl with 210 original spans plus new type spans:
@@ -313,7 +314,7 @@ def make_wrong_tool_span(i: int) -> dict:
         "response": "I searched the database but found no relevant results.",
         "available_tools": available,
         "label": "flagged",
-        "anomaly_type": "wrong_tool",
+        "anomaly_type": "wrong_tool_choice",
     }
 
 
@@ -383,7 +384,7 @@ def make_no_tool_span(i: int) -> dict:
     }
 
 
-def make_excessive_tool_span(i: int) -> dict:
+def make_unnecessary_tool_call_span(i: int) -> dict:
     """Simple conversational prompt (greeting/chitchat) but a database tool was called."""
     prompts_and_tools = [
         ("Hello, how are you doing today?", "execute_sql", "Execute a SQL query against a database",
@@ -414,7 +415,7 @@ def make_excessive_tool_span(i: int) -> dict:
         "response": "Sure, I've processed your message.",
         "available_tools": available,
         "label": "flagged",
-        "anomaly_type": "excessive_tool",
+        "anomaly_type": "unnecessary_tool_call",
     }
 
 
@@ -610,9 +611,9 @@ def generate_flagged_spans() -> list[dict]:
         agent = AGENT_NAMES[i % len(AGENT_NAMES)]
         spans.append(make_span(span_id, agent, overrides, is_clean=False))
 
-    # excessive_tool: 10 spans
+    # unnecessary_tool_call: 10 spans
     for i in range(10):
-        overrides = make_excessive_tool_span(i)
+        overrides = make_unnecessary_tool_call_span(i)
         overrides["raw_response"] = make_tool_call_raw_response(
             overrides["tool_name"],
             json.loads(overrides["tool_arguments"]),

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """Calibration harness for ToolCallAnalyzer — per-flag-type hill climbing.
 
 For each flag type, starts at threshold=0.1 and raises by STEP until precision

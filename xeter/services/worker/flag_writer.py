@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """Flag writer for the Embedding Worker.
 
 Inserts one row per Flag into the flags table. The flags table HAS Row-Level

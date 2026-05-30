@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """
 CI guard: bcrypt cost factor must be >= 12 for production hashes.
 

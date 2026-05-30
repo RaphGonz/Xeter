@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """GDPR Art. 17 tenant data deletion script.
 
 Dry-run by default — prints a summary of all data that would be deleted across

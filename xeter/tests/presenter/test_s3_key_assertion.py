@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """
 Unit tests for _fetch_s3_payload S3 tenant-prefix assertion (S3-01).
 

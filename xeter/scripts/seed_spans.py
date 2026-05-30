@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """Seed 4 test spans into ClickHouse + flags/scores into PostgreSQL for dashboard testing.
 
 Spans are drawn from fixtures/labelled_spans.jsonl — one of each interesting type:
@@ -15,8 +16,9 @@ import json
 import uuid
 from datetime import datetime, timedelta, timezone
 
+from pathlib import Path
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parents[2] / "deploy" / ".env")
 
 from sqlalchemy import text
 from xeter.shared.db.postgres import get_async_session_factory

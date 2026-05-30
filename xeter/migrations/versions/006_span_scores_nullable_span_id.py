@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """span_scores: make span_id nullable for trace-level scores.
 
 Changes (Phase 22 bug-fixes):

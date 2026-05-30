@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """Add diverse wrong_tool_args spans to the fixture."""
 import json
 import uuid

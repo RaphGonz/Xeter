@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """OutputSchemaAnalyzer — deterministic span-level schema and context-overflow checks.
 
 Implements 5 checks (output_schema_violation, required_fields_missing, output_truncated,

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """Unit tests for ToolCallAnalyzer — TDD RED phase.
 
 Tests are written against the contract before the implementation exists.

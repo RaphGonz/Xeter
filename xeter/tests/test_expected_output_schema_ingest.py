@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """
 Tests for expected_output_schema wiring through the ingest pipeline.
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0
 """Unit tests for score_writer.write_scores.
 
 All PostgreSQL I/O is mocked — no real database connections.

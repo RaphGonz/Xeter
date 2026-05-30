@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: Release
-status: planning
-stopped_at: ~
-last_updated: "2026-05-30"
-last_activity: 2026-05-30 -- Roadmap created; 3 phases defined (29-31)
+status: executing
+stopped_at: Phase 29 complete — LICENSE file, assets/, and SPDX headers shipped
+last_updated: "2026-05-30T18:00:00.000Z"
+last_activity: 2026-05-30 -- Phase 29 Plan 03 complete (SPDX headers in 90 files)
 progress:
   total_phases: 3
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 3
+  completed_plans: 3
+  percent: 33
 ---
 
 # Project State
@@ -21,18 +21,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-30)
 
 **Core value:** When a tool call fails, tell the developer whether it was the model, the architecture, or the prompt — and why.
-**Current focus:** v1.6 Release — license, cleanup, diagnosticer prompt, comprehensive README
+**Current focus:** Phase 29 — license-assets-cleanup
 
 ## Current Position
 
-Phase: 29 (License, Assets & Cleanup) — not started
-Plan: —
-Status: Roadmap defined; ready to plan Phase 29
-Last activity: 2026-05-30 — Roadmap created (3 phases, 15 requirements mapped)
+Phase: 29 (license-assets-cleanup) — COMPLETE
+Plan: 3 of 3 (all complete)
+Status: Phase 29 fully executed
+Last activity: 2026-05-30 -- Phase 29 Plan 03 complete (SPDX headers in 90 files)
 
 ```
-Progress: [          ] 0%
-Phase 29 [ ] | Phase 30 [ ] | Phase 31 [ ]
+Progress: [###       ] 33%
+Phase 29 [x] | Phase 30 [ ] | Phase 31 [ ]
 ```
 
 ## Accumulated Context
@@ -45,6 +45,7 @@ All architectural decisions logged in PROJECT.md Key Decisions table.
 - Diagnosticer prompt extracted to dedicated file + rewritten with system message and CoT scaffold
 - Root dev artifacts (check_tier4.py, VALIDATION-REPORT.md) deleted — not part of public release
 - Phase 29 before Phase 30: assets/ path must exist before prompt.md references are wired; Phase 30 before Phase 31: README references both assets/ banner and prompt.md structure
+- SPDX header inserted as line 2 for shebang files, line 1 for all others — shebang must remain first per POSIX
 
 ### Open Blockers
 
@@ -53,5 +54,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-05-30
-Stopped at: Roadmap created — 3 phases (29-31), 15/15 requirements mapped
-Next: /gsd:plan-phase 29
+Stopped at: Phase 29 complete — LICENSE file, assets/, and SPDX headers shipped
+Next: /gsd:execute-phase 30

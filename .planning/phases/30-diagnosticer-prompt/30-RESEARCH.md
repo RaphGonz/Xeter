@@ -377,7 +377,7 @@ Then call `record_diagnosis` with your conclusion.
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Curly brace escaping vs. sentinel replacement**
    - What we know: `format_map` requires `{{`/`}}` escaping for literal braces; sentinel replacement avoids this

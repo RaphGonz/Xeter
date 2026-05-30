@@ -125,7 +125,10 @@ Plans:
   2. `context_assembly.py:_format_context()` no longer contains an inline prompt string — it reads `prompt.md` at import time and performs span-data substitution from that template
   3. The system message section clearly frames the diagnosticer's role (root-cause analysis, not general Q&A)
   4. The chain-of-thought scaffold walks through each flag before reaching a verdict, with explicit decision criteria distinguishing `model`, `architecture`, `prompt`, and `unknown`
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 30-01-PLAN.md — Extract prompt f-string into prompt.md, read at import + format_map substitution, add test_context_assembly.py (DIAG-01)
+- [ ] 30-02-PLAN.md — Rewrite prompt.md with system message, CoT scaffold, four-verdict criteria, severity calibration + content tests (DIAG-02)
 
 ### Phase 31: README Overhaul
 
@@ -174,5 +177,5 @@ Plans:
 | 27. Calibration Pass | v1.5 | 3/3 | Complete | 2026-05-30 |
 | 28. Precision Improvements | v1.5 | 4/4 | Complete | 2026-05-30 |
 | 29. License, Assets & Cleanup | v1.6 | 3/3 | Complete    | 2026-05-30 |
-| 30. Diagnosticer Prompt | v1.6 | 0/TBD | Not started | - |
+| 30. Diagnosticer Prompt | v1.6 | 0/2 | Not started | - |
 | 31. README Overhaul | v1.6 | 0/TBD | Not started | - |

@@ -365,6 +365,23 @@ class ToolCallAnalyzer(BaseSpanAnalyzer):
 
         prompt_stripped = _strip_punctuation(span.prompt)
         prompt_vec = self.embed(span.prompt)
+
+        # Guard: only evaluate args when the called tool is a plausible match for the prompt.
+        # If the tool itself is wrong (wrong_tool_choice territory), skip — the args being
+        # unrelated is a consequence of the wrong tool, not an independent args problem.
+        if span.available_tools and span.tool_name and prompt_vec is not None:
+            called_def = next(
+                (t for t in span.available_tools if t.get("name") == span.tool_name), None
+            )
+            if called_def is not None:
+                tool_text = called_def.get("description") or span.tool_name
+                tool_vec = self.embed(tool_text)
+                if tool_vec is not None:
+                    tool_fit = float(self.compare(tool_vec, prompt_vec))
+                    self.log_score("tool_fit_score", tool_fit)
+                    if tool_fit < self._thresholds.get("wrong_tool_args_tool_fit", 0.15):
+                        return []
+
         threshold = self._thresholds["wrong_tool_args"]
         violations: list[dict] = []
         worst_score = 1.0
@@ -580,6 +597,10 @@ class ToolCallAnalyzer(BaseSpanAnalyzer):
         if span.prompt is None or span.response is None:
             return []
 
+        # No-tool spans are owned by _check_no_tool; do not double-count here
+        if span.tool_name is None:
+            return []
+
         prompt_vec = self.embed(span.prompt)
         response_vec = self.embed(span.response)
         score = self.compare(prompt_vec, response_vec)
@@ -587,9 +608,23 @@ class ToolCallAnalyzer(BaseSpanAnalyzer):
         # MUST call log_score BEFORE threshold comparison (FLAG-10 / calibration-first)
         self.log_score("prompt_vs_response", score)
 
-        # Short prompts produce low cosine similarity with any response; do not flag (D-15)
-        if len(span.prompt.split()) < 10:
+        # Very short prompts produce low cosine similarity with any response; do not flag (D-15)
+        if len(span.prompt.split()) < 4:
             return []
+
+        # Defer to wrong_tool_choice when a clearly better tool existed (gap >= 0.10).
+        # Reuse prompt_vec already computed above.
+        if span.available_tools:
+            tool_vecs = self._get_tool_embeddings(span.available_tools)
+            tool_sim = {
+                t.get("name", ""): self.compare(prompt_vec, tv)
+                for t, tv in zip(span.available_tools, tool_vecs)
+            }
+            called_sim = tool_sim.get(span.tool_name)
+            if called_sim is not None:
+                best_sim = max(tool_sim.values())
+                if best_sim - called_sim >= 0.10:
+                    return []
 
         if score < self._thresholds["response_anomaly"]:
             return [

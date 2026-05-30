@@ -21,6 +21,8 @@ spans for a given trace_id.
 
 from __future__ import annotations
 
+import re
+
 import numpy as np
 from rapidfuzz import fuzz
 
@@ -146,39 +148,42 @@ class TraceAnalyzer(BaseTraceAnalyzer):
     # ------------------------------------------------------------------
 
     def _check_step_repetition(self, spans: list[SpanData]) -> list[Flag]:
-        """Detect duplicate or near-duplicate tool calls across all span pairs.
+        """Detect identical tool+args pairs anywhere in the trace (binary check).
 
-        Uses rapidfuzz.fuzz.token_sort_ratio (word-order invariant, 0–100 scale).
-        Compares every unique pair (a, b) where a < b.
-        Fires when score >= self._thresholds["step_repetition"].
+        Normalises each call to a token-sorted key so argument order differences
+        don't matter. Fires when two spans produce the exact same normalised key.
+        No threshold — this is a pass/fail identity check.
         """
         if len(spans) < 2:
             return []
+
+        def _normalise(span: SpanData) -> str:
+            tokens = f"{span.tool_name} {span.tool_arguments or ''}".split()
+            return " ".join(sorted(tokens))
 
         flags: list[Flag] = []
         for a in range(len(spans)):
             if spans[a].tool_name is None:
                 continue
-            key_a = f"{spans[a].tool_name} {spans[a].tool_arguments or ''}".strip()
+            key_a = _normalise(spans[a])
 
             for b in range(a + 1, len(spans)):
                 if spans[b].tool_name is None:
                     continue
-                key_b = f"{spans[b].tool_name} {spans[b].tool_arguments or ''}".strip()
+                key_b = _normalise(spans[b])
 
-                score = fuzz.token_sort_ratio(key_a, key_b) / 100
-                # CRITICAL: log BEFORE threshold comparison (D-04 invariant)
-                self.log_score("step_repetition", score)
-                if score >= self._thresholds["step_repetition"]:
-                    flags.append(Flag(
-                        flag_type="step_repetition",
-                        score=score,
-                        detail={
-                            "metric": "step_repetition",
-                            "span_index_a": a,
-                            "span_index_b": b,
-                        },
-                    ))
+                if key_a != key_b:
+                    continue
+
+                flags.append(Flag(
+                    flag_type="step_repetition",
+                    score=1.0,
+                    detail={
+                        "metric": "step_repetition",
+                        "span_index_a": a,
+                        "span_index_b": b,
+                    },
+                ))
 
         return flags
 
@@ -246,6 +251,8 @@ class TraceAnalyzer(BaseTraceAnalyzer):
         if len(spans) < 2:
             return []
 
+        required_streak = 2
+
         flags: list[Flag] = []
         low_score_streak = 0
         for i in range(1, len(spans)):
@@ -268,7 +275,7 @@ class TraceAnalyzer(BaseTraceAnalyzer):
                 low_score_streak += 1
             else:
                 low_score_streak = 0
-            if low_score_streak >= 2:
+            if low_score_streak >= required_streak:
                 flags.append(Flag(
                     flag_type="context_propagation_failure",
                     score=score,
@@ -396,7 +403,11 @@ class TraceAnalyzer(BaseTraceAnalyzer):
             # relationship; flagging here would double-count the same signal.
             tool_name_i = (spans[i].tool_name or "").lower()
             tool_desc_i = (spans[i].tool_description or "").lower()
+            prompt_i = (spans[i].prompt or "").lower()
             if any(kw in tool_name_i or kw in tool_desc_i for kw in _VERIFICATION_KEYWORDS):
+                continue
+            # Word-boundary check on prompt to catch "Confirm the step..." without matching "confirmation"
+            if any(re.search(r'\b' + kw + r'\b', prompt_i) for kw in _VERIFICATION_KEYWORDS):
                 continue
 
             nlp = _get_spacy()
@@ -409,21 +420,18 @@ class TraceAnalyzer(BaseTraceAnalyzer):
                 continue
             present = {ent.text.lower() for ent in nlp(spans[i].prompt).ents}
             score = len(produced & present) / len(produced)
-            # Hard precondition: only proceed when > 50% of entities are withheld
+            # Binary flag: > 50% of entities withheld → always flag (threshold not meaningful here)
             if score >= 0.5:
-                # Not significant enough withholding — skip log_score (guard exit)
                 continue
-            # CRITICAL: log BEFORE threshold comparison (D-04 invariant)
             self.log_score("information_withholding", score)
-            if score < self._thresholds.get("information_withholding", 0.5):
-                flags.append(Flag(
-                    flag_type="information_withholding",
-                    score=score,
-                    detail={
-                        "metric": "information_withholding",
-                        "span_index": i,
-                    },
-                ))
+            flags.append(Flag(
+                flag_type="information_withholding",
+                score=score,
+                detail={
+                    "metric": "information_withholding",
+                    "span_index": i,
+                },
+            ))
 
         return flags
 
@@ -548,6 +556,12 @@ class TraceAnalyzer(BaseTraceAnalyzer):
         )
         if not has_write_mutate:
             # Guard exit: no write/mutate call present — do NOT log_score (D-04)
+            return []
+
+        # Guard: require >=2 distinct tool names — single-tool traces are step_repetition
+        # patterns, not no_verification (they have nothing to verify beyond themselves).
+        distinct_tool_count = len({span.tool_name for span in spans if span.tool_name})
+        if distinct_tool_count < 2:
             return []
 
         has_verification = False

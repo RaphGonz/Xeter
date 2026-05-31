@@ -1,6 +1,8 @@
 ![Xeter](assets/logo+typo.png)
 
-Xeter tells you whether your AI agent's tool call failed because of the model, the architecture, or the prompt — instantly.
+Open-source runtime silent-failures observability platform for AI agents that detects failures across tool use, reasoning, memory, and multi-agent coordination.
+
+Optimize. Ship faster. Build trust.
 
 [![License: GPL-3.0 + Commons Clause](https://img.shields.io/badge/License-GPL--3.0%20%2B%20Commons%20Clause-blue)](LICENSE)
 

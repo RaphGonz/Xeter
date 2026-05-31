@@ -240,12 +240,107 @@
 
 ---
 
+## Milestone: v1.5 — Silent Failure Detection
+
+**Shipped:** 2026-05-30
+**Phases:** 7 (Phases 22–28) | **Plans:** 23 | **Timeline:** 12 days (2026-05-18 → 2026-05-30)
+
+### What Was Built
+
+- Phase 22 (Bug Fixes): Worker idle-flush gap closed — BRPOP timeout triggers trace analysis; trace score persistence confirmed end-to-end
+- Phase 23 (Infrastructure): calibrate.py multi-analyzer routing with recall floor (R ≥ 0.10) enforcement; `--flag-type` for new analyzers
+- Phase 24 (Structural Span Checks): OutputSchemaAnalyzer — 5 deterministic checks (output_schema_violation, required_fields_missing, output_truncated, type_coercion_error, context_overflow); all P=1.0 R=1.0, zero embedding calls
+- Phase 25 (Semantic Span + Structural Trace Checks): SemanticSpanAnalyzer (stale_context + missing_details) and TraceAnalyzer (step_repetition + termination_loop + context_propagation_failure + history_loss)
+- Phase 26 (Best-Effort Proxy Checks): 6 trace checks (wrong_agent_handoff, information_withholding, conversation_reset, clarification_skipped, no_verification, incomplete_verification) — mutex pair for no/incomplete verification
+- Phase 27 (Calibration Pass): Full calibration suite — 24 flag types, 11 BINARY_FLAG_TYPES, mean precision 0.947; docker-compose.yml patched with all WORKER_THRESHOLD_* values
+- Phase 28 (Precision Improvements): 14 flag types fixed; information_withholding → binary; step_repetition → binary exact-match; wrong_tool_args → tool-relevance guard at tool_fit=0.15
+
+### What Worked
+
+- **OutputSchemaAnalyzer as first addition**: starting with deterministic checks (no embeddings, P=1.0 R=1.0) established the pattern and gave calibration an easy baseline before tackling probabilistic checks
+- **BINARY_FLAG_TYPES set in calibrate.py**: separating threshold-tunable from binary checks prevented degenerate hill-climb outputs for binary detectors; the pattern was established in v1.1 and paid off at scale with 11 binary types
+- **Per-type calibration runs as equivalent to full-suite**: the DEFAULT_THRESHOLDS merge pattern made per-type runs idempotent and composable — full suite times out, per-type runs don't
+- **Mutex enforcement for no_verification + incomplete_verification**: explicit mutual exclusion in the analyzer prevented both flags firing on the same span; cleaner than post-processing
+- **tool-relevance guard for wrong_tool_args**: the guard (tool_fit < 0.15 → skip) fixed FPs from wrong_tool_choice traces contaminating args analysis — simple threshold, high impact
+
+### What Was Inefficient
+
+- **history_loss P=0.5 accepted**: the cross-contamination with conversation_reset is architectural — centroid cosine can't distinguish them without richer metadata; accepted as known limitation rather than spending more cycles
+- **Calibration over 24 types took multiple passes**: calibrating in dependency order (deterministic first, then embedding-based, then trace-level) worked but required careful orchestration; a calibration dependency graph would make this explicit
+- **Phase 28 precision improvements discovered post-calibration**: several FP patterns weren't visible until calibration exposed the data; ideally these guard conditions would be designed pre-calibration
+
+### Patterns Established
+
+- **OutputSchemaAnalyzer as deterministic baseline**: zero-embedding checks that produce P=1.0 R=1.0 are preferable to probabilistic checks — start here when the signal is available
+- **Binary-first for ambiguous checks**: when precision/recall curves don't form a clean knee (always < 0.5 for info_withholding), convert to binary rather than fight the threshold
+- **Tool-relevance guard pattern**: pre-screening with a lightweight tool-fit score before running expensive embedding comparisons; tool_fit=0.15 is a conservative but reusable threshold
+
+### Key Lessons
+
+- **Design guards before calibration**: FPs from cross-contamination (wrong tool → args) and degenerate scores (info_withholding always < 0.5) are visible in calibration data, but the fix is cleaner if designed before the calibration pass
+- **Corpus coverage matters**: binary checks with no calibration path (step_repetition exact-match) are correct-by-construction but require fixture diversity; thin fixture coverage hides FP patterns
+- **Mean precision is a summary stat**: 0.947 hides that history_loss is 0.5 and termination_loop is 1.0; per-flag P/R is more useful than the aggregate for maintenance
+
+### Cost Observations
+
+- 12 days, 7 phases, 23 plans — same timeline as v1.0 but 4× the feature breadth
+- Most phases were 2–5 plans; Phase 25 was the largest (5 plans, 2 analyzer classes)
+- Calibration phases (27, 28) were the most iterative — required multiple per-type runs to converge
+
+---
+
+## Milestone: v1.6 — Release
+
+**Shipped:** 2026-05-31
+**Phases:** 3 (Phases 29–31) | **Plans:** 7 | **Timeline:** 2 days (2026-05-30 → 2026-05-31)
+
+### What Was Built
+
+- Phase 29 (License + Assets + Cleanup): GPL-3.0 + Commons Clause LICENSE (35 KB) at repo root; assets/ directory; logo moved; dev artifacts deleted; SPDX headers bulk-inserted into 90 Python source files via idempotent shebang-aware script
+- Phase 30 (Diagnosticer Prompt): Inline f-string extracted to prompt.md with import-time read via Path(__file__).parent + format_map; prompt.md rewritten with system message, four-verdict criteria, severity calibration, CoT scaffold; 9 tests pass
+- Phase 31 (README Overhaul): db-init one-shot init container gates app services on schema readiness; README fully rewritten with all 11 sections including 24-flag detection table, calibration workflow, pluggable LLM config, and 2-lever performance section
+
+### What Worked
+
+- **Import-time file read for prompt template**: Path(__file__).parent read once at module level into a constant — fail-fast on missing file at startup rather than at request time; pattern is clean and reusable for other co-located assets
+- **format_map over sentinel str.replace**: prompt prose contains no literal braces, so format_map works without escaping; simpler maintenance than a regex-replace approach
+- **db-init init container pattern**: reusing the presenter Dockerfile with restart: no + service_completed_successfully gates all four app services on migration success without a separate Dockerfile; clean, composable
+- **Single-source-of-truth for detection table**: FLAG_TYPE_TO_ANALYZER_CLASS + BINARY_FLAG_TYPES + DEFAULT_THRESHOLDS drove the 24-row README table directly — no manual sync needed
+- **SPDX header script as ephemeral tool**: write, run, delete — the insertion script doesn't live in the codebase; one-shot tools don't need to be maintained
+
+### What Was Inefficient
+
+- **No milestone audit**: v1.6 was closed without running /gsd:audit-milestone first; all requirements were verified at phase level so this was safe, but the audit would have caught integration gaps if any existed
+- **Pre-existing failing test not tracked**: the test_missing_details_logs_score_before_threshold_check failure was pre-existing but surfaced during Phase 30 full-suite run; it should be tracked as a known issue rather than re-discovered each milestone
+
+### Patterns Established
+
+- **Co-located template file pattern**: `Path(__file__).parent / 'filename'` read at module level into a constant; FileNotFoundError at import is the correct fail-fast sentinel for missing co-located assets
+- **SPDX header insertion**: shebang-aware, idempotent bulk insertion script; execute and delete; headers go on line 1 for non-shebang files, line 2 for shebang files
+- **Init container pattern**: one-shot service with restart: no + service_completed_successfully for migration/seed steps before app services start
+
+### Key Lessons
+
+- **Documentation is a product deliverable**: the README took 11 min but required the entire v1.6 milestone to have the content to fill it correctly — don't try to write comprehensive docs before the feature set is stable
+- **LLM template files are not source code**: SPDX headers belong in source files; a header in prompt.md would appear verbatim in the LLM prompt — the boundary between source metadata and LLM-facing content is real
+- **Init container > entrypoint migration**: init container that runs migrations before app services start is cleaner than an entrypoint script in each service; single responsibility, clear failure mode (service exits vs service loops on error)
+
+### Cost Observations
+
+- 2 days, 3 phases, 7 plans — tightest milestone; release prep is inherently parallelizable (license/assets/cleanup are independent)
+- All plans executed in < 60 min; Phase 31-01 (db-init) was 8 min, 31-02 (README rewrite) was 11 min
+- Sessions: 2 (all work on 2026-05-30 and 2026-05-31)
+
+---
+
 ## Cross-Milestone Trends
 
-| Milestone | Phases | Plans | Days | LOC | Key Pattern |
-|-----------|--------|-------|------|-----|-------------|
-| v1.0 MVP | 6 | 21 | 12 | ~12,660 | Bottom-up strict ordering |
+| Milestone | Phases | Plans | Days | LOC delta | Key Pattern |
+|-----------|--------|-------|------|-----------|-------------|
+| v1.0 MVP | 6 | 21 | 12 | ~12,660 new | Bottom-up strict ordering |
 | v1.1 Analyser Accuracy | 4 | 10 | 12 | ~11,148 Py | One method at a time, calibrate before next |
 | v1.2 Diagnosticer | 3 | 8 | 4 | ~16,017 (+4,869) | Fail-clean service activation; verification plan as integration testbed |
 | v1.3 Security Hardening | 4 | 12 | 3 | ~14,500 Py + 3,000 TS | Pre-flight audit before migration; hard-fail secrets; Route Handler cookie boundary |
-| v1.4 Trace Hierarchy | 4 | 11 | 2 | +6,772 / -129 lines | Cleanup-first; scaffold-then-checks; URL-driven UI state |
+| v1.4 Trace Hierarchy | 4 | 11 | 2 | +6,772 / -129 | Cleanup-first; scaffold-then-checks; URL-driven UI state |
+| v1.5 Silent Failure Detection | 7 | 23 | 12 | +large (24 flag types) | Deterministic-first; binary for ambiguous; per-type calibration isolation |
+| v1.6 Release | 3 | 7 | 2 | +4,620 / -240 | Co-located templates; init container; single-source-of-truth docs |

@@ -8,7 +8,7 @@
 - ✅ **v1.3 Security Hardening** — Phases 14–17 (shipped 2026-05-02)
 - ✅ **v1.4 Trace Hierarchy + TraceAnalyzer Foundation** — Phases 18–21 (shipped 2026-05-15)
 - ✅ **v1.5 Silent Failure Detection** — Phases 22–28 (shipped 2026-05-30)
-- **v1.6 Release** — Phases 29–31 (complete 2026-05-31)
+- ✅ **v1.6 Release** — Phases 29–31 (shipped 2026-05-31)
 
 ## Phases
 
@@ -88,63 +88,16 @@ See `.planning/milestones/v1.5-ROADMAP.md` for full phase details.
 
 </details>
 
-### v1.6 Release (Phases 29–31)
+<details>
+<summary>✅ v1.6 Release (Phases 29–31) — SHIPPED 2026-05-31</summary>
 
-- [x] **Phase 29: License, Assets & Cleanup** — Apply GPL-3.0 + Commons Clause, move assets, delete dev artifacts (completed 2026-05-30)
-- [x] **Phase 30: Diagnosticer Prompt** — Extract and rewrite the diagnosticer prompt with system message + CoT scaffold (completed 2026-05-31)
-- [x] **Phase 31: README Overhaul** — Comprehensive public README covering all 24 checks, install, SDK, calibration, LLM config, optimization (completed 2026-05-31)
+- [x] Phase 29: License, Assets & Cleanup (3/3 plans) — completed 2026-05-30
+- [x] Phase 30: Diagnosticer Prompt (2/2 plans) — completed 2026-05-31
+- [x] Phase 31: README Overhaul (2/2 plans) — completed 2026-05-31
 
-## Phase Details
+See `.planning/milestones/v1.6-ROADMAP.md` for full phase details.
 
-*(All v1.0–v1.5 phase details archived to their respective milestone ROADMAP files.)*
-
-### Phase 29: License, Assets & Cleanup
-
-**Goal**: Repo is legally licensed and clean for public release — LICENSE file present, SPDX headers in source, assets folder organized, and dead dev artifacts deleted
-**Depends on**: Nothing (first v1.6 phase; all tasks are independent file operations)
-**Requirements**: LICENSE-01, LICENSE-02, ASSETS-01, CLEAN-01, CLEAN-02
-**Success Criteria** (what must be TRUE):
-  1. A `LICENSE` file exists at repo root containing GPL-3.0 full text followed by the Commons Clause 1.0 addendum; `grep "Commons Clause"` in the file returns a match
-  2. Every top-level Python source file across analyser, presenter, worker, diagnosticer, and SDK has an SPDX header line at the top (`SPDX-License-Identifier: GPL-3.0-only WITH Commons-Clause-1.0`)
-  3. `assets/logo+typo.png` exists; `logo+typo.png` no longer exists at repo root; `.gitignore` and any path references reflect the new location
-  4. `check_tier4.py` is absent from the repo root (deleted, not just moved)
-  5. `VALIDATION-REPORT.md` is absent from the repo root (deleted, not just moved)
-**Plans**: 3 plans
-Plans:
-- [x] 29-01-PLAN.md � Write GPL-3.0 + Commons Clause LICENSE file at repo root
-- [x] 29-02-PLAN.md � Create assets/, move logo, delete check_tier4.py and VALIDATION-REPORT.md
-- [x] 29-03-PLAN.md � Add SPDX headers to all substantive Python source files
-
-### Phase 30: Diagnosticer Prompt
-
-**Goal**: The diagnosticer prompt is a maintainable, human-readable file with structured reasoning guidance — not a raw string buried in Python source
-**Depends on**: Phase 29
-**Requirements**: DIAG-01, DIAG-02
-**Success Criteria** (what must be TRUE):
-  1. `xeter/services/diagnosticer/prompt.md` exists and contains the complete prompt text (system message section, CoT scaffold, verdict decision criteria for all four verdicts, severity calibration guidance)
-  2. `context_assembly.py:_format_context()` no longer contains an inline prompt string — it reads `prompt.md` at import time and performs span-data substitution from that template
-  3. The system message section clearly frames the diagnosticer's role (root-cause analysis, not general Q&A)
-  4. The chain-of-thought scaffold walks through each flag before reaching a verdict, with explicit decision criteria distinguishing `model`, `architecture`, `prompt`, and `unknown`
-**Plans**: 2 plans
-Plans:
-- [x] 30-01-PLAN.md — Extract prompt f-string into prompt.md, read at import + format_map substitution, add test_context_assembly.py (DIAG-01)
-- [x] 30-02-PLAN.md — Rewrite prompt.md with system message, CoT scaffold, four-verdict criteria, severity calibration + content tests (DIAG-02)
-
-### Phase 31: README Overhaul
-
-**Goal**: Any developer can find Xeter, understand what it does, deploy it locally, instrument their agent, and understand every detection check — without reading source code
-**Depends on**: Phase 30 (banner path and prompt file must exist before README references them)
-**Requirements**: LICENSE-03, DOCS-01, DOCS-02, DOCS-03, DOCS-04, DOCS-05, DOCS-06, DOCS-07
-**Success Criteria** (what must be TRUE):
-  1. README renders a banner (`assets/logo+typo.png`), a one-sentence tagline, and a license badge linked to the LICENSE file — visible at the top of the GitHub repo page
-  2. A developer who has never seen the repo can run `generate-secrets.sh && docker compose up` and reach a healthy dashboard using only the README Quick Start section (all exact commands present, no steps omitted)
-  3. The SDK section shows a complete, copy-pasteable instrumentation example including install command, `@xeter_sdk.trace` decorator usage, and the two required env vars (`XETER_ENDPOINT`, `XETER_API_KEY`)
-  4. The Detection Checks section contains a table listing all 24 flag types with analyzer class, description, threshold type (binary / tunable), and default threshold value — a developer can determine the check's behavior without reading source
-  5. The Calibration, Pluggable LLM, and Performance sections each cover their topic completely: calibration workflow, all three LLM provider env vars, and the two real performance levers (WORKER_TRACE_FLUSH_TIMEOUT_S + embedder model swap) — Redis queue sizing, disable-analyzers flag, and ClickHouse retention explicitly excluded per D-P-01/D-P-02/D-P-03
-**Plans**: 2 plans
-Plans:
-- [x] 31-01-PLAN.md — Add migrate+seed init container to deploy/docker-compose.yml
-- [x] 31-02-PLAN.md — Rewrite README.md (all 11 sections, 24-flag detection table)
+</details>
 
 ## Progress
 
@@ -178,6 +131,6 @@ Plans:
 | 26. Best-Effort Proxy Checks | v1.5 | 3/3 | Complete | 2026-05-26 |
 | 27. Calibration Pass | v1.5 | 3/3 | Complete | 2026-05-30 |
 | 28. Precision Improvements | v1.5 | 4/4 | Complete | 2026-05-30 |
-| 29. License, Assets & Cleanup | v1.6 | 3/3 | Complete    | 2026-05-30 |
-| 30. Diagnosticer Prompt | v1.6 | 2/2 | Complete    | 2026-05-31 |
+| 29. License, Assets & Cleanup | v1.6 | 3/3 | Complete | 2026-05-30 |
+| 30. Diagnosticer Prompt | v1.6 | 2/2 | Complete | 2026-05-31 |
 | 31. README Overhaul | v1.6 | 2/2 | Complete | 2026-05-31 |

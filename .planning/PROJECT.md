@@ -4,22 +4,15 @@
 
 Xeter is a B2B SaaS observability platform that debugs AI agent tool-calling failures. It ingests OpenTelemetry spans from instrumented agent code via a Python SDK, applies heuristic analysis (vector similarity between prompt and tool fields) to flag anomalous tool calls, and exposes a dashboard where developers can see what went wrong and why. Unlike existing tools that show traces, Xeter isolates root cause — model, architecture, or prompt — via on-demand LLM diagnosis.
 
-v1.0 shipped: full pipeline from SDK to dashboard running locally via Docker Compose. v1.1 shipped: all four analyser check methods rewritten with research-backed implementations. v1.2 shipped: LLM-powered Diagnosticer active end-to-end. v1.3 shipped: full security hardening — tenant isolation, auth hardening, secrets hygiene, and GDPR deletion. v1.4 shipped: trace hierarchy (GET /traces + GET /traces/{trace_id} API + collapsible trace UI), TraceAnalyzer foundation (3-class analyzer hierarchy, flush-timeout worker wiring, flags.span_id nullable), and v1.3 tech debt cleanup. v1.5 shipped: 18 new detection modes across span and trace analyzers — output/schema checks, context checks, trace-level repetition/loop/propagation/history checks, best-effort proxy checks, and full calibration across all 24 flag types (mean precision 0.947). v1.6 Phase 29 shipped: GPL-3.0 + Commons Clause LICENSE, assets/ directory, dev artifact cleanup (check_tier4.py, VALIDATION-REPORT.md), SPDX headers on all 90 substantive Python source files.
+v1.0 shipped: full pipeline from SDK to dashboard running locally via Docker Compose. v1.1 shipped: all four analyser check methods rewritten with research-backed implementations. v1.2 shipped: LLM-powered Diagnosticer active end-to-end. v1.3 shipped: full security hardening — tenant isolation, auth hardening, secrets hygiene, and GDPR deletion. v1.4 shipped: trace hierarchy (GET /traces + GET /traces/{trace_id} API + collapsible trace UI), TraceAnalyzer foundation (3-class analyzer hierarchy, flush-timeout worker wiring, flags.span_id nullable), and v1.3 tech debt cleanup. v1.5 shipped: 18 new detection modes across span and trace analyzers — output/schema checks, context checks, trace-level repetition/loop/propagation/history checks, best-effort proxy checks, and full calibration across all 24 flag types (mean precision 0.947). v1.6 shipped: GPL-3.0 + Commons Clause license, assets/ directory, SPDX headers on 90 source files, diagnosticer prompt extracted to maintainable prompt.md with CoT scaffold, db-init init container, and comprehensive public README with all 11 sections and 24-flag detection table.
 
 ## Core Value
 
 When a tool call fails, tell the developer whether it was the model, the architecture, or the prompt — and why.
 
-## Current Milestone: v1.6 Release
+## Current Milestone: v1.6 Released ✅
 
-**Goal:** Ship Xeter publicly — license, clean up dev artifacts, improve the diagnosticer prompt, and write exhaustive documentation.
-
-**Target features:**
-- LICENSE file (GPL-3.0 + Commons Clause) with SPDX headers in source files
-- Assets folder — move logo+typo.png → assets/, wire banner into README
-- Root cleanup — delete check_tier4.py, VALIDATION-REPORT.md (dead dev artifacts)
-- Diagnosticer prompt overhaul — extract from context_assembly.py into a dedicated prompt file; rewrite with system message, chain-of-thought scaffold, clear verdict decision criteria
-- Comprehensive README — banner, install, Docker Compose deploy, SDK instrumentation examples, all 24 flag types table, calibration workflow, pluggable LLM config, performance optimization hints, license section
+**Shipped 2026-05-31.** Xeter is now publicly releasable: licensed (GPL-3.0 + Commons Clause), documented (11-section README, 24-flag detection table), and diagnosticer prompt structured for maintainability. Ready for `/gsd:new-milestone` to plan v1.7.
 
 ## Requirements
 
@@ -71,10 +64,15 @@ When a tool call fails, tell the developer whether it was the model, the archite
 - ✓ TraceAnalyzer: step_repetition (binary exact-match), termination_loop (integer grid), context_propagation_failure (spaCy+cosine), history_loss (centroid cosine) — v1.5
 - ✓ TraceAnalyzer: wrong_agent_handoff (AGENT_ROUTING_GRAPH), information_withholding (NE recall, binary), conversation_reset (cosine centroid drop), clarification_skipped (syntactic), no_verification (keyword scan), incomplete_verification (entity coverage, mutex with no_verification) — v1.5
 - ✓ calibrate.py: 24 flag types calibrated; BINARY_FLAG_TYPES 11 entries; mean precision 0.947; patch_docker_compose() covers 16 threshold keys; deploy/docker-compose.yml patched — v1.5
+- ✓ GPL-3.0 + Commons Clause LICENSE file (35 KB) at repo root; SPDX headers on all 90 substantive Python source files — v1.6
+- ✓ assets/ directory; logo+typo.png moved from root; dev artifacts (check_tier4.py, VALIDATION-REPORT.md) deleted — v1.6
+- ✓ Diagnosticer prompt extracted to prompt.md, read at import via Path(__file__).parent, format_map substitution; rewritten with system message, CoT scaffold, four-verdict criteria, severity calibration — v1.6
+- ✓ db-init one-shot init container in docker-compose.yml (alembic upgrade head + seed, restart: no, service_completed_successfully on all four app services) — v1.6
+- ✓ README.md fully rewritten: 11 sections, 24-flag detection table, Quick Start with seeded credentials, calibration workflow, pluggable LLM (3 providers), performance levers, architecture, license — v1.6
 
 ### Active
 
-<!-- v1.6 scope and deferred items -->
+<!-- Next milestone scope and deferred items -->
 
 - [ ] python-jose → PyJWT migration — python-jose near-abandoned; migrate before CVE liability (AUTH-F02)
 - [ ] Refresh token revocation store — server-side blacklist for stolen token detection (AUTH-F01)
@@ -98,8 +96,8 @@ When a tool call fails, tell the developer whether it was the model, the archite
 
 ## Context
 
-- v1.0–v1.5 all shipped; v1.5 shipped 2026-05-30: 18 new detection modes, 24 total flag types, mean precision 0.947
-- ~15,000+ LOC Python + ~3,700 TypeScript (est.); 24 flag types active
+- v1.0–v1.6 all shipped; v1.6 shipped 2026-05-31: publicly licensed, comprehensive README, diagnosticer prompt overhauled
+- ~15,000+ LOC Python + ~3,700 TypeScript (est.); 24 flag types active; 235+ tests passing
 - Tech stack: Python 3.12, FastAPI, ClickHouse, PostgreSQL (RLS + CHECK constraints), Redis (requirepass), MinIO (S3, private ACL), Next.js 15, sentence-transformers (all-MiniLM-L6-v2), spaCy (en_core_web_md), tiktoken, rapidfuzz, jsonschema, Anthropic/OpenAI/Ollama (Diagnosticer)
 - Architecture: Analyser (ingestion) → Redis queue → Worker (embedding+flagging, 3-class analyzer hierarchy) → Presenter (read/auth/diagnosis trigger) → Diagnosticer (LLM root cause) → View (Next.js)
 - Calibration: full-suite mean precision 0.947; 11 BINARY_FLAG_TYPES; 16 threshold-tunable types; WORKER_THRESHOLD_* in docker-compose.yml
@@ -163,6 +161,10 @@ When a tool call fails, tell the developer whether it was the model, the archite
 | history_loss P=0.5 accepted (v1.5) | Cross-contamination with conversation_reset is inherent; embedding centroid distinguishes poorly between the two | — Pending — architectural limitation; future fix requires richer trace metadata |
 | wrong_tool_args tool-relevance guard at tool_fit=0.15 | FPs came from wrong_tool_choice traces where tool itself was wrong; guard prevents args check when tool doesn't fit prompt | ✓ Good — clean guard; tool_fit threshold set conservatively |
 | calibrate.py per-type runs as equivalent to full-suite | Full suite times out (~15 min); per-type runs with DEFAULT_THRESHOLDS merge produce identical JSON output | ✓ Good — Deviation 4 in 27-02 established the pattern; used in Phase 28 too |
+| GPL-3.0 + Commons Clause licensing | Prevents anyone reselling Xeter-as-a-service while keeping it open source | ✓ Good — clean dual-license approach; Commons Clause explicitly names "Software: Xeter" |
+| prompt.md has no SPDX header | Template file sent verbatim to the LLM; a header would appear as visible prompt text | ✓ Good — correct boundary: source files get SPDX, LLM template files do not |
+| db-init reuses presenter Dockerfile | Same build context; no extra Dockerfile; restart: no + service_completed_successfully gates all app services | ✓ Good — one-shot init container pattern established for future migrations |
+| Dev credentials shown in Quick Start | dev@example.com + dev-api-key-local are seeded dev-only values; explicitly labeled in README | ✓ Good — security review confirmed acceptable per T-31-02-01 |
 
 ## Evolution
 
@@ -182,4 +184,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-30 after v1.5 Silent Failure Detection milestone shipped*
+*Last updated: 2026-05-31 after v1.6 Release milestone shipped*

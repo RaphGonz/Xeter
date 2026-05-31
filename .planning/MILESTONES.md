@@ -144,3 +144,24 @@
 
 ---
 
+
+## v1.6 Release (Shipped: 2026-05-31)
+
+**Phases completed:** 3 phases (Phases 29–31), 7 plans
+**Timeline:** 2026-05-30 → 2026-05-31 (2 days)
+**Code:** 123 files changed, +4,620 / -240 lines
+
+**Key accomplishments:**
+- GPL-3.0 + Commons Clause `LICENSE` file (35 KB) created at repo root — prohibits selling Xeter-as-a-service; SPDX headers added to all 90 substantive Python source files
+- `assets/` directory created; `logo+typo.png` moved from root; dead dev artifacts (`check_tier4.py`, `VALIDATION-REPORT.md`) deleted
+- Diagnosticer prompt extracted from inline f-string in `context_assembly.py` into `prompt.md`, read at import via `Path(__file__).parent`, substituted via `format_map` — 5 tests pass (DIAG-01)
+- `prompt.md` rewritten with structured system message, four-verdict decision criteria (model/architecture/prompt/unknown), severity calibration (high/medium/low), and chain-of-thought scaffold — 9 diagnosticer tests pass (DIAG-02)
+- `db-init` one-shot init container added to `docker-compose.yml` — runs `alembic upgrade head` + seed before app services start
+- `README.md` fully rewritten as public-facing v1.6 developer document — all 11 sections: banner, Quick Start, SDK, 24-flag detection table, calibration workflow, pluggable LLM config, performance levers, architecture, multi-tenancy, license
+
+**Archive:**
+- Roadmap: `.planning/milestones/v1.6-ROADMAP.md`
+- Requirements: `.planning/milestones/v1.6-REQUIREMENTS.md`
+
+---
+

@@ -141,8 +141,10 @@ Plans:
   3. The SDK section shows a complete, copy-pasteable instrumentation example including install command, `@xeter_sdk.trace` decorator usage, and the two required env vars (`XETER_ENDPOINT`, `XETER_API_KEY`)
   4. The Detection Checks section contains a table listing all 24 flag types with analyzer class, description, threshold type (binary / tunable), and default threshold value — a developer can determine the check's behavior without reading source
   5. The Calibration, Pluggable LLM, and Performance sections each cover their topic completely: calibration workflow, all three LLM provider env vars, and all five performance tuning levers
-**Plans**: TBD
-**UI hint**: yes
+**Plans**: 2 plans
+Plans:
+- [ ] 31-01-PLAN.md — Add migrate+seed init container to deploy/docker-compose.yml
+- [ ] 31-02-PLAN.md — Rewrite README.md (all 11 sections, 24-flag detection table)
 
 ## Progress
 
@@ -178,4 +180,4 @@ Plans:
 | 28. Precision Improvements | v1.5 | 4/4 | Complete | 2026-05-30 |
 | 29. License, Assets & Cleanup | v1.6 | 3/3 | Complete    | 2026-05-30 |
 | 30. Diagnosticer Prompt | v1.6 | 2/2 | Complete    | 2026-05-31 |
-| 31. README Overhaul | v1.6 | 0/TBD | Not started | - |
+| 31. README Overhaul | v1.6 | 0/2 | Not started | - |

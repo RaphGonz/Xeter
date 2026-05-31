@@ -21,7 +21,7 @@ Xeter tells you whether your AI agent's tool call failed because of the model, t
 **Prerequisites:** Docker and Docker Compose.
 
 ```bash
-git clone <repo-url> && cd Xeter
+git clone https://github.com/RaphGonz/Xeter.git && cd Xeter
 cp .env.example .env
 ./generate-secrets.sh
 docker compose -f deploy/docker-compose.yml up --build

@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: Release
-status: ready_to_execute
-stopped_at: Phase 31 complete — all 2 plans done, awaiting verification
+status: milestone_complete
+stopped_at: v1.6 milestone complete — Phase 31 verified 2026-05-31
 last_updated: "2026-05-31T08:00:00.000Z"
 last_activity: 2026-05-31
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 7
   completed_plans: 7
   percent: 100
@@ -21,18 +21,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-30)
 
 **Core value:** When a tool call fails, tell the developer whether it was the model, the architecture, or the prompt — and why.
-**Current focus:** Phase 31 — README Overhaul
+**Current focus:** v1.6 milestone complete — run /gsd:complete-milestone when ready
 
 ## Current Position
 
-Phase: 31 planned → ready to execute
-Plan: 2 plans (31-01, 31-02)
-Status: Ready to execute Phase 31
+Phase: 31 complete
+Status: v1.6 milestone complete
 Last activity: 2026-05-31
 
 ```
-Progress: [######    ] 67%
-Phase 29 [x] | Phase 30 [x] | Phase 31 [ ]
+Progress: [##########] 100%
+Phase 29 [x] | Phase 30 [x] | Phase 31 [x]
 ```
 
 ## Accumulated Context

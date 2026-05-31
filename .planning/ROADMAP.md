@@ -8,7 +8,7 @@
 - ✅ **v1.3 Security Hardening** — Phases 14–17 (shipped 2026-05-02)
 - ✅ **v1.4 Trace Hierarchy + TraceAnalyzer Foundation** — Phases 18–21 (shipped 2026-05-15)
 - ✅ **v1.5 Silent Failure Detection** — Phases 22–28 (shipped 2026-05-30)
-- **v1.6 Release** — Phases 29–31 (in progress)
+- **v1.6 Release** — Phases 29–31 (complete 2026-05-31)
 
 ## Phases
 
@@ -92,7 +92,7 @@ See `.planning/milestones/v1.5-ROADMAP.md` for full phase details.
 
 - [x] **Phase 29: License, Assets & Cleanup** — Apply GPL-3.0 + Commons Clause, move assets, delete dev artifacts (completed 2026-05-30)
 - [x] **Phase 30: Diagnosticer Prompt** — Extract and rewrite the diagnosticer prompt with system message + CoT scaffold (completed 2026-05-31)
-- [ ] **Phase 31: README Overhaul** — Comprehensive public README covering all 24 checks, install, SDK, calibration, LLM config, optimization
+- [x] **Phase 31: README Overhaul** — Comprehensive public README covering all 24 checks, install, SDK, calibration, LLM config, optimization (completed 2026-05-31)
 
 ## Phase Details
 
@@ -140,7 +140,7 @@ Plans:
   2. A developer who has never seen the repo can run `generate-secrets.sh && docker compose up` and reach a healthy dashboard using only the README Quick Start section (all exact commands present, no steps omitted)
   3. The SDK section shows a complete, copy-pasteable instrumentation example including install command, `@xeter_sdk.trace` decorator usage, and the two required env vars (`XETER_ENDPOINT`, `XETER_API_KEY`)
   4. The Detection Checks section contains a table listing all 24 flag types with analyzer class, description, threshold type (binary / tunable), and default threshold value — a developer can determine the check's behavior without reading source
-  5. The Calibration, Pluggable LLM, and Performance sections each cover their topic completely: calibration workflow, all three LLM provider env vars, and all five performance tuning levers
+  5. The Calibration, Pluggable LLM, and Performance sections each cover their topic completely: calibration workflow, all three LLM provider env vars, and the two real performance levers (WORKER_TRACE_FLUSH_TIMEOUT_S + embedder model swap) — Redis queue sizing, disable-analyzers flag, and ClickHouse retention explicitly excluded per D-P-01/D-P-02/D-P-03
 **Plans**: 2 plans
 Plans:
 - [x] 31-01-PLAN.md — Add migrate+seed init container to deploy/docker-compose.yml

@@ -81,6 +81,20 @@ services:
        && mc mb local/xeter-payloads --ignore-existing
        && mc anonymous set none local/xeter-payloads"
 
+  db-init:
+    build:
+      context: ..
+      dockerfile: services/presenter/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://xeter:${POSTGRES_PASSWORD}@postgres:5432/xeter"
+    command: >-
+      sh -c "python -m alembic -c xeter/migrations/alembic.ini upgrade head
+       && python -m xeter.scripts.seed"
+    restart: "no"
+
   # --- Application stub services ---
 
   analyser:
@@ -101,6 +115,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL: "postgresql+asyncpg://xeter:${POSTGRES_PASSWORD}@postgres:5432/xeter"
       CLICKHOUSE_HOST: clickhouse
@@ -132,6 +148,8 @@ services:
         condition: service_healthy
       diagnosticer:
         condition: service_started
+      db-init:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL: "postgresql+asyncpg://xeter:${POSTGRES_PASSWORD}@postgres:5432/xeter"
       CLICKHOUSE_HOST: clickhouse
@@ -176,6 +194,8 @@ services:
         condition: service_healthy
       embedder:
         condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL: "postgresql+asyncpg://xeter:${POSTGRES_PASSWORD}@postgres:5432/xeter"
       CLICKHOUSE_HOST: clickhouse
@@ -217,6 +237,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL: "postgresql+asyncpg://xeter:${POSTGRES_PASSWORD}@postgres:5432/xeter"
       CLICKHOUSE_HOST: clickhouse

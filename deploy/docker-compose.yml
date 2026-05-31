@@ -127,7 +127,7 @@ services:
       REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379"
       MINIO_ENDPOINT: http://minio:9000
       S3_ENDPOINT_URL: http://minio:9000
-      S3_ACCESS_KEY: xeter
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER}
       S3_SECRET_KEY: ${MINIO_SECRET_KEY}
       S3_BUCKET: xeter-payloads
 
@@ -163,7 +163,7 @@ services:
       MINIO_ENDPOINT: http://minio:9000
       SECRET_KEY: ${SECRET_KEY}
       S3_ENDPOINT_URL: http://minio:9000
-      S3_ACCESS_KEY: xeter
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER}
       S3_SECRET_KEY: ${MINIO_SECRET_KEY}
       S3_BUCKET: xeter-payloads
       DIAGNOSTICER_URL: http://diagnosticer:8001
@@ -210,7 +210,7 @@ services:
       REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379"
       EMBEDDER_URL: http://embedder:8002
       S3_ENDPOINT_URL: http://minio:9000
-      S3_ACCESS_KEY: xeter
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER}
       S3_SECRET_KEY: ${MINIO_SECRET_KEY}
       S3_BUCKET: xeter-payloads
       WORKER_TRACE_FLUSH_TIMEOUT_S: "30"
@@ -254,7 +254,7 @@ services:
       CLICKHOUSE_HOST: clickhouse
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
       S3_ENDPOINT_URL: http://minio:9000
-      S3_ACCESS_KEY: xeter
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER}
       S3_SECRET_KEY: ${MINIO_SECRET_KEY}
       S3_BUCKET: xeter-payloads
       SECRET_KEY: ${SECRET_KEY}
